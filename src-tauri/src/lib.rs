@@ -161,6 +161,7 @@ fn delete_group(state: State<AppState>, project: String, id: String) -> AppResul
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
             let settings = settings::load(&config_dir);

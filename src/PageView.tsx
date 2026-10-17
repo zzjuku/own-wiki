@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, type Page } from "./api";
 import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
+import { handleContentClick } from "./links";
 import { renderMarkdown } from "./markdown";
 import { useReportError } from "./notify";
+import { IS_MAC } from "./QuickOpen";
+import { SplitEditor } from "./SplitEditor";
 import { groupChain } from "./tree";
 
 interface Props {
@@ -33,7 +36,9 @@ export function PageView(props: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [body, setBody] = useState("");
   const [status, setStatus] = useState<SaveStatus>("saved");
-  const textRef = useRef<HTMLTextAreaElement>(null);
+  // While editing, the latest text lives here (not in state) so typing
+  // doesn't re-render the whole page.
+  const latest = useRef("");
 
   const saver = useMemo(
     () =>
@@ -60,21 +65,35 @@ export function PageView(props: Props) {
       (p) => {
         setPage(p);
         setBody(p.body);
+        latest.current = p.body;
       },
       (e) => setLoadError(errorText(e)),
     );
   }, [project, pageId]);
 
-  useEffect(() => {
-    if (editing && page) textRef.current?.focus();
-  }, [editing, page]);
-
   const html = useMemo(() => renderMarkdown(body), [body]);
 
   async function toggle() {
-    if (editing) await saver.flush();
+    if (editing) {
+      setBody(latest.current);
+      await saver.flush();
+    }
     setEditing(!editing);
   }
+
+  // Cmd+E / Ctrl+E switches between reading and editing.
+  const toggleRef = useRef(toggle);
+  toggleRef.current = toggle;
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if ((IS_MAC ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        if (!document.querySelector(".backdrop")) void toggleRef.current();
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, []);
 
   if (loadError) return <p className="empty center">{loadError}</p>;
   if (!page) return null;
@@ -95,43 +114,33 @@ export function PageView(props: Props) {
           <h1 title={props.title ?? page.title}>{props.title ?? page.title}</h1>
         </div>
         <div className="spacer" />
-        {editing && (
-          <span className={`save-status ${status}`} aria-live="polite">
-            {STATUS_TEXT[status]}
-          </span>
-        )}
         <button onClick={props.onRename}>Rename</button>
         <button onClick={props.onMove}>Move…</button>
         <button className="danger-text" onClick={props.onDelete}>
           Delete
         </button>
-        <button className="primary" onClick={toggle}>
+        <button className="primary" title={`${editing ? "Read" : "Edit"} (${IS_MAC ? "⌘" : "Ctrl+"}E)`} onClick={toggle}>
           {editing ? "View" : "Edit"}
         </button>
       </header>
 
       {editing ? (
-        <textarea
-          ref={textRef}
-          className="editor"
-          value={body}
-          spellCheck
-          placeholder="Write in Markdown…"
-          onChange={(e) => {
-            setBody(e.target.value);
-            saver.change(e.target.value);
+        <SplitEditor
+          initial={latest.current}
+          onChange={(text) => {
+            latest.current = text;
+            saver.change(text);
           }}
+          status={
+            <span className={`save-status ${status}`} aria-live="polite">
+              {STATUS_TEXT[status]}
+            </span>
+          }
         />
       ) : body.trim() ? (
-        <div
-          className="markdown"
-          // Links between pages come in a later milestone; for now don't let a
-          // click navigate the app window away.
-          onClick={(e) => {
-            if ((e.target as HTMLElement).closest("a")) e.preventDefault();
-          }}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        <div className="read-view">
+          <div className="markdown" onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: html }} />
+        </div>
       ) : (
         <p className="empty">This page is empty. Click Edit to write.</p>
       )}
