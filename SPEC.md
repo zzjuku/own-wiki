@@ -1,4 +1,4 @@
-# Own WIKI — Spec (v0.3, 2026-10-17)
+# Own WIKI — Spec (v0.4, 2026-10-17)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
@@ -60,7 +60,7 @@ A blank, local desktop program for building personal wikis for fictional stories
 ## Milestones
 Milestones are defined here before they are built. Later milestones get added after Juku's feature list.
 
-### M1 — Foundation (current)
+### M1 — Foundation (built 2026-10-17; Windows installer pending first CI run)
 - Tauri 2 app that launches on the Mac.
 - Settings: choose the library folder (stored per machine).
 - Projects: create, open, rename, delete. Each project is created with the folder layout from section 3.
@@ -68,6 +68,14 @@ Milestones are defined here before they are built. Later milestones get added af
 - Safe writes (temp file + rename) for every file the app saves.
 - GitHub Actions workflow that builds a Windows installer, so both platforms are proven from day one.
 - Done when: tests pass, the Mac app is built and launched, every item above is clicked through on screen, and the Windows workflow produces an installer.
+- Behaviour (Juku's choices, 2026-10-17):
+  - Deleting a project or page moves it to the system Trash / Recycle Bin, after a confirmation.
+  - Page edits autosave a moment after typing stops, and before switching pages, leaving the project or closing the window. No Save button.
+  - A page opens as formatted text. **Edit** switches to a plain-text Markdown editor; **View** switches back. A nicer editor comes later.
+- How it works on disk:
+  - Page files are named after the page title (`Page A.md`); the real title is also stored as `title:` in the front matter, so titles may contain characters file names can't. Renaming a page renames its file. Other front-matter fields are kept untouched.
+  - Project folders are named after the project; renaming a project renames its folder. `project.json` holds `name`, `formatVersion` and `templates`; unknown keys are kept.
+  - Names that differ only in upper/lower case count as the same name (keeps projects valid across file systems).
 
 ### M2+ — to be defined
 Templates, links between pages, search, images, spoilers, file watching / sync-conflict handling, export. Order and scope come from the feature list.
@@ -82,3 +90,5 @@ Templates, links between pages, search, images, spoilers, file watching / sync-c
 - 2026-10-15: UI in English; sync via Google Drive for desktop (Mirror mode or folder available offline); library path is a per-machine setting.
 - 2026-10-17: repo github.com/zzjuku/own-wiki (public). Coding happens in local Claude Code on the Mac; Windows builds via GitHub Actions. This SPEC.md in the repo replaces the claude.ai project copy as source of truth.
 - 2026-10-17: milestone list added to SPEC; M1 = app shell, library folder, projects, basic Markdown pages, safe writes, Windows CI.
+- 2026-10-17: M1 behaviour: delete = move to system Trash; autosave (no Save button); separate View and Edit modes, plain Markdown editor for now (better editor later).
+- 2026-10-17: technical: Tauri 2 + React + TypeScript; Rust handles all file access. File/folder names follow the page/project name and change on rename. Per-machine settings in the OS app-config folder (`settings.json`). App id `io.github.zzjuku.ownwiki`, display name "Own WIKI" (placeholder until the app name is decided). Windows installer is NSIS, built by `.github/workflows/windows.yml` and attached to each run as an artifact.
