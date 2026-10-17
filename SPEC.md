@@ -57,6 +57,21 @@ A blank, local desktop program for building personal wikis for fictional stories
 - Building happens in **Claude Code on Juku's Mac**, working in this repo. Planning and feature discussion happen in the claude.ai project "Own WIKI".
 - This repo contains only program code, never story content. Test fixtures use neutral placeholder data.
 
+## Milestones
+Milestones are defined here before they are built. Later milestones get added after Juku's feature list.
+
+### M1 — Foundation (current)
+- Tauri 2 app that launches on the Mac.
+- Settings: choose the library folder (stored per machine).
+- Projects: create, open, rename, delete. Each project is created with the folder layout from section 3.
+- Pages: create, edit, view, rename, delete plain Markdown pages inside a project; a page list per project. Plain text editing is enough; no templates, links, images or spoilers yet.
+- Safe writes (temp file + rename) for every file the app saves.
+- GitHub Actions workflow that builds a Windows installer, so both platforms are proven from day one.
+- Done when: tests pass, the Mac app is built and launched, every item above is clicked through on screen, and the Windows workflow produces an installer.
+
+### M2+ — to be defined
+Templates, links between pages, search, images, spoilers, file watching / sync-conflict handling, export. Order and scope come from the feature list.
+
 ## Open items (from Juku)
 - Feature list, split into v1 must-haves and later
 - Visual references (wikis/apps he likes, and what he likes about them)
@@ -66,3 +81,4 @@ A blank, local desktop program for building personal wikis for fictional stories
 - 2026-10-15: projects as top level; blank app with user-defined templates; local-first Mac + Windows; content as plain files in project folders; images stored locally per project; sync via external folder sync; single user; inline spoilers.
 - 2026-10-15: UI in English; sync via Google Drive for desktop (Mirror mode or folder available offline); library path is a per-machine setting.
 - 2026-10-17: repo github.com/zzjuku/own-wiki (public). Coding happens in local Claude Code on the Mac; Windows builds via GitHub Actions. This SPEC.md in the repo replaces the claude.ai project copy as source of truth.
+- 2026-10-17: milestone list added to SPEC; M1 = app shell, library folder, projects, basic Markdown pages, safe writes, Windows CI.
