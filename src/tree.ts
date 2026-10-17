@@ -133,34 +133,3 @@ export function allGroupsInOrder(index: TreeIndex): { id: string; name: string; 
   walk(ROOT, 0);
   return out;
 }
-
-const fold = (s: string) =>
-  s
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase();
-
-/**
- * Pages whose title matches `query`, best first: exact, starts with, a word
- * starts with, contains, then titles containing every typed word.
- */
-export function searchTitles(pages: Iterable<PageInfo>, query: string, limit = 50): PageInfo[] {
-  const q = fold(query.trim());
-  if (!q) return [];
-  const words = q.split(/\s+/);
-  const hits: { page: PageInfo; score: number }[] = [];
-  for (const page of pages) {
-    const t = fold(page.title);
-    let score: number;
-    const at = t.indexOf(q);
-    if (t === q) score = 0;
-    else if (at === 0) score = 1;
-    else if (at > 0 && /[\s\-_(.,'"/]/.test(t[at - 1])) score = 2;
-    else if (at > 0) score = 3;
-    else if (words.length > 1 && words.every((w) => t.includes(w))) score = 4;
-    else continue;
-    hits.push({ page, score });
-  }
-  hits.sort((a, b) => a.score - b.score || compareNames(a.page.title, b.page.title));
-  return hits.slice(0, limit).map((h) => h.page);
-}

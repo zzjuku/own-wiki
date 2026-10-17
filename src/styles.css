@@ -233,9 +233,28 @@ textarea:focus-visible {
   border-right: 1px solid var(--border);
   overflow: hidden;
 }
+.sidebar-top {
+  display: flex;
+  align-items: center;
+}
 .back {
-  align-self: flex-start;
   color: var(--muted);
+}
+.nav-buttons {
+  display: flex;
+  gap: 2px;
+}
+button.nav {
+  padding: 4px 5px;
+  color: var(--muted);
+  display: flex;
+}
+button.nav:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+button.nav:disabled {
+  opacity: 0.35;
 }
 .project-name {
   font-size: var(--text-lg);
@@ -606,6 +625,30 @@ body.dragging * {
 .markdown a:hover {
   text-decoration: underline;
 }
+.markdown a.wikilink.new {
+  color: var(--link-new);
+}
+.redirect-note {
+  margin: 2px 0 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.title-notice {
+  padding: 8px 14px;
+  margin: 0 0 12px;
+  font-size: var(--text-md);
+}
+.title-notice code {
+  font-family: var(--font-mono);
+}
+.cm-wikilink-new,
+.cm-wikilink-new * {
+  color: var(--link-new) !important;
+}
+.cm-mod-held .cm-wikilink {
+  cursor: pointer;
+  text-decoration: underline;
+}
 .markdown hr {
   border: none;
   border-top: 1px solid var(--heading-rule);
@@ -830,6 +873,30 @@ body.dragging * {
   padding: 8px 10px;
   word-break: break-all;
 }
+.field select {
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+}
+.dialog .field + .field {
+  margin-top: 12px;
+}
+.dialog-note {
+  font-size: var(--text-md);
+  color: var(--muted);
+  margin-top: 10px !important;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: var(--text-md);
+}
 .dialog-error {
   color: var(--danger);
   font-size: var(--text-md);
@@ -932,6 +999,17 @@ body.dragging * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.quick-alias {
+  font-size: var(--text-sm);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.quick-new .quick-title {
+  color: var(--link-new);
+}
+.quick-new.active .quick-title {
+  color: inherit;
 }
 .quick-group {
   margin-left: auto;

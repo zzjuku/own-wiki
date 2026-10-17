@@ -23,6 +23,9 @@ struct ProjectFile {
     format_version: u32,
     #[serde(default)]
     templates: Vec<serde_json::Value>,
+    /// Title of the page the project opens on.
+    #[serde(rename = "mainPage", default, skip_serializing_if = "Option::is_none")]
+    main_page: Option<String>,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -59,6 +62,20 @@ fn write_project_file(dir: &Path, file: &ProjectFile) -> AppResult<()> {
     safe_write(&dir.join(PROJECT_FILE), json.as_bytes())?;
     Ok(())
 }
+
+/// The project's main page title, if set.
+pub fn main_page(dir: &Path) -> Option<String> {
+    read_project_file(dir).ok()?.main_page.filter(|t| !t.trim().is_empty())
+}
+
+/// Sets (or with `None` clears) the main page of the project in `dir`.
+pub fn set_main_page(dir: &Path, title: Option<&str>) -> AppResult<()> {
+    let mut file = read_project_file(dir)?;
+    file.main_page = title.map(str::to_string);
+    write_project_file(dir, &file)
+}
+
+pub const MAIN_PAGE_TITLE: &str = "Main Page";
 
 pub fn list_projects(library: &Path) -> AppResult<Vec<ProjectInfo>> {
     let mut out = Vec::new();
@@ -99,8 +116,16 @@ pub fn create_project(library: &Path, name: &str) -> AppResult<ProjectInfo> {
             name: name.to_string(),
             format_version: FORMAT_VERSION,
             templates: Vec::new(),
+            main_page: Some(MAIN_PAGE_TITLE.into()),
             extra: Default::default(),
         },
+    )?;
+    // Every new project starts with an empty main page.
+    let mut meta = serde_yaml_ng::Mapping::new();
+    meta.insert("title".into(), MAIN_PAGE_TITLE.into());
+    safe_write(
+        &dir.join(PAGES_DIR).join(format!("{MAIN_PAGE_TITLE}.md")),
+        crate::pages::serialize(&meta, "")?.as_bytes(),
     )?;
     Ok(ProjectInfo {
         id,
@@ -153,6 +178,15 @@ mod tests {
         assert_eq!(json["name"], "Project A");
         assert_eq!(json["formatVersion"], 1);
         assert_eq!(json["templates"], serde_json::json!([]));
+        assert_eq!(json["mainPage"], "Main Page");
+        assert_eq!(
+            fs::read_to_string(dir.join(PAGES_DIR).join("Main Page.md")).unwrap(),
+            "---\ntitle: Main Page\n---\n"
+        );
+        assert_eq!(main_page(&dir).as_deref(), Some("Main Page"));
+        set_main_page(&dir, None).unwrap();
+        assert_eq!(main_page(&dir), None);
+        assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("mainPage"));
     }
 
     #[test]

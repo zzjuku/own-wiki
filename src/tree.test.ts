@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PageInfo, Tree } from "./api";
+import { NameIndex } from "./names";
 import {
   allGroupsInOrder,
   buildIndex,
@@ -7,7 +8,6 @@ import {
   countInside,
   groupChain,
   remapId,
-  searchTitles,
   visibleRows,
 } from "./tree";
 
@@ -15,6 +15,7 @@ const page = (id: string, title: string): PageInfo => ({
   id,
   title,
   group: id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : "",
+  aliases: [],
 });
 
 const tree: Tree = {
@@ -88,7 +89,7 @@ describe("tree", () => {
   });
 });
 
-describe("searchTitles", () => {
+describe("NameIndex.search", () => {
   const pages = [
     "Example field",
     "Page A",
@@ -98,16 +99,17 @@ describe("searchTitles", () => {
     "page a",
     "Grand (Page A)",
   ].map((t) => page(`${t}.md`, t));
+  const titles = (q: string) => new NameIndex(pages).search(q).map((e) => e.name);
 
   it("ranks exact, prefix, word start, then contains", () => {
-    expect(searchTitles(pages, "page a").map((p) => p.title)).toEqual([
+    expect(titles("page a")).toEqual([
       "Page A",
       "page a",
       "Page AB",
       "Grand (Page A)",
       "Another page",
     ]);
-    expect(searchTitles(pages, "age").map((p) => p.title)).toEqual([
+    expect(titles("age")).toEqual([
       "Another page",
       "Grand (Page A)",
       "Page A",
@@ -117,16 +119,17 @@ describe("searchTitles", () => {
     ]);
   });
 
-  it("ignores accents, matches all words, empty finds nothing", () => {
-    expect(searchTitles(pages, "sage").map((p) => p.title)).toEqual(["Säge"]);
-    expect(searchTitles(pages, "grand a").map((p) => p.title)).toEqual(["Grand (Page A)"]);
-    expect(searchTitles(pages, "  ")).toEqual([]);
+  it("ignores accents, matches all words, empty lists everything", () => {
+    expect(titles("sage")).toEqual(["Säge"]);
+    expect(titles("grand a")).toEqual(["Grand (Page A)"]);
+    expect(titles("  ")).toHaveLength(pages.length);
   });
 
   it("is fast with thousands of pages", () => {
     const many = Array.from({ length: 20000 }, (_, i) => page(`P${i}.md`, `Page ${i}`));
+    const names = new NameIndex(many);
     const start = performance.now();
-    expect(searchTitles(many, "page 1999")[0].title).toBe("Page 1999");
+    expect(names.search("page 1999")[0].name).toBe("Page 1999");
     expect(performance.now() - start).toBeLessThan(200);
   });
 });

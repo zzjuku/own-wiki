@@ -1,5 +1,7 @@
 import DOMPurify from "dompurify";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
+import type { LinkTarget } from "./names";
+import { linkAtStart, shownText, type WikiLink } from "./wikilinks";
 
 // One Enter in the source is a line break on the page; an empty line starts
 // a new paragraph.
@@ -19,9 +21,22 @@ export interface Rendered {
   toc: TocEntry[];
 }
 
+/** Markdown of a single paragraph or line (hover cards, "What links here"). */
+export function renderSnippet(source: string, links: LinkContext | null = null): string {
+  // Footnote markers mean nothing without their notes.
+  return renderPage(source.replace(/\[\^[^\]\s]+\]/g, ""), { tocBox: false, links }).html;
+}
+
 /** The table of contents appears once a page has this many headings. */
 export const TOC_MIN_HEADINGS = 3;
 export const NOTES_HEADING = "Notes";
+
+/** How page links are resolved while rendering. */
+export interface LinkContext {
+  resolve: (name: string) => LinkTarget | null;
+  /** The page being rendered: links to it show as bold text. */
+  currentId?: string;
+}
 
 // ---- per-render state (rendering is synchronous, so one at a time) ----
 
@@ -40,12 +55,13 @@ interface RenderState {
   numbers: Map<string, number>;
   refCount: Map<string, number>;
   notes: Map<string, string>;
+  links: LinkContext | null;
 }
 
 let state: RenderState = freshState(new Set());
 
-function freshState(defined: Set<string>): RenderState {
-  return { usedIds: new Map(), headings: [], defined, numbers: new Map(), refCount: new Map(), notes: new Map() };
+function freshState(defined: Set<string>, links: LinkContext | null = null): RenderState {
+  return { usedIds: new Map(), headings: [], defined, numbers: new Map(), refCount: new Map(), notes: new Map(), links };
 }
 
 /** Section anchor: lower-case, spaces -> "-", repeats get "-2", "-3"… These
@@ -77,6 +93,29 @@ function inlineText(tokens: Token[] | undefined): string {
     .join("");
 }
 
+/**
+ * A page link as HTML. Every link carries `data-target` (page as typed) and
+ * `data-section`; links to existing pages also `data-page` (the page id) and
+ * `data-via` (the alias used); links to missing pages have the class `new`.
+ */
+function renderWikiLink(link: WikiLink, text: string): string {
+  const ctx = state.links;
+  const attrs = [`data-target="${escapeHtml(link.page)}"`];
+  if (link.section !== null) attrs.push(`data-section="${escapeHtml(link.section)}"`);
+  const label = escapeHtml(text);
+  if (!link.page) {
+    // [[#Section]]: a section of this page.
+    if (ctx?.currentId) attrs.push(`data-page="${escapeHtml(ctx.currentId)}"`);
+    return `<a class="wikilink" href="#${escapeHtml(slugify(link.section ?? ""))}" ${attrs.join(" ")}>${label}</a>`;
+  }
+  const target = ctx?.resolve(link.page);
+  if (!target) return `<a class="wikilink new" href="#" ${attrs.join(" ")}>${label}</a>`;
+  if (target.page.id === ctx?.currentId && link.section === null) return `<strong class="selflink">${label}</strong>`;
+  attrs.push(`data-page="${escapeHtml(target.page.id)}"`);
+  if (target.via) attrs.push(`data-via="${escapeHtml(target.via)}"`);
+  return `<a class="wikilink" href="#" ${attrs.join(" ")}>${label}</a>`;
+}
+
 const FOOTNOTE_DEF = /^\[\^([^\]\s]+)\]:[ \t]?([^\n]*(?:\n(?: {2,}|\t)[^\n]*)*)(?:\n|$)/;
 const FOOTNOTE_REF = /^\[\^([^\]\s]+)\]/;
 
@@ -91,6 +130,23 @@ md.use({
     },
   },
   extensions: [
+    {
+      // [[Page]], [[Page|shown]], [[Page#Section]], [[#Section]]
+      name: "wikiLink",
+      level: "inline",
+      start: (src: string) => {
+        const i = src.indexOf("[[");
+        return i < 0 ? undefined : i;
+      },
+      tokenizer(src: string) {
+        const m = linkAtStart(src);
+        if (!m) return undefined;
+        return { type: "wikiLink", raw: src.slice(0, m.length), text: shownText(m.link), link: m.link };
+      },
+      renderer(token) {
+        return renderWikiLink(token.link as WikiLink, token.text as string);
+      },
+    },
     {
       // [^label]: note text (following lines indented by 2+ spaces belong to it)
       name: "footnoteDef",
@@ -150,8 +206,15 @@ function definedLabels(source: string): Set<string> {
  * along with the source. `tocBox: false` leaves the contents box out of the
  * text (the read view shows the contents in a side panel instead).
  */
-export function renderPage(source: string, { lineAnchors = false, tocBox: withBox = true } = {}): Rendered {
-  state = freshState(definedLabels(source));
+export function renderPage(
+  source: string,
+  {
+    lineAnchors = false,
+    tocBox: withBox = true,
+    links = null,
+  }: { lineAnchors?: boolean; tocBox?: boolean; links?: LinkContext | null } = {},
+): Rendered {
+  state = freshState(definedLabels(source), links);
   const tokens = md.lexer(source);
   const out = [] as unknown as TokensList;
   out.links = tokens.links;

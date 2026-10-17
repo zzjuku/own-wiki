@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, type Page } from "./api";
 import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
-import { handleContentClick } from "./links";
 import { renderPage } from "./markdown";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
 import { SplitEditor } from "./SplitEditor";
 import { TocPanel } from "./TocPanel";
 import { groupChain } from "./tree";
+import { scrollToSection, useContentClick, useLinkContext } from "./wiki";
+import { LINK_CHARS } from "./wikilinks";
 
 interface Props {
   project: string;
@@ -21,6 +22,8 @@ interface Props {
   onDelete: () => void;
   /** Opens a group of the breadcrumb in the sidebar. */
   onReveal: (group: string) => void;
+  /** How the page was reached: a section to scroll to, an alias it was linked by. */
+  arrival: { section: string | null; via: string | null; key: number };
 }
 
 const STATUS_TEXT: Record<SaveStatus, string> = {
@@ -72,9 +75,22 @@ export function PageView(props: Props) {
     );
   }, [project, pageId]);
 
+  const links = useLinkContext(pageId);
+  const onContentClick = useContentClick(pageId);
   // The read view shows the contents in the left panel, not in the text.
-  const rendered = useMemo(() => renderPage(body, { tocBox: false }), [body]);
+  const rendered = useMemo(() => renderPage(body, { tocBox: false, links }), [body, links]);
   const readRef = useRef<HTMLDivElement>(null);
+
+  // Arriving through a link: scroll to its section (or the top).
+  const { arrival } = props;
+  const loaded = page !== null;
+  useEffect(() => {
+    if (!loaded || editing) return;
+    const view = readRef.current;
+    if (view) scrollToSection(view.querySelector(".markdown") ?? view, arrival.section);
+    // Only when a new arrival happens (or the page finished loading).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrival.key, loaded]);
 
   async function toggle() {
     if (editing) {
@@ -115,6 +131,7 @@ export function PageView(props: Props) {
             </nav>
           )}
           <h1 title={props.title ?? page.title}>{props.title ?? page.title}</h1>
+          {arrival.via && <p className="redirect-note">(Redirected from {arrival.via})</p>}
         </div>
         <div className="spacer" />
         <button onClick={props.onRename}>Rename</button>
@@ -127,8 +144,16 @@ export function PageView(props: Props) {
         </button>
       </header>
 
+      {LINK_CHARS.test(props.title ?? page.title) && (
+        <p className="notice title-notice">
+          This title contains <code>[</code> <code>]</code> <code>|</code> or <code>#</code>, which links can't use.
+          Rename the page so other pages can link to it.
+        </p>
+      )}
+
       {editing ? (
         <SplitEditor
+          pageId={pageId}
           initial={latest.current}
           onChange={(text) => {
             latest.current = text;
@@ -145,7 +170,7 @@ export function PageView(props: Props) {
           {rendered.toc.length > 0 && (
             <TocPanel toc={rendered.toc} scrollRef={readRef} storageKey={`ownwiki.tocFolded.${project}/${pageId}`} />
           )}
-          <div className="markdown" onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: rendered.html }} />
+          <div className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: rendered.html }} />
         </div>
       ) : (
         <p className="empty">This page is empty. Click Edit to write.</p>

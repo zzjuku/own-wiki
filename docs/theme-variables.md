@@ -41,6 +41,7 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--heading-color` | Section headings |
 | `--heading-rule` | Line under main headings, divider lines |
 | `--link` | Links |
+| `--link-new` | Links to pages that don't exist yet (red links) |
 | `--quote-border` / `--quote-text` | Quotes |
 | `--code-bg` | Code |
 | `--table-border` / `--table-bg` / `--table-header-bg` | Tables |

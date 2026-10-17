@@ -1,6 +1,7 @@
 // The split editor: Markdown source (CodeMirror) on the left, live preview on
 // the right, toolbar on top, word count at the bottom.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { autocompletion } from "@codemirror/autocomplete";
 import { EditorState, Prec, type Extension, type StateCommand } from "@codemirror/state";
 import { EditorView, drawSelection, keymap, placeholder, type Command } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
@@ -22,13 +23,17 @@ import {
   toggleQuote,
   type ActiveFormats,
 } from "./formatting";
-import { handleContentClick } from "./links";
+import { api } from "./api";
+import { editorLinks, insertLink, linkCompletions, setLinkEnv, wikiLinkSyntax, type LinkEnv } from "./editorLinks";
 import { countWords, plainText, renderPage } from "./markdown";
 import { htmlToMarkdown } from "./paste";
 import { TableDialog } from "./TableDialog";
-import { IS_MAC } from "./QuickOpen";
+import { IS_MAC, PagePicker } from "./QuickOpen";
+import { scrollToSection, useContentClick, useLinkContext, useWiki } from "./wiki";
 
 interface Props {
+  /** The page being edited. */
+  pageId: string;
   initial: string;
   onChange: (text: string) => void;
   /** Shown at the right of the status line (save state). */
@@ -68,7 +73,12 @@ const TOOLS: (Tool | "|")[] = [
   "|",
   { id: "table", label: <Icon name="table" />, title: "Insert table", run: () => true },
   { id: "footnote", label: <Icon name="footnote" />, title: "Footnote", run: cmd(insertFootnote) },
+  { id: "link", label: <Icon name="link" />, title: `Link to a page (${MOD}K)`, run: () => true },
 ];
+
+// Cmd+[ / Cmd+] (Alt+Left / Alt+Right on Windows) are Back and Forward, not indenting.
+const RESERVED_KEYS = new Set(IS_MAC ? ["Mod-[", "Mod-]"] : ["Mod-[", "Mod-]", "Alt-ArrowLeft", "Alt-ArrowRight"]);
+const baseKeymap = defaultKeymap.filter((b) => !RESERVED_KEYS.has(b.key ?? "") && !RESERVED_KEYS.has(b.win ?? ""));
 
 /** Pastes text without formatting (Cmd+Shift+V / Ctrl+Shift+V). */
 const pastePlain: Command = (view) => {
@@ -140,6 +150,30 @@ const theme = EditorView.theme({
     backgroundColor: "var(--selection) !important",
   },
   ".cm-placeholder": { color: "var(--muted)" },
+  // Link suggestions
+  ".cm-tooltip": {
+    backgroundColor: "var(--bg)",
+    color: "var(--text)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    boxShadow: "var(--shadow)",
+    overflow: "hidden",
+  },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul": {
+    fontFamily: "var(--font-ui)",
+    fontSize: "var(--text-md)",
+    maxHeight: "18em",
+    minWidth: "260px",
+    maxWidth: "min(560px, 80vw)",
+  },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul > li": { padding: "4px 10px", lineHeight: "1.4" },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-text)",
+  },
+  ".cm-completionDetail": { color: "var(--muted)", fontStyle: "normal", marginLeft: "1.2em", fontSize: "var(--text-sm)" },
+  ".cm-tooltip-autocomplete li[aria-selected] .cm-completionDetail": { color: "inherit", opacity: "0.8" },
+  ".cm-completionMatchedText": { textDecoration: "none", fontWeight: "600" },
 });
 
 const SPLIT_KEY = "ownwiki.editorSplit";
@@ -175,7 +209,18 @@ const NO_FORMATS: ActiveFormats = {
   quote: false,
 };
 
-export function SplitEditor({ initial, onChange, status }: Props) {
+export function SplitEditor({ pageId, initial, onChange, status }: Props) {
+  const wiki = useWiki();
+  const links = useLinkContext(pageId);
+  const onContentClick = useContentClick(pageId);
+  const [linkPicker, setLinkPicker] = useState<{ query: string } | null>(null);
+  const openLinkPickerRef = useRef(() => {});
+  openLinkPickerRef.current = () => {
+    const view = viewRef.current;
+    if (!view) return;
+    const sel = view.state.selection.main;
+    setLinkPicker({ query: view.state.sliceDoc(sel.from, sel.to).replace(/\s+/g, " ").trim().slice(0, 200) });
+  };
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -202,7 +247,15 @@ export function SplitEditor({ initial, onChange, status }: Props) {
       drawSelection(),
       EditorView.lineWrapping,
       EditorView.contentAttributes.of({ spellcheck: "true", autocorrect: "on", autocapitalize: "sentences" }),
-      markdown({ base: markdownLanguage, addKeymap: false, completeHTMLTags: false, pasteURLAsLink: false }),
+      markdown({
+        base: markdownLanguage,
+        extensions: [wikiLinkSyntax],
+        addKeymap: false,
+        completeHTMLTags: false,
+        pasteURLAsLink: false,
+      }),
+      editorLinks,
+      autocompletion({ override: [linkCompletions], icons: false, maxRenderedOptions: 50 }),
       syntaxHighlighting(highlight),
       search({ top: true }),
       placeholder("Start writing…"),
@@ -218,8 +271,20 @@ export function SplitEditor({ initial, onChange, status }: Props) {
       }),
       theme,
       pasteFormatted,
-      Prec.high(keymap.of(formatKeymap)),
-      keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+      Prec.high(
+        keymap.of([
+          ...formatKeymap,
+          {
+            key: "Mod-k",
+            run: () => {
+              openLinkPickerRef.current();
+              return true;
+            },
+            preventDefault: true,
+          },
+        ]),
+      ),
+      keymap.of([...baseKeymap, ...historyKeymap, ...searchKeymap]),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) {
           const doc = u.state.doc.toString();
@@ -257,7 +322,29 @@ export function SplitEditor({ initial, onChange, status }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const html = useMemo(() => renderPage(text, { lineAnchors: true }).html, [text]);
+  // What the editor needs to know about the project's pages; refreshed when they change.
+  const env = useMemo<LinkEnv>(
+    () => ({
+      names: wiki.names,
+      sections: (id) => api.pageSections(wiki.project, id),
+      open: (link) => {
+        const target = link.page ? wiki.names.resolve(link.page) : null;
+        if (!link.page || target?.page.id === pageId) {
+          if (previewRef.current) scrollToSection(previewRef.current, link.section);
+        } else if (target) {
+          wiki.follow({ pageId: target.page.id, section: link.section, via: target.via ?? null });
+        } else {
+          wiki.createFromLink(link.page, pageId);
+        }
+      },
+    }),
+    [wiki, pageId],
+  );
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: setLinkEnv.of(env) });
+  }, [env]);
+
+  const html = useMemo(() => renderPage(text, { lineAnchors: true, links }).html, [text, links]);
   const counts = useMemo(() => {
     const plain = plainText(text);
     return { words: countWords(plain), chars: plain.length };
@@ -341,7 +428,9 @@ export function SplitEditor({ initial, onChange, status }: Props) {
               title={tool.title}
               aria-label={tool.title}
               aria-pressed={tool.active ? tool.active(formats) : undefined}
-              onClick={() => (tool.id === "table" ? setTableOpen(true) : run(tool.run))}
+              onClick={() =>
+                tool.id === "table" ? setTableOpen(true) : tool.id === "link" ? openLinkPickerRef.current() : run(tool.run)
+              }
             >
               {tool.label}
             </button>
@@ -372,11 +461,7 @@ export function SplitEditor({ initial, onChange, status }: Props) {
           <>
             <div className="split-divider" onPointerDown={startDrag} title="Drag to resize" />
             <div className="split-preview" ref={previewRef}>
-              <div
-                className="markdown"
-                onClick={handleContentClick}
-                dangerouslySetInnerHTML={{ __html: html }}
-              />
+              <div className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: html }} />
             </div>
           </>
         )}
@@ -390,6 +475,24 @@ export function SplitEditor({ initial, onChange, status }: Props) {
         <div className="spacer" />
         {status}
       </div>
+
+      {linkPicker && (
+        <PagePicker
+          names={wiki.names}
+          label="Link to page"
+          placeholder="Type a page title or alias…"
+          initialQuery={linkPicker.query}
+          allowNew
+          onPick={(p) => {
+            const view = viewRef.current;
+            if (view) insertLink(view, "entry" in p ? p.entry.name : p.newTitle);
+          }}
+          close={() => {
+            setLinkPicker(null);
+            viewRef.current?.focus();
+          }}
+        />
+      )}
 
       {tableOpen && (
         <TableDialog
@@ -437,6 +540,12 @@ const ICONS: Record<string, ReactNode> = {
       <text x="9.6" y="7.4" fontSize="7" fontWeight="700">1</text>
       <path d="M2 9h5" className="stroke thin" />
     </>
+  ),
+  link: (
+    <path
+      d="M6.8 9.2a3 3 0 0 0 4.3 0l2.2-2.2a3 3 0 0 0-4.3-4.3l-1 1M9.2 6.8a3 3 0 0 0-4.3 0L2.7 9a3 3 0 0 0 4.3 4.3l1-1"
+      className="stroke"
+    />
   ),
   undo: <path d="M5 3.5 2 6.5l3 3M2.5 6.5h7a4 4 0 0 1 0 8H7" className="stroke" />,
   redo: <path d="m11 3.5 3 3-3 3M13.5 6.5h-7a4 4 0 0 0 0 8H9" className="stroke" />,

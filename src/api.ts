@@ -17,6 +17,8 @@ export interface PageInfo {
   title: string;
   /** Id of the group the page is in; "" = top level. */
   group: string;
+  /** Other names that link to the page. */
+  aliases: string[];
 }
 
 export interface GroupInfo {
@@ -28,6 +30,47 @@ export interface GroupInfo {
 export interface Tree {
   groups: GroupInfo[];
   pages: PageInfo[];
+  /** Title of the project's main page, if set. */
+  mainPage?: string | null;
+}
+
+export interface Heading {
+  /** Section anchor ("early-life"). */
+  anchor: string;
+  text: string;
+  level: number;
+}
+
+export interface Preview {
+  title: string;
+  group: string;
+  /** Opening paragraph (or start of the section) as Markdown. */
+  text: string;
+  /** Heading text of the section shown, if one was asked for and exists. */
+  section: string | null;
+}
+
+export interface Backlink {
+  id: string;
+  title: string;
+  group: string;
+  /** Aliases the page links through. */
+  via: string[];
+  /** Lines containing the links (when asked for). */
+  lines: string[];
+}
+
+export interface RenameResult {
+  page: PageInfo;
+  links: number;
+  pages: number;
+  /** Titles of pages whose links couldn't be updated. */
+  failed: string[];
+}
+
+export interface LinkCount {
+  links: number;
+  pages: number;
 }
 
 export interface Page extends PageInfo {
@@ -52,11 +95,22 @@ export const api = {
   readPage: (project: string, id: string) => invoke<Page>("read_page", { project, id }),
   savePage: (project: string, id: string, body: string) =>
     invoke<void>("save_page", { project, id, body }),
-  renamePage: (project: string, id: string, title: string, allowLong: boolean) =>
-    invoke<PageInfo>("rename_page", { project, id, title, allowLong }),
+  renamePage: (project: string, id: string, title: string, allowLong: boolean, keepAlias: boolean) =>
+    invoke<RenameResult>("rename_page", { project, id, title, allowLong, keepAlias }),
   movePage: (project: string, id: string, target: string, allowLong: boolean) =>
     invoke<PageInfo>("move_page", { project, id, target, allowLong }),
   deletePage: (project: string, id: string) => invoke<void>("delete_page", { project, id }),
+  setAliases: (project: string, id: string, aliases: string[]) =>
+    invoke<PageInfo>("set_aliases", { project, id, aliases }),
+  setMainPage: (project: string, title: string | null) => invoke<void>("set_main_page", { project, title }),
+
+  // Link index
+  pageSections: (project: string, id: string) => invoke<Heading[]>("page_sections", { project, id }),
+  linkPreview: (project: string, id: string, section: string | null) =>
+    invoke<Preview>("link_preview", { project, id, section }),
+  backlinks: (project: string, id: string, context: boolean) =>
+    invoke<Backlink[]>("backlinks", { project, id, context }),
+  linkCount: (project: string, name: string) => invoke<LinkCount>("link_count", { project, name }),
 
   createGroup: (project: string, parent: string, name: string, allowLong: boolean) =>
     invoke<GroupInfo>("create_group", { project, parent, name, allowLong }),

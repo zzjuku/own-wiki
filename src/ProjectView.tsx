@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, isLongPath, type ProjectInfo, type Tree } from "./api";
 import { flushAll } from "./autosave";
 import { useDialogs, type PickOption } from "./dialogs";
+import { NameIndex } from "./names";
 import { useReportError } from "./notify";
 import { PageView } from "./PageView";
-import { isQuickOpenKey, QuickOpen, QUICK_OPEN_KEYS } from "./QuickOpen";
+import { IS_MAC, isQuickOpenKey, QuickOpen, QUICK_OPEN_KEYS } from "./QuickOpen";
+import { WikiContext, type FollowTarget, type Wiki } from "./wiki";
 import { Sidebar, type MenuItem } from "./Sidebar";
 import {
   allGroupsInOrder,
@@ -54,6 +56,28 @@ function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
+/** Pages visited in this project since it was opened (back/forward). */
+interface History {
+  back: string[];
+  forward: string[];
+}
+
+const HISTORY_LIMIT = 200;
+const BACK_KEYS = IS_MAC ? "⌘[" : "Alt+←";
+const FORWARD_KEYS = IS_MAC ? "⌘]" : "Alt+→";
+
+/** Cmd+[ / Cmd+] on the Mac, Alt+Left / Alt+Right on Windows: -1 back, 1 forward, 0 neither. */
+function historyKey(e: KeyboardEvent): number {
+  if (IS_MAC) {
+    if (!e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return 0;
+    if (e.key === "[" || e.code === "BracketLeft") return -1;
+    if (e.key === "]" || e.code === "BracketRight") return 1;
+    return 0;
+  }
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return 0;
+  return e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+}
+
 export function ProjectView({ project, onBack }: Props) {
   const dialogs = useDialogs();
   const report = useReportError();
@@ -66,10 +90,18 @@ export function ProjectView({ project, onBack }: Props) {
   const [editing, setEditing] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [revealRow, setRevealRow] = useState<{ id: string } | null>(null);
+  const [history, setHistory] = useState<History>({ back: [], forward: [] });
+  // Where to scroll and what to say when a page was opened through a link.
+  const [arrival, setArrival] = useState<{ section: string | null; via: string | null; key: number }>({
+    section: null,
+    via: null,
+    key: 0,
+  });
 
   const index = useMemo(() => buildIndex(tree ?? { groups: [], pages: [] }), [tree]);
   const rows = useMemo(() => visibleRows(index, expanded), [index, expanded]);
-  const pageList = useMemo(() => [...index.pages.values()], [index]);
+  const names = useMemo(() => new NameIndex(index.pages.values()), [index]);
+  const mainPage = tree?.mainPage ? names.resolve(tree.mainPage)?.page : undefined;
 
   const setExpanded = useCallback(
     (update: (prev: Set<string>) => Set<string>) =>
@@ -117,14 +149,95 @@ export function ProjectView({ project, onBack }: Props) {
     [setExpanded],
   );
 
-  async function openPage(id: string, edit = false) {
+  /**
+   * Opens a page. `record: false` leaves the back/forward history alone
+   * (used by Back and Forward themselves). `section` scrolls to a section,
+   * `via` shows "Redirected from …".
+   */
+  async function openPage(
+    id: string,
+    edit = false,
+    { section = null, via = null, record = true }: { section?: string | null; via?: string | null; record?: boolean } = {},
+  ) {
     if (id !== selected) await flushAll();
+    if (record && selected && selected !== id) {
+      const from = selected;
+      setHistory((h) => ({ back: [...h.back, from].slice(-HISTORY_LIMIT), forward: [] }));
+    }
     reveal(parentOf(id));
     setSelected(id);
     setSelectedGroup(null);
     setEditing(edit);
     setRevealRow({ id });
+    setArrival({ section, via, key: Date.now() });
   }
+
+  /** Back (-1) or forward (1) through visited pages, skipping deleted ones. */
+  async function go(step: -1 | 1) {
+    const from = step < 0 ? [...history.back] : [...history.forward];
+    const skipped: string[] = [];
+    let target: string | undefined;
+    while ((target = step < 0 ? from.pop() : from.shift()) !== undefined && !index.pages.has(target)) skipped.push(target);
+    if (target === undefined) return;
+    const here = selected && index.pages.has(selected) ? [selected] : [];
+    setHistory((h) =>
+      step < 0
+        ? { back: from, forward: [...here, ...h.forward] }
+        : { back: [...h.back, ...here], forward: from },
+    );
+    await openPage(target, false, { record: false });
+  }
+
+  function goHome() {
+    if (mainPage) return void openPage(mainPage.id);
+    dialogs.alert({
+      title: "No main page",
+      message: (
+        <>
+          This project has no main page yet. Open the page you want and choose <strong>Set as main page</strong>{" "}
+          from the page's <strong>⋯</strong> menu.
+        </>
+      ),
+    });
+  }
+
+  /** After a page id changed (rename or move), keep it in the history. */
+  function remapHistory(from: string, to: string) {
+    if (from === to) return;
+    const map = (ids: string[]) => ids.map((x) => remapId(x, from, to));
+    setHistory((h) => ({ back: map(h.back), forward: map(h.forward) }));
+  }
+
+  // Back/forward keys (and the mouse's back/forward buttons).
+  const goRef = useRef(go);
+  goRef.current = go;
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      const step = historyKey(e);
+      if (!step || document.querySelector(".backdrop")) return;
+      e.preventDefault();
+      void goRef.current(step as -1 | 1);
+    };
+    const mouse = (e: MouseEvent) => {
+      if (e.button === 3 || e.button === 4) void goRef.current(e.button === 3 ? -1 : 1);
+    };
+    window.addEventListener("keydown", key);
+    window.addEventListener("mouseup", mouse);
+    return () => {
+      window.removeEventListener("keydown", key);
+      window.removeEventListener("mouseup", mouse);
+    };
+  }, []);
+
+  // A project opens on its main page.
+  const openedMain = useRef(false);
+  useEffect(() => {
+    if (!tree || openedMain.current) return;
+    openedMain.current = true;
+    if (mainPage && selected === null) void openPage(mainPage.id);
+    // Only once, when the tree first arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tree]);
 
   function toggle(group: string, open: boolean) {
     setExpanded((prev) => {
@@ -138,6 +251,7 @@ export function ProjectView({ project, onBack }: Props) {
   /** After a group was renamed or moved, keep its open state and the selection. */
   function remapGroup(from: string, to: string) {
     if (from === to) return;
+    remapHistory(from, to);
     setExpanded((prev) => new Set([...prev].map((id) => remapId(id, from, to))));
     setSelected((s) => (s === null ? s : remapId(s, from, to)));
     setSelectedGroup((g) => (g === null ? g : remapId(g, from, to)));
@@ -162,6 +276,33 @@ export function ProjectView({ project, onBack }: Props) {
         await openPage(page.id, true);
       },
     });
+  }
+
+  /** A red link was clicked: create the page it points to, in a group of the user's choice. */
+  function createFromLink(title: string, fromPage?: string) {
+    const groups = [
+      { id: ROOT, label: "Top level" },
+      ...allGroupsInOrder(index).map((g) => ({ id: g.id, label: `${"\u2003".repeat(g.depth + 1)}${g.name}` })),
+    ];
+    dialogs.prompt({
+      title: "Create page",
+      label: "Page title",
+      initial: title,
+      note: <>This page doesn't exist yet.</>,
+      select: { label: "Group", options: groups, initial: fromPage ? parentOf(fromPage) : ROOT },
+      confirmLabel: "Create",
+      submit: async (t, allowLong, { selected: group }) => {
+        await flushAll();
+        const page = await api.createPage(project.id, group, t, allowLong);
+        await reload();
+        await openPage(page.id, true);
+      },
+    });
+  }
+
+  function follow({ pageId, section, via }: FollowTarget) {
+    if (!index.pages.has(pageId)) return;
+    void openPage(pageId, false, { section, via });
   }
 
   function newGroup(parent: string) {
@@ -191,8 +332,11 @@ export function ProjectView({ project, onBack }: Props) {
       confirmLabel: "Rename",
       submit: async (title, allowLong) => {
         await flushAll();
-        const info = await api.renamePage(project.id, id, title, allowLong);
-        await reload(() => selected === id && setSelected(info.id));
+        const { page: info } = await api.renamePage(project.id, id, title, allowLong, false);
+        await reload(() => {
+          if (selected === id) setSelected(info.id);
+          remapHistory(id, info.id);
+        });
       },
     });
   }
@@ -232,6 +376,7 @@ export function ProjectView({ project, onBack }: Props) {
           setSelected(null);
           setEditing(false);
         }
+        setHistory((h) => ({ back: h.back.filter((x) => x !== id), forward: h.forward.filter((x) => x !== id) }));
         await reload();
       },
     });
@@ -283,6 +428,7 @@ export function ProjectView({ project, onBack }: Props) {
       const info = await api.movePage(project.id, id, target, allowLong);
       await reload(() => {
         if (selected === id) setSelected(info.id);
+        remapHistory(id, info.id);
         reveal(target);
       });
     } else {
@@ -367,12 +513,57 @@ export function ProjectView({ project, onBack }: Props) {
         : ROOT;
   const targetHint = targetGroup ? `in ${displayGroup(targetGroup)}` : "at the top level";
 
+  // Stable functions for the context, always calling the latest versions.
+  const actions = useRef({ follow, createFromLink });
+  actions.current = { follow, createFromLink };
+  const wiki = useMemo<Wiki>(
+    () => ({
+      project: project.id,
+      names,
+      follow: (t) => actions.current.follow(t),
+      createFromLink: (title, from) => actions.current.createFromLink(title, from),
+    }),
+    [project.id, names],
+  );
+
   return (
+    <WikiContext.Provider value={wiki}>
     <div className="project">
       <aside className="sidebar">
-        <button className="plain back" onClick={back}>
-          ← Projects
-        </button>
+        <div className="sidebar-top">
+          <button className="plain back" onClick={back}>
+            ← Projects
+          </button>
+          <div className="spacer" />
+          <div className="nav-buttons">
+            <button
+              className="plain nav"
+              title={mainPage ? `Main page: ${mainPage.title}` : "Main page (none set yet)"}
+              aria-label="Main page"
+              onClick={goHome}
+            >
+              <NavIcon name="home" />
+            </button>
+            <button
+              className="plain nav"
+              title={`Back (${BACK_KEYS})`}
+              aria-label="Back"
+              disabled={!history.back.length}
+              onClick={() => void go(-1)}
+            >
+              <NavIcon name="back" />
+            </button>
+            <button
+              className="plain nav"
+              title={`Forward (${FORWARD_KEYS})`}
+              aria-label="Forward"
+              disabled={!history.forward.length}
+              onClick={() => void go(1)}
+            >
+              <NavIcon name="forward" />
+            </button>
+          </div>
+        </div>
         <h1
           className={`project-name ${selectedGroup === ROOT ? "selected" : ""}`}
           title={`${project.name} — click to add new pages at the top level`}
@@ -436,6 +627,7 @@ export function ProjectView({ project, onBack }: Props) {
               reveal(parentOf(group));
               setRevealRow({ id: group });
             }}
+            arrival={arrival}
           />
         ) : (
           <p className="empty center">
@@ -445,12 +637,23 @@ export function ProjectView({ project, onBack }: Props) {
       </main>
 
       {quickOpen && (
-        <QuickOpen
-          pages={pageList}
-          onOpen={(id) => void openPage(id)}
-          close={() => setQuickOpen(false)}
-        />
+        <QuickOpen names={names} onOpen={(e) => void openPage(e.page.id)} close={() => setQuickOpen(false)} />
       )}
     </div>
+    </WikiContext.Provider>
+  );
+}
+
+const NAV_ICONS: Record<string, string> = {
+  home: "M2.5 7.5 8 3l5.5 4.5M4 6.5V13h3V9.5h2V13h3V6.5",
+  back: "M10 3.5 5.5 8l4.5 4.5",
+  forward: "M6 3.5 10.5 8 6 12.5",
+};
+
+function NavIcon({ name }: { name: string }) {
+  return (
+    <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <path d={NAV_ICONS[name]} className="stroke" />
+    </svg>
   );
 }

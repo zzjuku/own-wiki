@@ -3,15 +3,13 @@
 //! paths relative to `pages/`, separated by `/` on every platform
 //! ("Group A/Sub/Page A.md"); the top level is the empty string.
 
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use serde_yaml_ng::Value;
 
 use crate::error::{AppError, AppResult};
-use crate::fsutil::{check_rel, join_rel, rel_join};
+use crate::fsutil::{check_rel, join_rel};
 use crate::projects::{PAGES_DIR, project_dir};
 
 pub const EXT: &str = ".md";
@@ -23,6 +21,8 @@ pub struct PageInfo {
     pub title: String,
     /// Id of the group the page is in ("" = top level).
     pub group: String,
+    /// Other names that link to the page (front matter `aliases:`).
+    pub aliases: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -34,9 +34,12 @@ pub struct GroupInfo {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Tree {
     pub groups: Vec<GroupInfo>,
     pub pages: Vec<PageInfo>,
+    /// Title of the project's main page, if one is set.
+    pub main_page: Option<String>,
 }
 
 pub fn pages_dir(library: &Path, project: &str) -> AppResult<PathBuf> {
@@ -85,73 +88,14 @@ pub fn title_from_file_name(name: &str) -> String {
         .to_string()
 }
 
-/// Reads only a page's front matter to get its title, so listing thousands
-/// of pages doesn't read their bodies. Falls back to the file name.
-pub fn read_title(path: &Path, file_name: &str) -> String {
-    front_matter_title(path).unwrap_or_else(|| title_from_file_name(file_name))
-}
-
-fn front_matter_title(path: &Path) -> Option<String> {
-    let mut reader = BufReader::new(File::open(path).ok()?);
-    let mut line = String::new();
-    reader.read_line(&mut line).ok()?;
-    let first = line.strip_prefix('\u{feff}').unwrap_or(&line);
-    if first.trim_end_matches(['\r', '\n']) != "---" {
-        return None;
-    }
-    let mut yaml = String::new();
-    loop {
-        line.clear();
-        if reader.read_line(&mut line).ok()? == 0 {
-            return None; // never closed: not front matter
-        }
-        if line.trim_end_matches(['\r', '\n']) == "---" {
-            break;
-        }
-        yaml.push_str(&line);
-    }
-    match serde_yaml_ng::from_str::<Value>(&yaml).ok()? {
-        Value::Mapping(m) => match m.get("title") {
-            Some(Value::String(s)) if !s.trim().is_empty() => Some(s.clone()),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-/// Every group and page under `pages`. Hidden entries (temp files etc.) are
-/// skipped. Sorted by id so results are stable; the UI does its own ordering.
-pub fn scan(pages: &Path) -> AppResult<Tree> {
-    let mut tree = Tree::default();
-    let mut stack = vec![(pages.to_path_buf(), String::new())];
-    while let Some((dir, group)) = stack.pop() {
-        for entry in fs::read_dir(&dir)? {
-            let entry = entry?;
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') {
-                continue;
-            }
-            let kind = entry.file_type()?;
-            if kind.is_dir() {
-                let id = rel_join(&group, &name);
-                stack.push((entry.path(), id.clone()));
-                tree.groups.push(GroupInfo { id, name });
-            } else if kind.is_file() && is_page_file(&name) {
-                tree.pages.push(PageInfo {
-                    id: rel_join(&group, &name),
-                    title: read_title(&entry.path(), &name),
-                    group: group.clone(),
-                });
-            }
-        }
-    }
-    tree.groups.sort_by(|a, b| a.id.cmp(&b.id));
-    tree.pages.sort_by(|a, b| a.id.cmp(&b.id));
-    Ok(tree)
-}
-
+/// Every group and page of a project, read fresh. The app itself keeps one
+/// link index open instead (see lib.rs); this is for tests.
+#[cfg(test)]
 pub fn get_tree(library: &Path, project: &str) -> AppResult<Tree> {
-    scan(&pages_dir(library, project)?)
+    let dir = project_dir(library, project)?;
+    pages_dir(library, project)?;
+    let index = crate::index::ProjectIndex::open(&dir)?;
+    Ok(Tree { groups: index.groups.clone(), pages: index.page_infos(), main_page: crate::projects::main_page(&dir) })
 }
 
 #[cfg(test)]
@@ -164,6 +108,7 @@ mod tests {
         let lib = tempfile::tempdir().unwrap();
         create_project(lib.path(), "Project A").unwrap();
         let pages = lib.path().join("Project A").join(PAGES_DIR);
+        fs::remove_file(pages.join("Main Page.md")).unwrap();
         fs::create_dir_all(pages.join("Group A/Sub")).unwrap();
         fs::create_dir_all(pages.join("Empty")).unwrap();
         fs::create_dir_all(pages.join(".hidden")).unwrap();
@@ -187,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn titles_from_front_matter_only() {
+    fn titles_from_front_matter_or_file_name() {
         let dir = tempfile::tempdir().unwrap();
         let cases = [
             ("a.md", "---\ntitle: Real\n---\n", "Real"),
@@ -200,7 +145,7 @@ mod tests {
         for (name, text, want) in cases {
             let path = dir.path().join(name);
             fs::write(&path, text).unwrap();
-            assert_eq!(read_title(&path, name), want, "{name}");
+            assert_eq!(crate::index::read_entry(&path, name).unwrap().title, want, "{name}");
         }
     }
 

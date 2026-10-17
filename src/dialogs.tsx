@@ -6,13 +6,31 @@ import { errorText, isLongPath } from "./api";
 // because a file path would be too long for Windows, the dialog shows the
 // warning and a second click retries with true.
 
+export interface PromptExtra {
+  /** The drop-down's choice. */
+  selected: string;
+  /** The checkbox's state. */
+  checked: boolean;
+}
+
 interface PromptOptions {
   title: string;
   label: string;
   initial?: string;
+  /** Extra text under the input. */
+  note?: ReactNode;
+  /** A drop-down under the input. */
+  select?: { label: string; options: { id: string; label: string }[]; initial: string };
+  /** A checkbox under the input. */
+  checkbox?: { label: string; initial?: boolean };
   confirmLabel: string;
   /** Runs the action. If it throws, the message is shown and the dialog stays open. */
-  submit: (value: string, allowLong: boolean) => Promise<void>;
+  submit: (value: string, allowLong: boolean, extra: PromptExtra) => Promise<void>;
+}
+
+interface AlertOptions {
+  title: string;
+  message: ReactNode;
 }
 
 interface ConfirmOptions {
@@ -45,6 +63,7 @@ type Open = { id: number } & (
   | ({ kind: "prompt" } & PromptOptions)
   | ({ kind: "confirm" } & ConfirmOptions)
   | ({ kind: "pick" } & PickOptions)
+  | ({ kind: "alert" } & AlertOptions)
 );
 
 let nextId = 0;
@@ -53,6 +72,7 @@ interface Dialogs {
   prompt: (o: PromptOptions) => void;
   confirm: (o: ConfirmOptions) => void;
   pick: (o: PickOptions) => void;
+  alert: (o: AlertOptions) => void;
 }
 
 const DialogContext = createContext<Dialogs | null>(null);
@@ -69,6 +89,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     prompt: (o) => setOpen({ id: nextId++, kind: "prompt", ...o }),
     confirm: (o) => setOpen({ id: nextId++, kind: "confirm", ...o }),
     pick: (o) => setOpen({ id: nextId++, kind: "pick", ...o }),
+    alert: (o) => setOpen({ id: nextId++, kind: "alert", ...o }),
   });
   return (
     <DialogContext.Provider value={api.current}>
@@ -81,6 +102,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
 function Dialog({ open, close }: { open: Open; close: () => void }) {
   const [value, setValue] = useState(open.kind === "prompt" ? (open.initial ?? "") : "");
   const [picked, setPicked] = useState<string | null>(null);
+  const [selected, setSelected] = useState(open.kind === "prompt" ? (open.select?.initial ?? "") : "");
+  const [checked, setChecked] = useState(open.kind === "prompt" ? (open.checkbox?.initial ?? false) : false);
   const [error, setError] = useState<string | null>(null);
   const [longWarning, setLongWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -98,6 +121,7 @@ function Dialog({ open, close }: { open: Open; close: () => void }) {
 
   async function submit(pickedNow = picked) {
     if (busy) return;
+    if (open.kind === "alert") return close();
     if (open.kind === "prompt" && !value.trim()) {
       setError("Name can't be empty.");
       return;
@@ -110,7 +134,7 @@ function Dialog({ open, close }: { open: Open; close: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      if (open.kind === "prompt") await open.submit(value, allowLong);
+      if (open.kind === "prompt") await open.submit(value, allowLong, { selected, checked });
       else if (open.kind === "pick") await open.submit(pickedNow!, allowLong);
       else await open.submit(allowLong);
       close();
@@ -154,7 +178,32 @@ function Dialog({ open, close }: { open: Open; close: () => void }) {
             />
           </label>
         )}
-        {open.kind === "confirm" && <p>{open.message}</p>}
+        {open.kind === "prompt" && open.select && (
+          <label className="field">
+            <span>{open.select.label}</span>
+            <select
+              value={selected}
+              onChange={(e) => {
+                setSelected(e.target.value);
+                edited();
+              }}
+            >
+              {open.select.options.map((o) => (
+                <option key={o.id || "(top)"} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {open.kind === "prompt" && open.note && <p className="dialog-note">{open.note}</p>}
+        {open.kind === "prompt" && open.checkbox && (
+          <label className="check">
+            <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+            <span>{open.checkbox.label}</span>
+          </label>
+        )}
+        {(open.kind === "confirm" || open.kind === "alert") && <p>{open.message}</p>}
         {open.kind === "pick" && (
           <Picker
             open={open}
@@ -170,16 +219,18 @@ function Dialog({ open, close }: { open: Open; close: () => void }) {
         {longWarning && <p className="dialog-warning">{longWarning}</p>}
         {error && <p className="dialog-error">{error}</p>}
         <div className="dialog-actions">
-          <button type="button" onClick={close} disabled={busy}>
-            Cancel
-          </button>
+          {open.kind !== "alert" && (
+            <button type="button" onClick={close} disabled={busy}>
+              Cancel
+            </button>
+          )}
           <button
             ref={confirmRef}
             type="submit"
             className={open.kind === "confirm" && open.danger ? "danger" : "primary"}
             disabled={busy}
           >
-            {longWarning ? "Continue anyway" : open.confirmLabel}
+            {longWarning ? "Continue anyway" : open.kind === "alert" ? "OK" : open.confirmLabel}
           </button>
         </div>
       </form>

@@ -43,6 +43,7 @@
   --heading-color: #000000;
   --heading-rule: #a2a9b1;
   --link: #3366cc;
+  --link-new: #d73333;
   --quote-border: #c8ccd1;
   --quote-text: #54595d;
   --code-bg: #f8f9fa;
@@ -53,6 +54,9 @@
   --toc-border: #a2a9b1;
   --toc-number: #54595d;
   --toc-active: #8a5a14;
+  --card-bg: var(--bg);
+  --card-border: #a2a9b1;
+  --card-width: 340px;
 
   /* Infobox (M5) */
   --infobox-bg: #f8f9fa;
@@ -122,6 +126,7 @@
     --heading-color: #f4f3f0;
     --heading-rule: #54595d;
     --link: #88a9ff;
+    --link-new: #ff8a7a;
     --quote-border: #54595d;
     --quote-text: #b3b2ad;
     --code-bg: #262625;
@@ -132,6 +137,7 @@
     --toc-border: #54595d;
     --toc-number: #9b9a96;
     --toc-active: #d9a55b;
+    --card-border: #54595d;
 
     --infobox-bg: #232322;
     --infobox-border: #54595d;
