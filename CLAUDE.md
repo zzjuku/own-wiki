@@ -10,5 +10,6 @@
 - **Work in milestones.** One milestone per session. Each ends with a working, tested build, not snippets.
 - **Verify before reporting done:** run the tests, launch the app, click through the changed feature, and check it on screen.
 - **Keep SPEC.md current.** When a decision changes or a new one is made, update the relevant section and add a dated line to the decision log.
-- **Ask Juku** only about things that are his call (features, look, behaviour). Decide technical details yourself and note significant ones in the decision log.
+- **Ask Juku whenever an instruction of his is ambiguous, unclear, or open to more than one reading — before building on it.** Don't guess at what he meant. Name the specific options you see.
+- Features, look and behaviour are always his call. Purely technical details his instructions don't touch, decide yourself and note significant ones in the decision log.
 - Replies: short and direct, no repetition. Don't drop important questions or trade-offs to stay short.
