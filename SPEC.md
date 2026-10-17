@@ -67,7 +67,7 @@ Milestones are defined here before they are built. Later milestones get added af
 - Pages: create, edit, view, rename, delete plain Markdown pages inside a project; a page list per project. Plain text editing is enough; no templates, links, images or spoilers yet.
 - Safe writes (temp file + rename) for every file the app saves.
 - GitHub Actions workflow that builds a Windows installer, so both platforms are proven from day one.
-- Done when: tests pass, the Mac app is built and launched, every item above is clicked through on screen, and the Windows workflow produces an installer.
+- Done when: tests pass, the Mac app is built and launched, every item above is clicked through on screen, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
 - Behaviour (Juku's choices, 2026-10-17):
   - Deleting a project or page moves it to the system Trash / Recycle Bin, after a confirmation.
   - Page edits autosave a moment after typing stops, and before switching pages, leaving the project or closing the window. No Save button.
@@ -93,3 +93,4 @@ Templates, links between pages, search, images, spoilers, file watching / sync-c
 - 2026-10-17: M1 behaviour: delete = move to system Trash; autosave (no Save button); separate View and Edit modes, plain Markdown editor for now (better editor later).
 - 2026-10-17: M1 done. Mac app clicked through; tests pass on Mac and Windows; first CI run produced `Own WIKI_0.1.0_x64-setup.exe`.
 - 2026-10-17: technical: Tauri 2 + React + TypeScript; Rust handles all file access. File/folder names follow the page/project name and change on rename. Per-machine settings in the OS app-config folder (`settings.json`). App id `io.github.zzjuku.ownwiki`, display name "Own WIKI" (placeholder until the app name is decided). Windows installer is NSIS, built by `.github/workflows/windows.yml` and attached to each run as an artifact.
+- 2026-10-17: every milestone ends with Juku's review on his Mac; the app is installed to Applications at each review handoff; out-of-scope feedback is either added or recorded for a later milestone, his choice.
