@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.7, 2026-10-17)
+# Own WIKI — Spec (v0.8, 2026-10-17)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: M1, M2 and M3 done; M4 next (to be defined); roadmap M5–M16 drafted.
+Status: M1, M2 and M3 done; M4 defined, next to build; roadmap M5–M16 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -113,7 +113,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 **v1**
 - **M2 Structure:** groups (nested folders), sidebar tree, move pages between groups, quick-open by title, project-wide unique titles, path-length warning. *(Detailed scope below.)*
 - **M3 Editor:** split-screen live preview, toolbar + shortcuts, table of contents, tables, footnotes, paste with formatting, word count, Wikipedia-like page look, theme-ready styling (CSS variables). *(Detailed scope below.)*
-- **M4 Links:** `[[ ]]` with autocomplete and display text, red links, backlinks, link rewrite on rename, hover previews, aliases/redirects, main page per project. Introduces the link index in `.cache/`.
+- **M4 Links:** `[[ ]]` with autocomplete and display text, red links, backlinks, link rewrite on rename, hover previews, aliases/redirects, main page per project, back/forward. Introduces the link index in `.cache/`. *(Detailed scope below.)*
 - **M5 Templates & infoboxes:** template editor, typed fields, AWOIAF-style infobox. Date fields are stored in a calendar-ready format (era, year, optional month/day, approximate flag, ranges) so M13 doesn't need a migration.
 - **M6 Images & categories:** image import into `assets/`, captions, galleries, categories with automatic category pages.
 - **M7 Spoilers & embeds.**
@@ -171,6 +171,45 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - Checkpoint for Juku partway: split editor + toolbar + shortcuts, before tables, footnotes, paste, table of contents and styling.
 - Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen, a ~20,000-word placeholder page types and previews without noticeable lag, undo works after every toolbar action, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it. Windows shortcuts can't be clicked through by Claude; Juku checks them on the PC if he wants them verified.
 
+**M4 — Links (defined 2026-10-17)**
+- Link syntax: `[[Page]]`, `[[Page|shown text]]`, `[[Page#Section]]`, `[[Page#Section|text]]`, and `[[#Section]]` for a section of the same page. Section links use M3's heading anchors.
+  - Matching ignores upper/lower case (like titles).
+  - Links work in text, lists, tables, quotes and footnotes. Text inside code (backticks) is never a link and never rewritten.
+  - A link to the page it sits on shows as bold text, not a link (as on Wikipedia).
+  - Pipe trick: `[[Page A (Example)|]]` shows "Page A" (the bracketed part at the end is dropped). The file keeps what was typed.
+  - Word endings: letters directly after a link join it: `[[Page]]s` shows "Pages" as one link.
+  - A section link to a heading that doesn't exist (any more) opens the top of the page. Renaming a heading does not update links to it (reported in M9).
+- Following links: click in the read view or editor preview. Cmd+click (Ctrl+click on Windows) on a `[[link]]` in the source editor follows it. In the source, links are coloured; links to missing pages are red there too.
+- Inserting links:
+  - Typing `[[` opens a suggestion list of titles and aliases as you type, each with its group path. Enter inserts the link and closes it with `]]`. Picking an alias inserts `[[Alias]]`.
+  - After `[[Page#`, the list shows that page's sections.
+  - **Link** toolbar button and Cmd+K / Ctrl+K: with text selected, pick a page and the selection becomes the shown text; without a selection, it inserts a link.
+- Red links: a link to a page that doesn't exist is red, with a tooltip saying so. Clicking it opens a small dialog: title filled in from the link, group picker set to the linking page's group. One Enter creates the page and opens it in the editor.
+- What links here: a button in the page header with the number of linking pages. It opens a list of every page that links here (alphabetical, with group path and the line containing the link), including links through an alias (the alias is named). Clicking an entry opens that page.
+- Renaming a page (Juku, 2026-10-17: option a):
+  - Every link to it in the project is rewritten: `[[Old]]` → `[[New]]` (shown text changes too), `[[Old#S]]` → `[[New#S]]`. Links with their own shown text keep it. Links through an alias are untouched. The main page setting follows the rename.
+  - The rename dialog says how many links in how many pages will be updated and has a checkbox **Keep old title as alias** (off by default).
+  - Every file is written safely (temp file + rename). If a file can't be written, the app names it.
+- Deleting a page: the confirmation says how many pages link to it (and that it's the main page, if it is). Its links turn red afterwards.
+- Hover previews: hovering a link for about 0.4 s shows a card with title, group path and the opening paragraph (for `#Section` links: the start of that section). Red links show "Page doesn't exist". Works in the read view and editor preview. Links inside a card don't open further cards. The card leaves room for an image (M6); spoilers will be hidden in it (M7).
+- Aliases (redirects):
+  - Stored as an `aliases:` list in the page's front matter (no separate redirect pages).
+  - Edited on an **Aliases** line under the title in edit mode (add, remove).
+  - Titles and aliases share one name space: a title or alias that matches any existing title or alias in the project (ignoring case) is refused; the message names the page that has it.
+  - A link to an alias opens the page with a small "(Redirected from Alias)" note under the title.
+  - Removing an alias that links still use warns how many links will turn red.
+  - Quick-open (Cmd+O) also finds pages by alias.
+- Main page per project:
+  - New projects are created with an empty page "Main Page", set as the main page. Any page can be made the main page via **Set as main page**; the setting is stored in `project.json`.
+  - Opening a project shows its main page. A home button at the top of the sidebar opens it.
+  - Projects without a main page (made before M4, or after it was deleted) open as before; the home button then explains how to set one.
+- Back/forward: buttons plus Cmd+[ / Cmd+] (Alt+Left / Alt+Right on Windows) move through the pages visited in this project since it was opened. Not remembered after closing.
+- Title rule: `[`, `]`, `|` and `#` are not allowed in page titles and aliases (they break link syntax). Existing pages that use them show a notice in the header asking to rename.
+- Link index: titles, aliases, headings, outgoing links and opening paragraphs of every page, kept in `.cache/` (never synced). Built when a project opens; later opens only re-read changed files. Updated on every save, rename, move and delete. Built so M5 link fields and the M10 graph can plug in. Files changed outside the app are picked up at the next project open (live reload: M8).
+- Not in M4: unlinked mentions and broken-section-link reports (M9), links in infobox fields (M5), embeds (M7), graph (M10), automatic linking of plain words (never).
+- Checkpoint for Juku partway: link syntax, autocomplete, Link button, red links incl. creating pages from them, following links, back/forward. Then: rename rewrite, backlinks, previews, aliases, main page, title rule.
+- Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen, a test project with 5,000 placeholder pages and ~20 links each reopens in under 1 s, autocomplete has no noticeable delay, renaming a page with 500 backlinks finishes within a few seconds and leaves no stale links, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
+
 **After v1 start**
 - **M8 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. Until M8 is done, Juku uses **only one computer** for real content.
 - **M9 Health reports.**
@@ -209,3 +248,5 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-17: M3 review: table of contents changed to an AWOIAF-style panel left of the page text in the read view (sticky, highlights the current section, foldable sections remembered per page per computer); no contents box in the read view's text; hidden in narrow windows; the editor preview keeps the box.
 - 2026-10-17: M3 technical: footnotes use `[^1]` markers and `[^1]: note` lines (numbered on the page in order of first use, whatever the label). Pasted HTML is converted with Turndown; pasted headings move one level down (page title is the top heading); HTML without any formatting is pasted as plain text. Table "rows" = rows below the header. Plain paste reads the clipboard through Tauri's clipboard plugin. Theme contract: every colour and font, the type scale and main layout widths are variables in `src/theme.css`, listed in `docs/theme-variables.md`; small control paddings stay fixed. Web links open through Tauri's opener plugin.
 - 2026-10-17: M3 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer.
+- 2026-10-17: M4 defined: rename rewrites `[[Old]]` → `[[New]]` with optional "keep old title as alias"; red links create pages via a dialog prefilled with the linking page's group; "What links here" as a header button with count and a list with context lines; aliases edited under the title in edit mode, autocomplete inserts `[[Alias]]`, alias links show "Redirected from"; new projects get an empty "Main Page" and open on the main page; back/forward added; `[ ] | #` banned in titles and aliases; pipe trick and word endings added; Link button + Cmd+K.
+- 2026-10-17: M4 technical: aliases live in front matter (`aliases:`), not in redirect pages; main page stored in `project.json` (`mainPage`, by title). The link index lives in `.cache/` with per-file modification time and size for incremental rebuilds. Links are parsed in Rust (index, rename rewrite) and TypeScript (rendering, editor); both run the same shared test cases so they can't disagree. In tables, the link's `|` is written as `\|` so it doesn't split the cell.
