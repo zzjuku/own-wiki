@@ -24,7 +24,9 @@ import {
   type ActiveFormats,
 } from "./formatting";
 import { api } from "./api";
-import { editorLinks, insertLink, linkCompletions, setLinkEnv, wikiLinkSyntax, type LinkEnv } from "./editorLinks";
+import { editorLinks, insertLink, linkCompletions, linkRangeAt, setLinkEnv, wikiLinkSyntax, type LinkEnv } from "./editorLinks";
+import { LinkPopup } from "./LinkPopup";
+import { editedLink, shownText, type WikiLink } from "./wikilinks";
 import { countWords, plainText, renderPage } from "./markdown";
 import { htmlToMarkdown } from "./paste";
 import { TableDialog } from "./TableDialog";
@@ -214,6 +216,10 @@ export function SplitEditor({ pageId, initial, onChange, status }: Props) {
   const links = useLinkContext(pageId);
   const onContentClick = useContentClick(pageId);
   const [linkPicker, setLinkPicker] = useState<{ query: string } | null>(null);
+  // The Edit link popup, shown after clicking a link in the source.
+  const [popup, setPopup] = useState<{ from: number; to: number; link: WikiLink; at: { left: number; top: number } } | null>(null);
+  const popupRef = useRef(popup);
+  popupRef.current = popup;
   const openLinkPickerRef = useRef(() => {});
   openLinkPickerRef.current = () => {
     const view = viewRef.current;
@@ -296,6 +302,21 @@ export function SplitEditor({ pageId, initial, onChange, status }: Props) {
         }
         // Width changes re-wrap lines; keep the preview aligned.
         if (u.geometryChanged) requestAnimationFrame(syncScroll);
+        // Clicking into a link opens the Edit link popup; moving away or typing closes it.
+        if (u.docChanged && popupRef.current) setPopup(null);
+        if (u.selectionSet && !u.docChanged) {
+          const sel = u.state.selection.main;
+          const clicked = u.transactions.some((t) => t.isUserEvent("select.pointer"));
+          const r = sel.empty ? linkRangeAt(u.state, sel.head) : null;
+          if (clicked && r && r.from < sel.head && sel.head < r.to) {
+            requestAnimationFrame(() => {
+              const c = u.view.coordsAtPos(r.from);
+              if (c) setPopup({ ...r, at: { left: c.left, top: c.bottom + 6 } });
+            });
+          } else if (popupRef.current && (sel.head < popupRef.current.from || sel.head > popupRef.current.to)) {
+            setPopup(null);
+          }
+        }
         if (u.docChanged || u.selectionSet) {
           const f = activeFormats(u.state);
           setFormats((prev) => (sameFormats(prev, f) ? prev : f));
@@ -310,7 +331,10 @@ export function SplitEditor({ pageId, initial, onChange, status }: Props) {
     });
     viewRef.current = view;
     view.focus();
-    const onScroll = () => requestAnimationFrame(syncScroll);
+    const onScroll = () => {
+      requestAnimationFrame(syncScroll);
+      if (popupRef.current) setPopup(null);
+    };
     view.scrollDOM.addEventListener("scroll", onScroll);
     return () => {
       clearTimeout(timer);
@@ -475,6 +499,54 @@ export function SplitEditor({ pageId, initial, onChange, status }: Props) {
         <div className="spacer" />
         {status}
       </div>
+
+      {popup && (
+        <LinkPopup
+          key={`${popup.from}-${popup.to}`}
+          link={popup.link}
+          names={wiki.names}
+          at={popup.at}
+          close={() => {
+            setPopup(null);
+            viewRef.current?.focus();
+          }}
+          apply={(target, shown) => {
+            const view = viewRef.current;
+            setPopup(null);
+            if (!view) return;
+            const inTable = /^\s*\|/.test(view.state.doc.lineAt(popup.from).text);
+            const insert = editedLink(popup.link, target, shown, inTable);
+            view.dispatch({
+              changes: { from: popup.from, to: popup.to, insert },
+              selection: { anchor: popup.from + insert.length },
+              userEvent: "input.link",
+            });
+            view.focus();
+          }}
+          unlink={() => {
+            const view = viewRef.current;
+            setPopup(null);
+            if (!view) return;
+            const insert = shownText(popup.link);
+            view.dispatch({
+              changes: { from: popup.from, to: popup.to, insert },
+              selection: { anchor: popup.from + insert.length },
+              userEvent: "input.link",
+            });
+            view.focus();
+          }}
+          open={(target) => {
+            setPopup(null);
+            const hash = target.indexOf("#");
+            env.open({
+              page: (hash < 0 ? target : target.slice(0, hash)).trim(),
+              section: hash < 0 ? null : target.slice(hash + 1).trim() || null,
+              label: null,
+              suffix: "",
+            });
+          }}
+        />
+      )}
 
       {linkPicker && (
         <PagePicker

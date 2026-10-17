@@ -67,12 +67,19 @@ export const linkEnv = StateField.define<LinkEnv | null>({
   },
 });
 
-/** The link whose text covers `pos`, if any. */
-function linkAt(state: EditorState, pos: number): WikiLink | null {
-  for (let n: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 1); n; n = n.parent) {
-    if (n.name === "WikiLink") return linkAtStart(state.sliceDoc(n.from, n.to))?.link ?? null;
+/** The link whose text covers `pos` (with where it is), if any. */
+export function linkRangeAt(state: EditorState, pos: number, side: -1 | 1 = 1): { from: number; to: number; link: WikiLink } | null {
+  for (let n: SyntaxNode | null = syntaxTree(state).resolveInner(pos, side); n; n = n.parent) {
+    if (n.name === "WikiLink") {
+      const link = linkAtStart(state.sliceDoc(n.from, n.to))?.link;
+      return link ? { from: n.from, to: n.to, link } : null;
+    }
   }
   return null;
+}
+
+function linkAt(state: EditorState, pos: number): WikiLink | null {
+  return linkRangeAt(state, pos)?.link ?? null;
 }
 
 const plainLink = Decoration.mark({ class: "cm-wikilink" });

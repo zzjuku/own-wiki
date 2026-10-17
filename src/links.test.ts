@@ -4,7 +4,7 @@ import cases from "../shared-tests/links.json";
 import type { PageInfo } from "./api";
 import { renderPage, type LinkContext } from "./markdown";
 import { NameIndex } from "./names";
-import { norm, parseInner, pipeTrick, shownText } from "./wikilinks";
+import { editedLink, linkTarget, norm, parseInner, pipeTrick, shownText } from "./wikilinks";
 
 function linksIn(html: string) {
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -92,5 +92,20 @@ describe("NameIndex", () => {
     expect(names.search("old").map((e) => [e.name, e.alias])).toEqual([["Old name", true]]);
     expect(names.search("sage").map((e) => e.name)).toEqual(["Säge"]);
     expect(names.search("").map((e) => e.name)).toEqual(["Grand (Page A)", "Old name", "Page A", "Säge"]);
+  });
+});
+
+describe("editing a link", () => {
+  const l = (inner: string, suffix = "") => parseInner(inner, suffix)!;
+  it("sets, changes and clears the shown text", () => {
+    expect(editedLink(l("Page A"), "Page A", "the page", false)).toBe("[[Page A|the page]]");
+    expect(editedLink(l("Page A|old"), "Page B", "new", false)).toBe("[[Page B|new]]");
+    expect(editedLink(l("Page A|old"), "Page A", "", false)).toBe("[[Page A]]");
+    expect(editedLink(l("Page A|x"), "Page A", " Page A ", false)).toBe("[[Page A]]");
+  });
+  it("keeps word endings, the pipe trick, sections and table pipes", () => {
+    expect(editedLink(l("Page", "s"), "Item", "", false)).toBe("[[Item]]s");
+    expect(editedLink(l("A (B)|"), "C (D)", "", false)).toBe("[[C (D)|]]");
+    expect(editedLink(l("A#S"), linkTarget(l("A#S")), "see", true)).toBe("[[A#S\\|see]]");
   });
 });

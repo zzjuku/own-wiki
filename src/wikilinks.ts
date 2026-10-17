@@ -70,3 +70,23 @@ export function norm(name: string): string {
 
 /** Characters titles and aliases can't contain, because links use them. */
 export const LINK_CHARS = /[[\]|#]/;
+
+/** "Page" or "Page#Section": what a link points to, as typed in it. */
+export function linkTarget(l: WikiLink): string {
+  return l.section !== null ? `${l.page}#${l.section}` : l.page;
+}
+
+/**
+ * The source of a link after it was edited in the Edit link popup.
+ * `target` is "Page" or "Page#Section"; an empty `shown` keeps the link
+ * showing its target (keeping word endings and the pipe trick of `original`).
+ * In table rows the `|` is written `\|`.
+ */
+export function editedLink(original: WikiLink, target: string, shown: string, inTable: boolean): string {
+  const t = target.trim().replace(/\s+/g, " ");
+  const text = shown.trim().replace(/\s+/g, " ");
+  const pipe = inTable ? "\\|" : "|";
+  if (text) return text === t ? `[[${t}]]` : `[[${t}${pipe}${text}]]`;
+  if (original.label === "") return `[[${t}${pipe}]]${original.suffix}`;
+  return `[[${t}]]${original.suffix}`;
+}

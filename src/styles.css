@@ -1382,3 +1382,74 @@ button.backlink:hover {
 .hover-card.missing {
   color: var(--link-new);
 }
+.link-popup {
+  position: fixed;
+  z-index: 26;
+  width: 340px;
+  max-width: calc(100vw - 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  font-size: var(--text-md);
+}
+.link-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.link-field input {
+  font: inherit;
+  font-size: var(--text-md);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+}
+.link-suggest {
+  list-style: none;
+  margin: -4px 0 0;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.link-suggest li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.link-suggest li.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.link-suggest li.active .muted {
+  color: inherit;
+  opacity: 0.8;
+}
+.link-missing {
+  margin: -2px 0 0;
+  font-size: var(--text-sm);
+  color: var(--link-new);
+}
+.link-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.link-actions button.plain {
+  color: var(--accent);
+  font-size: var(--text-sm);
+  padding: 4px 6px;
+}
