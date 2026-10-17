@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.6, 2026-10-17)
+# Own WIKI — Spec (v0.7, 2026-10-17)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: M1 and M2 done; M3 defined and next; roadmap M4–M16 drafted.
+Status: M1, M2 and M3 done; M4 next (to be defined); roadmap M5–M16 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -139,7 +139,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - Not in M2: group overview pages (later, see Open items), file watching/sync (M8).
 - Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen (including a test project with several hundred placeholder pages in nested groups to check speed), the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
 
-**M3 — Editor (defined 2026-10-17)**
+**M3 — Editor (done 2026-10-17)**
 - Read and edit (Juku, 2026-10-17): a page opens in a full-width **read view**. **Edit** (or Cmd+E / Ctrl+E) opens the **split editor**: Markdown source on the left, live preview on the right; Cmd+E or **View** goes back. New pages still open in the editor; opening an existing page opens the read view (as in M2).
 - Split editor:
   - The preview updates as you type and scrolls along with the editor.
@@ -208,3 +208,4 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-17: M3 technical: the editor uses CodeMirror 6 (undo across toolbar actions, base for `[[` autocomplete in M4 and a later inline live preview, fast on long pages).
 - 2026-10-17: M3 review: table of contents changed to an AWOIAF-style panel left of the page text in the read view (sticky, highlights the current section, foldable sections remembered per page per computer); no contents box in the read view's text; hidden in narrow windows; the editor preview keeps the box.
 - 2026-10-17: M3 technical: footnotes use `[^1]` markers and `[^1]: note` lines (numbered on the page in order of first use, whatever the label). Pasted HTML is converted with Turndown; pasted headings move one level down (page title is the top heading); HTML without any formatting is pasted as plain text. Table "rows" = rows below the header. Plain paste reads the clipboard through Tauri's clipboard plugin. Theme contract: every colour and font, the type scale and main layout widths are variables in `src/theme.css`, listed in `docs/theme-variables.md`; small control paddings stay fixed. Web links open through Tauri's opener plugin.
+- 2026-10-17: M3 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer.
