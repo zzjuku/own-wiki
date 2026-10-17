@@ -1,7 +1,7 @@
 # Working rules for Claude
 
 ## What this is
-"Own WIKI" — a local desktop wiki program for fictional stories (macOS + Windows). Read `SPEC.md` at the start of every session. It is the source of truth.
+"Own WIKI" — a local desktop wiki program for fictional stories (macOS + Windows). At the start of every session, `git pull` first (planning chats on claude.ai also push spec changes), then read `SPEC.md`. It is the source of truth.
 
 ## Rules
 - **Only build the program.** Never invent, write, or seed story content. Test data uses neutral placeholders ("Page A", "Example field").
