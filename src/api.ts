@@ -12,9 +12,22 @@ export interface ProjectInfo {
 }
 
 export interface PageInfo {
-  /** File name inside the project's pages/ folder. */
+  /** Path inside the project's pages/ folder, "/"-separated: "Group A/Page A.md". */
   id: string;
   title: string;
+  /** Id of the group the page is in; "" = top level. */
+  group: string;
+}
+
+export interface GroupInfo {
+  /** Folder path inside pages/: "Group A/Sub". */
+  id: string;
+  name: string;
+}
+
+export interface Tree {
+  groups: GroupInfo[];
+  pages: PageInfo[];
 }
 
 export interface Page extends PageInfo {
@@ -31,20 +44,46 @@ export const api = {
     invoke<ProjectInfo>("rename_project", { id, name }),
   deleteProject: (id: string) => invoke<void>("delete_project", { id }),
 
-  listPages: (project: string) => invoke<PageInfo[]>("list_pages", { project }),
-  createPage: (project: string, title: string) =>
-    invoke<PageInfo>("create_page", { project, title }),
+  getTree: (project: string) => invoke<Tree>("get_tree", { project }),
+
+  // allowLong: the user agreed to a file path that may be too long for Windows.
+  createPage: (project: string, group: string, title: string, allowLong: boolean) =>
+    invoke<PageInfo>("create_page", { project, group, title, allowLong }),
   readPage: (project: string, id: string) => invoke<Page>("read_page", { project, id }),
   savePage: (project: string, id: string, body: string) =>
     invoke<void>("save_page", { project, id, body }),
-  renamePage: (project: string, id: string, title: string) =>
-    invoke<PageInfo>("rename_page", { project, id, title }),
+  renamePage: (project: string, id: string, title: string, allowLong: boolean) =>
+    invoke<PageInfo>("rename_page", { project, id, title, allowLong }),
+  movePage: (project: string, id: string, target: string, allowLong: boolean) =>
+    invoke<PageInfo>("move_page", { project, id, target, allowLong }),
   deletePage: (project: string, id: string) => invoke<void>("delete_page", { project, id }),
+
+  createGroup: (project: string, parent: string, name: string, allowLong: boolean) =>
+    invoke<GroupInfo>("create_group", { project, parent, name, allowLong }),
+  renameGroup: (project: string, id: string, name: string, allowLong: boolean) =>
+    invoke<GroupInfo>("rename_group", { project, id, name, allowLong }),
+  moveGroup: (project: string, id: string, target: string, allowLong: boolean) =>
+    invoke<GroupInfo>("move_group", { project, id, target, allowLong }),
+  deleteGroup: (project: string, id: string) => invoke<void>("delete_group", { project, id }),
 };
 
-/** Rust errors arrive as plain strings; anything else gets a generic message. */
+interface CommandError {
+  kind: string;
+  message: string;
+}
+
+function isCommandError(e: unknown): e is CommandError {
+  return typeof e === "object" && e !== null && typeof (e as CommandError).message === "string";
+}
+
+/** Rust errors arrive as `{ kind, message }`; anything else gets a generic message. */
 export function errorText(e: unknown): string {
   if (typeof e === "string") return e;
-  if (e instanceof Error) return e.message;
+  if (isCommandError(e)) return e.message;
   return "Something went wrong.";
+}
+
+/** The action was refused because a file path may be too long for Windows; retry with allowLong. */
+export function isLongPath(e: unknown): boolean {
+  return isCommandError(e) && e.kind === "longPath";
 }

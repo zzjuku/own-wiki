@@ -2,7 +2,7 @@
 
 use std::fs::{self, File};
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -104,6 +104,91 @@ pub fn check_id(id: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Rejects relative paths from the UI ("Group A/Page A.md") that could point
+/// outside their folder. Parts are separated by `/` on every platform.
+pub fn check_rel(rel: &str) -> AppResult<()> {
+    if rel.is_empty() {
+        return Err(AppError::Invalid("Invalid name: (empty)".into()));
+    }
+    for part in rel.split('/') {
+        check_id(part).map_err(|_| AppError::Invalid(format!("Invalid name: {rel}")))?;
+    }
+    Ok(())
+}
+
+/// Joins a relative `/`-separated path onto `base`. `rel` may be empty.
+pub fn join_rel(base: &Path, rel: &str) -> PathBuf {
+    let mut out = base.to_path_buf();
+    for part in rel.split('/').filter(|p| !p.is_empty()) {
+        out.push(part);
+    }
+    out
+}
+
+/// Joins two `/`-separated relative paths; either may be empty.
+pub fn rel_join(a: &str, b: &str) -> String {
+    match (a.is_empty(), b.is_empty()) {
+        (true, _) => b.to_string(),
+        (_, true) => a.to_string(),
+        _ => format!("{a}/{b}"),
+    }
+}
+
+/// The parent part of a relative path ("" at the top).
+pub fn rel_parent(rel: &str) -> &str {
+    rel.rsplit_once('/').map(|(p, _)| p).unwrap_or("")
+}
+
+/// The last part of a relative path.
+pub fn rel_name(rel: &str) -> &str {
+    rel.rsplit_once('/').map(|(_, n)| n).unwrap_or(rel)
+}
+
+/// Paths longer than this (counted from the library folder, plus
+/// [`WINDOWS_LIBRARY_ALLOWANCE`]) get a warning, because Windows can't open
+/// paths over ~260 characters by default.
+pub const PATH_WARN_LEN: usize = 240;
+/// Room left for where the library folder sits on Windows
+/// (e.g. `C:\Users\Name\My Drive\Library\`). The Mac's own prefix isn't used,
+/// because the files sync to Windows where it's different.
+pub const WINDOWS_LIBRARY_ALLOWANCE: usize = 60;
+
+/// Path length as Windows counts it (UTF-16 units).
+pub fn windows_len(rel_to_library: &str) -> usize {
+    rel_to_library.encode_utf16().count()
+}
+
+/// Refuses with [`AppError::LongPath`] when `longest` (a path inside the
+/// library) would be too long for Windows, unless the user already agreed.
+pub fn check_path_len(longest: usize, allow_long: bool) -> AppResult<()> {
+    let total = longest + WINDOWS_LIBRARY_ALLOWANCE;
+    if allow_long || total <= PATH_WARN_LEN {
+        return Ok(());
+    }
+    Err(AppError::LongPath(format!(
+        "This makes a file path about {total} characters long. Windows may not be able to open \
+         files with paths over 260 characters. Shorter names or fewer nested groups avoid this."
+    )))
+}
+
+/// Length (Windows count) of the longest path inside `dir`, relative to `dir`
+/// and including the leading separator. 0 for an empty folder.
+pub fn longest_inside(dir: &Path) -> io::Result<usize> {
+    let mut longest = 0;
+    let mut stack = vec![(dir.to_path_buf(), 0usize)];
+    while let Some((d, len)) = stack.pop() {
+        for entry in fs::read_dir(&d)? {
+            let entry = entry?;
+            let l = len + 1 + windows_len(&entry.file_name().to_string_lossy());
+            longest = longest.max(l);
+            if entry.file_type()?.is_dir() {
+                stack.push((entry.path(), l));
+            }
+        }
+    }
+    Ok(longest)
+}
+
 /// True if `dir` already has an entry named `name`, ignoring letter case.
 /// Case is ignored so a project stays valid when synced between file systems
 /// that treat case differently.
@@ -184,6 +269,41 @@ mod tests {
         for bad in ["", "..", ".hidden", "a/b", "a\\b"] {
             assert!(check_id(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn rel_paths() {
+        assert!(check_rel("Group A/Page A.md").is_ok());
+        for bad in ["", "/a", "a/", "a//b", "a/../b", "a/.x", "a\\b"] {
+            assert!(check_rel(bad).is_err(), "{bad}");
+        }
+        assert_eq!(rel_join("", "b"), "b");
+        assert_eq!(rel_join("a", ""), "a");
+        assert_eq!(rel_join("a", "b"), "a/b");
+        assert_eq!((rel_parent("a/b/c"), rel_name("a/b/c")), ("a/b", "c"));
+        assert_eq!((rel_parent("c"), rel_name("c")), ("", "c"));
+        assert_eq!(join_rel(Path::new("/x"), "a/b"), Path::new("/x/a/b"));
+        assert_eq!(join_rel(Path::new("/x"), ""), Path::new("/x"));
+    }
+
+    #[test]
+    fn long_paths_warn_unless_allowed() {
+        let limit = PATH_WARN_LEN - WINDOWS_LIBRARY_ALLOWANCE;
+        assert!(check_path_len(limit, false).is_ok());
+        assert!(matches!(check_path_len(limit + 1, false), Err(AppError::LongPath(_))));
+        assert!(check_path_len(limit + 1, true).is_ok());
+        // Counted like Windows does: one unit per BMP character.
+        assert_eq!(windows_len("Ünï/名前"), 6);
+    }
+
+    #[test]
+    fn longest_inside_counts_nested() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(longest_inside(dir.path()).unwrap(), 0);
+        fs::create_dir_all(dir.path().join("ab/cde")).unwrap();
+        fs::write(dir.path().join("ab/cde/f.md"), "").unwrap();
+        fs::write(dir.path().join("short.md"), "").unwrap();
+        assert_eq!(longest_inside(dir.path()).unwrap(), "/ab/cde/f.md".len());
     }
 
     #[test]

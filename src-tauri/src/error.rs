@@ -10,6 +10,10 @@ pub enum AppError {
     NotFound(String),
     #[error("{0}")]
     Exists(String),
+    /// The action would create a file path that may be too long on Windows.
+    /// The UI asks the user and retries with permission.
+    #[error("{0}")]
+    LongPath(String),
     #[error("File error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Could not read page data: {0}")]
@@ -21,9 +25,28 @@ pub enum AppError {
     Trash(String),
 }
 
+impl AppError {
+    fn kind(&self) -> &'static str {
+        match self {
+            AppError::Invalid(_) => "invalid",
+            AppError::NotFound(_) => "notFound",
+            AppError::Exists(_) => "exists",
+            AppError::LongPath(_) => "longPath",
+            AppError::Io(_) => "io",
+            AppError::Yaml(_) | AppError::Json(_) => "data",
+            AppError::Trash(_) => "trash",
+        }
+    }
+}
+
+/// Sent to the UI as `{ kind, message }`.
 impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_string())
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("AppError", 2)?;
+        s.serialize_field("kind", self.kind())?;
+        s.serialize_field("message", &self.to_string())?;
+        s.end()
     }
 }
 

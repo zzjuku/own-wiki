@@ -9,6 +9,9 @@
   --accent-text: #ffffff;
   --danger: #c0352b;
   --ok: #3a7d44;
+  --warn: #8a5a00;
+  --warn-bg: #fff4dc;
+  --drop: rgb(47 95 208 / 0.14);
   --radius: 6px;
   --shadow: 0 10px 30px rgb(0 0 0 / 0.18);
 
@@ -32,6 +35,9 @@
     --accent-text: #0f1320;
     --danger: #ff7a6e;
     --ok: #7cc489;
+    --warn: #f2c46b;
+    --warn-bg: #3a3020;
+    --drop: rgb(107 147 255 / 0.2);
     --shadow: 0 10px 30px rgb(0 0 0 / 0.5);
   }
 }
@@ -273,30 +279,176 @@ textarea:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sidebar nav {
+.grow {
   flex: 1;
-  overflow-y: auto;
-  margin: 0 -4px;
 }
-.page-list {
-  list-style: none;
-  margin: 0;
+.find {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  background: var(--bg);
+  text-align: left;
+}
+kbd {
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+/* Sidebar tree */
+.tree {
+  flex: 1;
+  position: relative;
+  overflow-y: auto;
+  margin: 0 -8px;
+  padding: 0 4px;
+  border-radius: var(--radius);
+}
+.tree.drop-root {
+  background: var(--drop);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.tree-inner {
+  position: relative;
+}
+.tree-empty {
   padding: 0 4px;
 }
-.page-list button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: none;
-  padding: 5px 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.tree-row {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius);
 }
-.page-list button.selected {
+.tree-row:hover {
   background: var(--bg-hover);
+}
+.tree-row.selected {
+  background: var(--bg-hover);
+}
+.tree-row.selected .tree-label {
   font-weight: 600;
 }
+.tree-row.drop-target {
+  background: var(--drop);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.tree-row.drag-source {
+  opacity: 0.45;
+}
+.tree-main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  padding: 0 4px 0 0;
+  text-align: left;
+}
+.tree-main:hover:not(:disabled) {
+  background: none;
+}
+.chevron {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  transition: transform 0.1s;
+}
+.chevron.open {
+  transform: rotate(90deg);
+}
+.tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-label {
+  font-weight: 550;
+}
+.tree-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 4px;
+}
+.tree-more {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  padding: 0 6px;
+  height: 22px;
+  line-height: 1;
+  color: var(--muted);
+  opacity: 0;
+}
+.tree-row:hover .tree-more,
+.tree-more:focus-visible {
+  opacity: 1;
+}
+.tree-more:hover:not(:disabled) {
+  background: var(--border);
+}
+body.dragging,
+body.dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.drag-ghost {
+  position: fixed;
+  z-index: 30;
+  pointer-events: none;
+  padding: 3px 10px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Context menu */
+.menu {
+  position: fixed;
+  z-index: 25;
+  min-width: 170px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.menu button {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 5px 10px;
+  border-radius: 4px;
+}
+.menu button:hover:not(:disabled),
+.menu button:focus-visible {
+  background: var(--bg-hover);
+  outline: none;
+}
+
 .content {
   flex: 1;
   min-width: 0;
@@ -317,6 +469,29 @@ textarea:focus-visible {
   gap: 8px;
   padding: 14px 28px;
   border-bottom: 1px solid var(--border);
+}
+.page-titles {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+  margin: -4px 0 0 -6px;
+}
+.crumb {
+  color: var(--muted);
+  padding: 0 6px;
+}
+.crumb + .crumb::before {
+  content: "›";
+  margin: 0 6px 0 -6px;
+}
+.crumb:hover:not(:disabled) {
+  text-decoration: underline;
 }
 .page-head h1 {
   font-size: 22px;
@@ -474,4 +649,121 @@ textarea:focus-visible {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 18px;
+}
+.dialog-warning {
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-size: 14px;
+  margin-top: 12px !important;
+}
+.dialog.wide {
+  width: min(520px, 92vw);
+}
+.picker-filter,
+.quick-input {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+}
+.picker {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.picker button {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 4px 10px;
+}
+.picker button.selected {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.picker button:disabled {
+  opacity: 0.55;
+}
+.picker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.picker-note {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Quick open */
+.backdrop:has(.quick-open) {
+  padding-top: 12vh;
+}
+.dialog.quick-open {
+  width: min(560px, 92vw);
+  padding: 10px;
+}
+.quick-input {
+  font-size: 16px;
+  padding: 9px 12px;
+}
+.quick-results {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.quick-results li[role="option"] {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.quick-results li.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.quick-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-group {
+  margin-left: auto;
+  font-size: 13px;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+}
+
+/* While dragging, the project name is the drop target for the top level. */
+body.dragging .project-name {
+  outline: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+body.dragging .project-name::after {
+  content: " · top level";
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--muted);
+}
+body.drag-root .project-name {
+  background: var(--drop);
+  outline: 2px solid var(--accent);
 }

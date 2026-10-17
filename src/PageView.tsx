@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, errorText, type Page, type PageInfo } from "./api";
-import { Autosaver, flushAll, registerFlusher, type SaveStatus } from "./autosave";
-import { useDialogs } from "./dialogs";
+import { api, errorText, type Page } from "./api";
+import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
 import { renderMarkdown } from "./markdown";
 import { useReportError } from "./notify";
+import { groupChain } from "./tree";
 
 interface Props {
   project: string;
   pageId: string;
+  /** Current title from the tree (it can change without the id changing). */
+  title?: string;
   editing: boolean;
   setEditing: (v: boolean) => void;
-  onRenamed: (page: PageInfo) => Promise<void>;
-  onDeleted: () => Promise<void>;
+  onRename: () => void;
+  onMove: () => void;
+  onDelete: () => void;
+  /** Opens a group of the breadcrumb in the sidebar. */
+  onReveal: (group: string) => void;
 }
 
 const STATUS_TEXT: Record<SaveStatus, string> = {
@@ -21,8 +26,8 @@ const STATUS_TEXT: Record<SaveStatus, string> = {
   error: "Not saved",
 };
 
-export function PageView({ project, pageId, editing, setEditing, onRenamed, onDeleted }: Props) {
-  const dialogs = useDialogs();
+export function PageView(props: Props) {
+  const { project, pageId, editing, setEditing } = props;
   const report = useReportError();
   const [page, setPage] = useState<Page | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -71,55 +76,33 @@ export function PageView({ project, pageId, editing, setEditing, onRenamed, onDe
     setEditing(!editing);
   }
 
-  function rename() {
-    if (!page) return;
-    dialogs.prompt({
-      title: "Rename page",
-      label: "Page title",
-      initial: page.title,
-      confirmLabel: "Rename",
-      submit: async (title) => {
-        await flushAll();
-        const info = await api.renamePage(project, pageId, title);
-        await onRenamed(info);
-      },
-    });
-  }
-
-  function remove() {
-    if (!page) return;
-    dialogs.confirm({
-      title: "Delete page",
-      message: (
-        <>
-          Move <strong>{page.title}</strong> to the Trash?
-        </>
-      ),
-      confirmLabel: "Move to Trash",
-      danger: true,
-      submit: async () => {
-        await flushAll();
-        await api.deletePage(project, pageId);
-        await onDeleted();
-      },
-    });
-  }
-
   if (loadError) return <p className="empty center">{loadError}</p>;
   if (!page) return null;
 
   return (
     <article className="page">
       <header className="page-head">
-        <h1>{page.title}</h1>
+        <div className="page-titles">
+          {page.group && (
+            <nav className="breadcrumb" aria-label="Group">
+              {groupChain(page.group).map((g) => (
+                <button key={g} className="plain crumb" onClick={() => props.onReveal(g)}>
+                  {g.slice(g.lastIndexOf("/") + 1)}
+                </button>
+              ))}
+            </nav>
+          )}
+          <h1 title={props.title ?? page.title}>{props.title ?? page.title}</h1>
+        </div>
         <div className="spacer" />
         {editing && (
           <span className={`save-status ${status}`} aria-live="polite">
             {STATUS_TEXT[status]}
           </span>
         )}
-        <button onClick={rename}>Rename</button>
-        <button className="danger-text" onClick={remove}>
+        <button onClick={props.onRename}>Rename</button>
+        <button onClick={props.onMove}>Move…</button>
+        <button className="danger-text" onClick={props.onDelete}>
           Delete
         </button>
         <button className="primary" onClick={toggle}>

@@ -1,8 +1,10 @@
 mod error;
 mod fsutil;
+mod groups;
 mod pages;
 mod projects;
 mod settings;
+mod tree;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -10,9 +12,10 @@ use std::sync::Mutex;
 use tauri::{Manager, State};
 
 use error::{AppError, AppResult};
-use pages::{Page, PageInfo};
+use pages::Page;
 use projects::ProjectInfo;
 use settings::Settings;
+use tree::{GroupInfo, PageInfo, Tree};
 
 struct AppState {
     config_dir: PathBuf,
@@ -64,13 +67,19 @@ fn delete_project(state: State<AppState>, id: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-fn list_pages(state: State<AppState>, project: String) -> AppResult<Vec<PageInfo>> {
-    pages::list_pages(&state.library()?, &project)
+fn get_tree(state: State<AppState>, project: String) -> AppResult<Tree> {
+    tree::get_tree(&state.library()?, &project)
 }
 
 #[tauri::command]
-fn create_page(state: State<AppState>, project: String, title: String) -> AppResult<PageInfo> {
-    pages::create_page(&state.library()?, &project, &title)
+fn create_page(
+    state: State<AppState>,
+    project: String,
+    group: String,
+    title: String,
+    allow_long: bool,
+) -> AppResult<PageInfo> {
+    pages::create_page(&state.library()?, &project, &group, &title, allow_long)
 }
 
 #[tauri::command]
@@ -89,13 +98,63 @@ fn rename_page(
     project: String,
     id: String,
     title: String,
+    allow_long: bool,
 ) -> AppResult<PageInfo> {
-    pages::rename_page(&state.library()?, &project, &id, &title)
+    pages::rename_page(&state.library()?, &project, &id, &title, allow_long)
+}
+
+#[tauri::command]
+fn move_page(
+    state: State<AppState>,
+    project: String,
+    id: String,
+    target: String,
+    allow_long: bool,
+) -> AppResult<PageInfo> {
+    pages::move_page(&state.library()?, &project, &id, &target, allow_long)
 }
 
 #[tauri::command]
 fn delete_page(state: State<AppState>, project: String, id: String) -> AppResult<()> {
     pages::delete_page(&state.library()?, &project, &id)
+}
+
+#[tauri::command]
+fn create_group(
+    state: State<AppState>,
+    project: String,
+    parent: String,
+    name: String,
+    allow_long: bool,
+) -> AppResult<GroupInfo> {
+    groups::create_group(&state.library()?, &project, &parent, &name, allow_long)
+}
+
+#[tauri::command]
+fn rename_group(
+    state: State<AppState>,
+    project: String,
+    id: String,
+    name: String,
+    allow_long: bool,
+) -> AppResult<GroupInfo> {
+    groups::rename_group(&state.library()?, &project, &id, &name, allow_long)
+}
+
+#[tauri::command]
+fn move_group(
+    state: State<AppState>,
+    project: String,
+    id: String,
+    target: String,
+    allow_long: bool,
+) -> AppResult<GroupInfo> {
+    groups::move_group(&state.library()?, &project, &id, &target, allow_long)
+}
+
+#[tauri::command]
+fn delete_group(state: State<AppState>, project: String, id: String) -> AppResult<()> {
+    groups::delete_group(&state.library()?, &project, &id)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -118,12 +177,17 @@ pub fn run() {
             create_project,
             rename_project,
             delete_project,
-            list_pages,
+            get_tree,
             create_page,
             read_page,
             save_page,
             rename_page,
+            move_page,
             delete_page,
+            create_group,
+            rename_group,
+            move_group,
+            delete_group,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

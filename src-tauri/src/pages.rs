@@ -1,6 +1,10 @@
-//! Pages: one Markdown file per page in a project's `pages/` folder, with
-//! structured fields in YAML front matter. M1 only uses the `title` field;
-//! any other fields in the front matter are preserved untouched.
+//! Pages: one Markdown file per page somewhere under a project's `pages/`
+//! folder, with structured fields in YAML front matter. Only the `title`
+//! field is used so far; any other fields are preserved untouched.
+//!
+//! Titles are unique across the whole project (ignoring case), whatever group
+//! a page is in. The file name follows the title; if two different titles
+//! map to the same file name in one folder, the second gets " (2)" etc.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,22 +13,20 @@ use serde::Serialize;
 use serde_yaml_ng::{Mapping, Value};
 
 use crate::error::{AppError, AppResult};
-use crate::fsutil::{check_id, move_to_trash, name_taken, safe_write, to_file_name};
-use crate::projects::{PAGES_DIR, project_dir};
-
-const EXT: &str = ".md";
-
-#[derive(Debug, Clone, Serialize, PartialEq)]
-pub struct PageInfo {
-    /// File name inside `pages/`, e.g. "Page A.md".
-    pub id: String,
-    pub title: String,
-}
+use crate::fsutil::{
+    check_path_len, check_rel, move_to_trash, name_taken, rel_join, rel_name, rel_parent,
+    safe_write, to_file_name, windows_len,
+};
+use crate::projects::PAGES_DIR;
+use crate::tree::{
+    EXT, PageInfo, group_dir, is_page_file, location, pages_dir, scan, title_from_file_name,
+};
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Page {
     pub id: String,
     pub title: String,
+    pub group: String,
     pub body: String,
 }
 
@@ -61,127 +63,171 @@ fn serialize(meta: &Mapping, body: &str) -> AppResult<String> {
     Ok(format!("---\n{yaml}---\n{body}"))
 }
 
-fn title_of(meta: &Mapping, id: &str) -> String {
+fn title_of(meta: &Mapping, file_name: &str) -> String {
     match meta.get("title") {
         Some(Value::String(s)) if !s.trim().is_empty() => s.clone(),
-        _ => id.strip_suffix(EXT).unwrap_or(id).to_string(),
+        _ => title_from_file_name(file_name),
     }
 }
 
-fn pages_dir(library: &Path, project: &str) -> AppResult<PathBuf> {
-    let dir = project_dir(library, project)?.join(PAGES_DIR);
-    if !dir.is_dir() {
-        fs::create_dir(&dir)?;
-    }
-    Ok(dir)
-}
-
-fn page_path(library: &Path, project: &str, id: &str) -> AppResult<PathBuf> {
-    check_id(id)?;
-    let path = pages_dir(library, project)?.join(id);
-    if !path.is_file() {
+fn page_path(pages: &Path, id: &str) -> AppResult<PathBuf> {
+    check_rel(id)?;
+    let path = crate::fsutil::join_rel(pages, id);
+    if !is_page_file(rel_name(id)) || !path.is_file() {
         return Err(AppError::NotFound(format!("Page not found: {id}")));
     }
     Ok(path)
 }
 
-fn file_name_for(title: &str) -> AppResult<String> {
-    Ok(format!("{}{EXT}", to_file_name(title)?))
-}
-
-fn is_page_file(name: &str) -> bool {
-    !name.starts_with('.') && name.to_lowercase().ends_with(EXT)
-}
-
-pub fn list_pages(library: &Path, project: &str) -> AppResult<Vec<PageInfo>> {
-    let dir = pages_dir(library, project)?;
-    let mut out = Vec::new();
-    for entry in fs::read_dir(&dir)? {
-        let entry = entry?;
-        let id = entry.file_name().to_string_lossy().into_owned();
-        if !is_page_file(&id) || !entry.path().is_file() {
-            continue;
+/// A file name for a page in `dir`, based on `stem`, that no other entry
+/// uses. `own` is the page's current file name there, which may be reused.
+fn free_file_name(dir: &Path, stem: &str, own: Option<&str>) -> AppResult<String> {
+    for n in 1.. {
+        let name = if n == 1 {
+            format!("{stem}{EXT}")
+        } else {
+            format!("{stem} ({n}){EXT}")
+        };
+        let is_own = own.is_some_and(|o| o.to_lowercase() == name.to_lowercase());
+        if is_own || !name_taken(dir, &name)? {
+            return Ok(name);
         }
-        // A page with broken front matter is still listed, under its file name.
-        let title = fs::read_to_string(entry.path())
-            .ok()
-            .and_then(|t| parse(&t).ok())
-            .map(|(meta, _)| title_of(&meta, &id))
-            .unwrap_or_else(|| title_of(&Mapping::new(), &id));
-        out.push(PageInfo { id, title });
     }
-    out.sort_by_key(|p| p.title.to_lowercase());
-    Ok(out)
+    unreachable!()
 }
 
-pub fn create_page(library: &Path, project: &str, title: &str) -> AppResult<PageInfo> {
-    let title = title.trim();
-    let dir = pages_dir(library, project)?;
-    let id = file_name_for(title)?;
-    if name_taken(&dir, &id)? {
+/// Refuses a title that another page in the project already has.
+fn ensure_unique_title(pages: &Path, title: &str, except_id: Option<&str>) -> AppResult<()> {
+    let wanted = title.trim().to_lowercase();
+    let tree = scan(pages)?;
+    if let Some(other) = tree
+        .pages
+        .iter()
+        .find(|p| Some(p.id.as_str()) != except_id && p.title.trim().to_lowercase() == wanted)
+    {
         return Err(AppError::Exists(format!(
-            "A page named \"{title}\" already exists."
+            "A page named \"{}\" already exists {}.",
+            other.title,
+            location(&other.group)
         )));
     }
+    Ok(())
+}
+
+fn check_page_path(project: &str, id: &str, allow_long: bool) -> AppResult<()> {
+    let rel = format!("{project}/{PAGES_DIR}/{id}");
+    check_path_len(windows_len(&rel), allow_long)
+}
+
+fn info(id: String, title: String) -> PageInfo {
+    let group = rel_parent(&id).to_string();
+    PageInfo { id, title, group }
+}
+
+pub fn create_page(
+    library: &Path,
+    project: &str,
+    group: &str,
+    title: &str,
+    allow_long: bool,
+) -> AppResult<PageInfo> {
+    let title = title.trim();
+    let stem = to_file_name(title)?;
+    let pages = pages_dir(library, project)?;
+    let dir = group_dir(&pages, group)?;
+    ensure_unique_title(&pages, title, None)?;
+    let id = rel_join(group, &free_file_name(&dir, &stem, None)?);
+    check_page_path(project, &id, allow_long)?;
     let mut meta = Mapping::new();
     meta.insert("title".into(), title.into());
-    safe_write(&dir.join(&id), serialize(&meta, "")?.as_bytes())?;
-    Ok(PageInfo {
-        id,
-        title: title.to_string(),
-    })
+    safe_write(&dir.join(rel_name(&id)), serialize(&meta, "")?.as_bytes())?;
+    Ok(info(id, title.to_string()))
 }
 
 pub fn read_page(library: &Path, project: &str, id: &str) -> AppResult<Page> {
-    let text = fs::read_to_string(page_path(library, project, id)?)?;
+    let text = fs::read_to_string(page_path(&pages_dir(library, project)?, id)?)?;
     let (meta, body) = parse(&text)?;
     Ok(Page {
         id: id.to_string(),
-        title: title_of(&meta, id),
+        title: title_of(&meta, rel_name(id)),
+        group: rel_parent(id).to_string(),
         body,
     })
 }
 
 /// Replaces the page's Markdown body, keeping its front matter.
 pub fn save_page(library: &Path, project: &str, id: &str, body: &str) -> AppResult<()> {
-    let path = page_path(library, project, id)?;
+    let path = page_path(&pages_dir(library, project)?, id)?;
     let (meta, _) = parse(&fs::read_to_string(&path)?)?;
     safe_write(&path, serialize(&meta, body)?.as_bytes())?;
     Ok(())
 }
 
 /// Changes the page title and renames its file to match.
-pub fn rename_page(library: &Path, project: &str, id: &str, new_title: &str) -> AppResult<PageInfo> {
-    let path = page_path(library, project, id)?;
+pub fn rename_page(
+    library: &Path,
+    project: &str,
+    id: &str,
+    new_title: &str,
+    allow_long: bool,
+) -> AppResult<PageInfo> {
     let new_title = new_title.trim();
-    let new_id = file_name_for(new_title)?;
+    let stem = to_file_name(new_title)?;
+    let pages = pages_dir(library, project)?;
+    let path = page_path(&pages, id)?;
+    ensure_unique_title(&pages, new_title, Some(id))?;
     let dir = path.parent().expect("page has a folder").to_path_buf();
-    let same_file = new_id.to_lowercase() == id.to_lowercase();
-    if !same_file && name_taken(&dir, &new_id)? {
-        return Err(AppError::Exists(format!(
-            "A page named \"{new_title}\" already exists."
-        )));
-    }
+    let own = rel_name(id);
+    let new_name = free_file_name(&dir, &stem, Some(own))?;
+    let new_id = rel_join(rel_parent(id), &new_name);
+    check_page_path(project, &new_id, allow_long)?;
     let (mut meta, body) = parse(&fs::read_to_string(&path)?)?;
     meta.insert("title".into(), new_title.into());
     safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
-    if new_id != id {
-        fs::rename(&path, dir.join(&new_id))?;
+    if new_name != own {
+        fs::rename(&path, dir.join(&new_name))?;
     }
-    Ok(PageInfo {
-        id: new_id,
-        title: new_title.to_string(),
-    })
+    Ok(info(new_id, new_title.to_string()))
+}
+
+/// Moves a page into group `target` ("" = top level). The title stays the same.
+pub fn move_page(
+    library: &Path,
+    project: &str,
+    id: &str,
+    target: &str,
+    allow_long: bool,
+) -> AppResult<PageInfo> {
+    let pages = pages_dir(library, project)?;
+    let path = page_path(&pages, id)?;
+    let target_dir = group_dir(&pages, target)?;
+    let own = rel_name(id);
+    let (meta, _) = parse(&fs::read_to_string(&path)?)?;
+    let title = title_of(&meta, own);
+    if rel_parent(id) == target {
+        return Ok(info(id.to_string(), title));
+    }
+    ensure_unique_title(&pages, &title, Some(id))?;
+    let new_name = if name_taken(&target_dir, own)? {
+        free_file_name(&target_dir, &to_file_name(&title)?, None)?
+    } else {
+        own.to_string()
+    };
+    let new_id = rel_join(target, &new_name);
+    check_page_path(project, &new_id, allow_long)?;
+    fs::rename(&path, target_dir.join(&new_name))?;
+    Ok(info(new_id, title))
 }
 
 pub fn delete_page(library: &Path, project: &str, id: &str) -> AppResult<()> {
-    move_to_trash(&page_path(library, project, id)?)
+    move_to_trash(&page_path(&pages_dir(library, project)?, id)?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::projects::create_project;
+    use crate::tree::get_tree;
 
     fn setup() -> (tempfile::TempDir, String) {
         let lib = tempfile::tempdir().unwrap();
@@ -189,29 +235,75 @@ mod tests {
         (lib, p.id)
     }
 
+    fn pages(lib: &Path, project: &str) -> PathBuf {
+        lib.join(project).join(PAGES_DIR)
+    }
+
     fn raw(lib: &Path, project: &str, id: &str) -> String {
-        fs::read_to_string(lib.join(project).join(PAGES_DIR).join(id)).unwrap()
+        fs::read_to_string(pages(lib, project).join(id)).unwrap()
+    }
+
+    fn mkgroup(lib: &Path, project: &str, rel: &str) {
+        fs::create_dir_all(pages(lib, project).join(rel)).unwrap();
+    }
+
+    fn create(lib: &Path, p: &str, group: &str, title: &str) -> AppResult<PageInfo> {
+        create_page(lib, p, group, title, false)
+    }
+
+    fn titles(lib: &Path, p: &str) -> Vec<(String, String)> {
+        get_tree(lib, p).unwrap().pages.into_iter().map(|p| (p.id, p.title)).collect()
     }
 
     #[test]
     fn create_writes_front_matter() {
         let (lib, p) = setup();
-        let page = create_page(lib.path(), &p, "Page A").unwrap();
-        assert_eq!(page, PageInfo { id: "Page A.md".into(), title: "Page A".into() });
+        let page = create(lib.path(), &p, "", "Page A").unwrap();
+        assert_eq!(
+            page,
+            PageInfo { id: "Page A.md".into(), title: "Page A".into(), group: "".into() }
+        );
         assert_eq!(raw(lib.path(), &p, "Page A.md"), "---\ntitle: Page A\n---\n");
     }
 
     #[test]
-    fn create_rejects_duplicates_any_case() {
+    fn create_inside_group() {
         let (lib, p) = setup();
-        create_page(lib.path(), &p, "Page A").unwrap();
-        assert!(matches!(create_page(lib.path(), &p, "page a"), Err(AppError::Exists(_))));
+        mkgroup(lib.path(), &p, "Group A/Sub");
+        let page = create(lib.path(), &p, "Group A/Sub", "Page A").unwrap();
+        assert_eq!(page.id, "Group A/Sub/Page A.md");
+        assert_eq!(page.group, "Group A/Sub");
+        let read = read_page(lib.path(), &p, &page.id).unwrap();
+        assert_eq!((read.title.as_str(), read.group.as_str()), ("Page A", "Group A/Sub"));
+        assert!(matches!(create(lib.path(), &p, "Missing", "Page B"), Err(AppError::NotFound(_))));
+    }
+
+    #[test]
+    fn titles_are_unique_across_groups_any_case() {
+        let (lib, p) = setup();
+        mkgroup(lib.path(), &p, "Group A/Sub");
+        create(lib.path(), &p, "Group A/Sub", "Page A").unwrap();
+        let err = create(lib.path(), &p, "", "page a").unwrap_err();
+        assert!(matches!(err, AppError::Exists(_)));
+        assert_eq!(err.to_string(), "A page named \"Page A\" already exists in Group A › Sub.");
+        create(lib.path(), &p, "", "Page B").unwrap();
+        let err = create(lib.path(), &p, "Group A", "PAGE B").unwrap_err();
+        assert_eq!(err.to_string(), "A page named \"Page B\" already exists at the top level.");
+    }
+
+    #[test]
+    fn different_titles_with_same_file_name_get_numbered_files() {
+        let (lib, p) = setup();
+        let a = create(lib.path(), &p, "", "A/B").unwrap();
+        let b = create(lib.path(), &p, "", "A-B").unwrap();
+        assert_eq!((a.id.as_str(), b.id.as_str()), ("A-B.md", "A-B (2).md"));
+        assert_eq!(read_page(lib.path(), &p, "A-B (2).md").unwrap().title, "A-B");
     }
 
     #[test]
     fn title_with_unsafe_chars_keeps_real_title() {
         let (lib, p) = setup();
-        let page = create_page(lib.path(), &p, "A/B?").unwrap();
+        let page = create(lib.path(), &p, "", "A/B?").unwrap();
         assert_eq!(page.id, "A-B-.md");
         assert_eq!(read_page(lib.path(), &p, &page.id).unwrap().title, "A/B?");
     }
@@ -219,10 +311,11 @@ mod tests {
     #[test]
     fn save_and_read_round_trip() {
         let (lib, p) = setup();
-        create_page(lib.path(), &p, "Page A").unwrap();
+        mkgroup(lib.path(), &p, "G");
+        create(lib.path(), &p, "G", "Page A").unwrap();
         let body = "# Heading\n\nSome *text*.\n---\nA line after a rule.\n";
-        save_page(lib.path(), &p, "Page A.md", body).unwrap();
-        let page = read_page(lib.path(), &p, "Page A.md").unwrap();
+        save_page(lib.path(), &p, "G/Page A.md", body).unwrap();
+        let page = read_page(lib.path(), &p, "G/Page A.md").unwrap();
         assert_eq!(page.body, body);
         assert_eq!(page.title, "Page A");
     }
@@ -230,7 +323,7 @@ mod tests {
     #[test]
     fn save_keeps_other_front_matter_fields() {
         let (lib, p) = setup();
-        let path = lib.path().join(&p).join(PAGES_DIR).join("Page A.md");
+        let path = pages(lib.path(), &p).join("Page A.md");
         fs::write(&path, "---\ntitle: Page A\nexample field: 7\n---\nold\n").unwrap();
         save_page(lib.path(), &p, "Page A.md", "new\n").unwrap();
         let text = raw(lib.path(), &p, "Page A.md");
@@ -241,8 +334,7 @@ mod tests {
     #[test]
     fn plain_markdown_without_front_matter() {
         let (lib, p) = setup();
-        let path = lib.path().join(&p).join(PAGES_DIR).join("Page B.md");
-        fs::write(&path, "Just text\n").unwrap();
+        fs::write(pages(lib.path(), &p).join("Page B.md"), "Just text\n").unwrap();
         let page = read_page(lib.path(), &p, "Page B.md").unwrap();
         assert_eq!(page.title, "Page B");
         assert_eq!(page.body, "Just text\n");
@@ -251,7 +343,7 @@ mod tests {
     #[test]
     fn windows_line_endings_and_bom() {
         let (lib, p) = setup();
-        let path = lib.path().join(&p).join(PAGES_DIR).join("Page C.md");
+        let path = pages(lib.path(), &p).join("Page C.md");
         fs::write(&path, "\u{feff}---\r\ntitle: Page C title\r\n---\r\nBody\r\n").unwrap();
         let page = read_page(lib.path(), &p, "Page C.md").unwrap();
         assert_eq!(page.title, "Page C title");
@@ -259,57 +351,107 @@ mod tests {
     }
 
     #[test]
-    fn list_skips_hidden_and_non_markdown_and_sorts() {
-        let (lib, p) = setup();
-        create_page(lib.path(), &p, "b page").unwrap();
-        create_page(lib.path(), &p, "A page").unwrap();
-        let dir = lib.path().join(&p).join(PAGES_DIR);
-        fs::write(dir.join(".A page.md.123.tmp"), "").unwrap();
-        fs::write(dir.join(".hidden.md"), "").unwrap();
-        fs::write(dir.join("notes.txt"), "").unwrap();
-        fs::write(dir.join("Broken.md"), "---\n: : [\n---\nx").unwrap();
-        let titles: Vec<_> = list_pages(lib.path(), &p).unwrap().into_iter().map(|p| p.title).collect();
-        assert_eq!(titles, ["A page", "b page", "Broken"]);
-    }
-
-    #[test]
     fn rename_changes_title_and_file() {
         let (lib, p) = setup();
-        create_page(lib.path(), &p, "Page A").unwrap();
-        save_page(lib.path(), &p, "Page A.md", "Body\n").unwrap();
-        let page = rename_page(lib.path(), &p, "Page A.md", "Page B").unwrap();
-        assert_eq!(page.id, "Page B.md");
-        assert!(read_page(lib.path(), &p, "Page A.md").is_err());
-        let read = read_page(lib.path(), &p, "Page B.md").unwrap();
+        mkgroup(lib.path(), &p, "G");
+        create(lib.path(), &p, "G", "Page A").unwrap();
+        save_page(lib.path(), &p, "G/Page A.md", "Body\n").unwrap();
+        let page = rename_page(lib.path(), &p, "G/Page A.md", "Page B", false).unwrap();
+        assert_eq!((page.id.as_str(), page.group.as_str()), ("G/Page B.md", "G"));
+        assert!(read_page(lib.path(), &p, "G/Page A.md").is_err());
+        let read = read_page(lib.path(), &p, "G/Page B.md").unwrap();
         assert_eq!((read.title.as_str(), read.body.as_str()), ("Page B", "Body\n"));
     }
 
     #[test]
-    fn rename_collision_and_case_only() {
+    fn rename_collision_across_groups_and_case_only() {
         let (lib, p) = setup();
-        create_page(lib.path(), &p, "Page A").unwrap();
-        create_page(lib.path(), &p, "Page B").unwrap();
-        assert!(matches!(
-            rename_page(lib.path(), &p, "Page A.md", "page b"),
-            Err(AppError::Exists(_))
-        ));
-        let page = rename_page(lib.path(), &p, "Page A.md", "page a").unwrap();
+        mkgroup(lib.path(), &p, "G");
+        create(lib.path(), &p, "", "Page A").unwrap();
+        create(lib.path(), &p, "G", "Page B").unwrap();
+        let err = rename_page(lib.path(), &p, "Page A.md", "page b", false).unwrap_err();
+        assert_eq!(err.to_string(), "A page named \"Page B\" already exists in G.");
+        let page = rename_page(lib.path(), &p, "Page A.md", "page a", false).unwrap();
         assert_eq!(page.id, "page a.md");
-        assert_eq!(list_pages(lib.path(), &p).unwrap().len(), 2);
+        assert_eq!(titles(lib.path(), &p).len(), 2);
+    }
+
+    #[test]
+    fn rename_keeps_numbered_file_when_name_still_taken() {
+        let (lib, p) = setup();
+        create(lib.path(), &p, "", "A/B").unwrap();
+        create(lib.path(), &p, "", "A-B").unwrap();
+        let page = rename_page(lib.path(), &p, "A-B (2).md", "A?B", false).unwrap();
+        assert_eq!(page.id, "A-B (2).md");
+    }
+
+    #[test]
+    fn move_between_groups_and_to_top() {
+        let (lib, p) = setup();
+        mkgroup(lib.path(), &p, "G/Sub");
+        create(lib.path(), &p, "", "Page A").unwrap();
+        save_page(lib.path(), &p, "Page A.md", "Body\n").unwrap();
+        let moved = move_page(lib.path(), &p, "Page A.md", "G/Sub", false).unwrap();
+        assert_eq!(
+            moved,
+            PageInfo { id: "G/Sub/Page A.md".into(), title: "Page A".into(), group: "G/Sub".into() }
+        );
+        assert_eq!(read_page(lib.path(), &p, "G/Sub/Page A.md").unwrap().body, "Body\n");
+        let back = move_page(lib.path(), &p, "G/Sub/Page A.md", "", false).unwrap();
+        assert_eq!(back.id, "Page A.md");
+        // Moving to where it already is changes nothing.
+        assert_eq!(move_page(lib.path(), &p, "Page A.md", "", false).unwrap().id, "Page A.md");
+        assert!(move_page(lib.path(), &p, "Page A.md", "Nope", false).is_err());
+    }
+
+    #[test]
+    fn move_avoids_file_name_clash() {
+        let (lib, p) = setup();
+        mkgroup(lib.path(), &p, "G");
+        create(lib.path(), &p, "", "A/B").unwrap();
+        create(lib.path(), &p, "G", "A-B").unwrap();
+        let moved = move_page(lib.path(), &p, "A-B.md", "G", false).unwrap();
+        assert_eq!(moved.id, "G/A-B (2).md");
+        assert_eq!(fs::read_dir(pages(lib.path(), &p).join("G")).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn long_paths_need_permission() {
+        let (lib, p) = setup();
+        let long = "x".repeat(100);
+        mkgroup(lib.path(), &p, &format!("{long}/{long}"));
+        let group = format!("{long}/{long}");
+        let err = create(lib.path(), &p, &group, "Page A").unwrap_err();
+        assert!(matches!(err, AppError::LongPath(_)));
+        assert!(titles(lib.path(), &p).is_empty());
+        create_page(lib.path(), &p, &group, "Page A", true).unwrap();
+
+        create(lib.path(), &p, "", "Page B").unwrap();
+        assert!(matches!(
+            move_page(lib.path(), &p, "Page B.md", &group, false),
+            Err(AppError::LongPath(_))
+        ));
+        assert!(matches!(
+            rename_page(lib.path(), &p, "Page B.md", &"y".repeat(120), false),
+            Ok(_)
+        ));
     }
 
     #[test]
     fn delete_removes_page() {
         let (lib, p) = setup();
-        create_page(lib.path(), &p, "Page A").unwrap();
-        delete_page(lib.path(), &p, "Page A.md").unwrap();
-        assert!(list_pages(lib.path(), &p).unwrap().is_empty());
+        mkgroup(lib.path(), &p, "G");
+        create(lib.path(), &p, "G", "Page A").unwrap();
+        delete_page(lib.path(), &p, "G/Page A.md").unwrap();
+        assert!(titles(lib.path(), &p).is_empty());
     }
 
     #[test]
     fn ids_cannot_escape_project() {
         let (lib, p) = setup();
         assert!(read_page(lib.path(), &p, "../project.json").is_err());
+        assert!(read_page(lib.path(), &p, "G/../../project.json").is_err());
         assert!(read_page(lib.path(), "..", "x.md").is_err());
+        assert!(move_page(lib.path(), &p, "x.md", "..", false).is_err());
     }
 }
