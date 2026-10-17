@@ -2,7 +2,7 @@
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: foundation and feature decisions settled; roadmap M2–M16 drafted; M2 defined and ready to build.
+Status: M1 and M2 done; roadmap M3–M16 drafted; M3 next (scope to be detailed before building).
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -118,7 +118,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M6 Images & categories:** image import into `assets/`, captions, galleries, categories with automatic category pages.
 - **M7 Spoilers & embeds.**
 
-**M2 — Structure (defined 2026-10-17, ready to build)**
+**M2 — Structure (done 2026-10-17)**
 - Groups:
   - Create a group at the top level of a project or inside another group (any depth). Empty groups are allowed.
   - Rename a group (renames its folder).
@@ -171,3 +171,4 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-17: M2 defined: moving via drag and drop and "Move to…"; deleting a non-empty group trashes it with its contents after a confirmation; alphabetical sidebar order (groups first); group overview pages postponed; M1 pages stay at top level.
 - 2026-10-17: M2 technical: page and group ids are `/`-separated paths inside `pages/`. A group's name is its folder name (characters invalid in file names become `-`). If two different titles map to the same file name in one folder, the second file gets " (2)" etc.; the real title stays in the front matter. Path-length warning counts the path from the library folder plus 60 characters reserved for the library's location on Windows, warning above 240; the user can continue anyway. Sidebar order is natural alphabetical (ignores case and accents, "Page 2" before "Page 10"). Open/closed groups are remembered in the app's local browser storage on each computer. Drag and drop uses pointer events (the Windows webview intercepts HTML5 drag and drop). Moving a page whose title duplicates another page's is refused, as the unique-title rule says.
 - 2026-10-17: M2 review: groups can be selected; New page / New group create in the selected group, else in the open page's group; project name = top level.
+- 2026-10-17: M2 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer.
