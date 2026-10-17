@@ -6,6 +6,7 @@ import { renderPage } from "./markdown";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
 import { SplitEditor } from "./SplitEditor";
+import { TocPanel } from "./TocPanel";
 import { groupChain } from "./tree";
 
 interface Props {
@@ -71,16 +72,9 @@ export function PageView(props: Props) {
     );
   }, [project, pageId]);
 
-  const rendered = useMemo(() => renderPage(body), [body]);
+  // The read view shows the contents in the left panel, not in the text.
+  const rendered = useMemo(() => renderPage(body, { tocBox: false }), [body]);
   const readRef = useRef<HTMLDivElement>(null);
-  const [sideToc, setSideToc] = useState(false);
-
-  // The side contents panel appears once the contents box has scrolled away.
-  function onReadScroll() {
-    const view = readRef.current;
-    const box = view?.querySelector(".markdown > .toc");
-    setSideToc(!!box && box.getBoundingClientRect().bottom < view!.getBoundingClientRect().top);
-  }
 
   async function toggle() {
     if (editing) {
@@ -147,22 +141,11 @@ export function PageView(props: Props) {
           }
         />
       ) : body.trim() ? (
-        <div className="read-view" ref={readRef} onScroll={onReadScroll}>
-          <div className="markdown" onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: rendered.html }} />
+        <div className="read-view" ref={readRef}>
           {rendered.toc.length > 0 && (
-            <nav className={`toc-side ${sideToc ? "shown" : ""}`} aria-label="Contents" onClick={handleContentClick}>
-              <div className="toc-side-title">Contents</div>
-              <ol>
-                {rendered.toc.map((e) => (
-                  <li key={e.id} className={`toc-depth-${Math.min(e.depth, 5)}`}>
-                    <a href={`#${encodeURIComponent(e.id)}`}>
-                      <span className="toc-number">{e.number}</span> {e.text}
-                    </a>
-                  </li>
-                ))}
-              </ol>
-            </nav>
+            <TocPanel toc={rendered.toc} scrollRef={readRef} storageKey={`ownwiki.tocFolded.${project}/${pageId}`} />
           )}
+          <div className="markdown" onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: rendered.html }} />
         </div>
       ) : (
         <p className="empty">This page is empty. Click Edit to write.</p>

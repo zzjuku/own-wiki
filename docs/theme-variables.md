@@ -44,7 +44,8 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--quote-border` / `--quote-text` | Quotes |
 | `--code-bg` | Code |
 | `--table-border` / `--table-bg` / `--table-header-bg` | Tables |
-| `--toc-bg` / `--toc-border` / `--toc-number` | Table of contents box and numbers |
+| `--toc-bg` / `--toc-border` / `--toc-number` | Table of contents box/panel and numbers |
+| `--toc-active` | Bar beside the section being read, in the contents panel |
 
 ## Infobox (used from M5)
 | Variable | Used for |
@@ -74,4 +75,4 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--sidebar-width` | Project sidebar width |
 | `--page-width` | Maximum width of the page text (including a floating infobox) |
 | `--page-padding-x` | Space left and right of the page text |
-| `--toc-side-width` | Contents side panel width |
+| `--toc-side-width` | Width of the contents panel left of the page text |

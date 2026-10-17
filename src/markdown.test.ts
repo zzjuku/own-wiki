@@ -64,6 +64,12 @@ describe("table of contents", () => {
     expect(html).toContain(`href="#a1"`);
   });
 
+  it("can be left out of the text but still listed", () => {
+    const { html, toc } = renderPage("## A\n\n## B\n\n## C", { tocBox: false });
+    expect(html).not.toContain(`class="toc"`);
+    expect(toc).toHaveLength(3);
+  });
+
   it("is left out with fewer than 3 headings", () => {
     const { html, toc } = renderPage("## A\n\n## B");
     expect(toc).toEqual([]);

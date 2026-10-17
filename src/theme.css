@@ -52,6 +52,7 @@
   --toc-bg: #f8f9fa;
   --toc-border: #a2a9b1;
   --toc-number: #54595d;
+  --toc-active: #8a5a14;
 
   /* Infobox (M5) */
   --infobox-bg: #f8f9fa;
@@ -88,7 +89,7 @@
   --sidebar-width: 250px;
   --page-width: 880px;
   --page-padding-x: 32px;
-  --toc-side-width: 210px;
+  --toc-side-width: 230px;
   --editor-padding: 20px 24px 40vh;
 }
 
@@ -130,6 +131,7 @@
     --toc-bg: #232322;
     --toc-border: #54595d;
     --toc-number: #9b9a96;
+    --toc-active: #d9a55b;
 
     --infobox-bg: #232322;
     --infobox-border: #54595d;

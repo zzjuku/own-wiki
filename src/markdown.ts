@@ -147,9 +147,10 @@ function definedLabels(source: string): Set<string> {
  * Markdown -> safe HTML for a page, plus its table of contents.
  * With `lineAnchors`, an empty `<div data-line="N">` (N = 0-based source
  * line) goes before every top-level block, so the editor preview can scroll
- * along with the source.
+ * along with the source. `tocBox: false` leaves the contents box out of the
+ * text (the read view shows the contents in a side panel instead).
  */
-export function renderPage(source: string, { lineAnchors = false } = {}): Rendered {
+export function renderPage(source: string, { lineAnchors = false, tocBox: withBox = true } = {}): Rendered {
   state = freshState(definedLabels(source));
   const tokens = md.lexer(source);
   const out = [] as unknown as TokensList;
@@ -194,7 +195,7 @@ export function renderPage(source: string, { lineAnchors = false } = {}): Render
   }
 
   const toc = state.headings.length >= TOC_MIN_HEADINGS ? buildToc(state.headings) : [];
-  html = html.replace(TOC_MARK, toc.length ? tocBox(toc) : "");
+  html = html.replace(TOC_MARK, withBox && toc.length ? tocBox(toc) : "");
   // SANITIZE_DOM would drop heading ids such as "title" or "links".
   return { html: DOMPurify.sanitize(html, { SANITIZE_DOM: false }), toc };
 }
