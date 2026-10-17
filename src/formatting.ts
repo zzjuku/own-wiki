@@ -203,26 +203,14 @@ export function toggleList(ordered: boolean): StateCommand {
 /** Inserts a divider line on its own, with blank lines around it (a `---`
  * right under text would turn that text into a heading). */
 export const insertDivider: StateCommand = ({ state, dispatch }) => {
-  const head = state.selection.main.head;
-  const line = state.doc.lineAt(head);
-  let from: number;
-  let before: string;
-  if (line.text.trim()) {
-    from = line.to;
-    before = "\n\n";
-  } else {
-    from = line.from;
-    const prev = line.number > 1 ? state.doc.line(line.number - 1).text : "";
-    before = prev.trim() ? "\n" : "";
-  }
-  const nextLine = line.number < state.doc.lines ? state.doc.line(line.number + 1) : null;
-  const to = line.text.trim() ? from : line.to;
-  const after = nextLine && !nextLine.text.trim() ? "\n" : "\n\n";
-  const insert = `${before}---${after}`;
+  const spot = blockSpot(state);
+  const insert = `${spot.before}---${spot.after}`;
+  // Continue below the divider (past the blank line if one was already there).
+  const cursor = spot.from + insert.length + (spot.after ? 0 : 2);
   dispatch(
     state.update({
-      changes: { from, to, insert },
-      selection: EditorSelection.cursor(from + insert.length),
+      changes: { from: spot.from, to: spot.to, insert },
+      selection: EditorSelection.cursor(Math.min(cursor, state.doc.length - (spot.to - spot.from) + insert.length)),
       scrollIntoView: true,
       userEvent: "input.format",
     }),
@@ -312,3 +300,76 @@ export function activeFormats(state: EditorState): ActiveFormats {
 export function sameFormats(a: ActiveFormats, b: ActiveFormats) {
   return (Object.keys(a) as (keyof ActiveFormats)[]).every((k) => a[k] === b[k]);
 }
+
+// ---- blocks inserted by the toolbar ----
+
+/** Text to put before and after a block inserted at the cursor so it stands
+ * on its own lines with blank lines around it. Returns where to insert. */
+function blockSpot(state: EditorState) {
+  const line = state.doc.lineAt(state.selection.main.head);
+  const next = line.number < state.doc.lines ? state.doc.line(line.number + 1) : null;
+  // The text after the block needs one blank line before it.
+  const after = !next ? "\n\n" : next.text.trim() ? "\n" : "";
+  if (line.text.trim()) return { from: line.to, to: line.to, before: "\n\n", after };
+  const prev = line.number > 1 ? state.doc.line(line.number - 1).text : "";
+  return { from: line.from, to: line.to, before: prev.trim() ? "\n" : "", after };
+}
+
+/** A table with a header row and `rows` rows below it; selects the first
+ * header cell's placeholder. */
+export function insertTable(rows: number, cols: number): StateCommand {
+  return ({ state, dispatch }) => {
+    const headers = Array.from({ length: cols }, (_, i) => `Column ${i + 1}`);
+    const lines = [
+      `| ${headers.join(" | ")} |`,
+      `| ${headers.map(() => "---").join(" | ")} |`,
+      ...Array.from({ length: rows }, () => `| ${headers.map(() => " ").join(" | ")} |`),
+    ];
+    const spot = blockSpot(state);
+    const insert = spot.before + lines.join("\n") + spot.after;
+    const start = spot.from + spot.before.length + 2;
+    dispatch(
+      state.update({
+        changes: { from: spot.from, to: spot.to, insert },
+        selection: EditorSelection.range(start, start + headers[0].length),
+        scrollIntoView: true,
+        userEvent: "input.format",
+      }),
+    );
+    return true;
+  };
+}
+
+/** Inserts the next footnote marker at the cursor and an empty note at the
+ * end of the page, and puts the cursor in the note. */
+export const insertFootnote: StateCommand = ({ state, dispatch }) => {
+  const doc = state.doc.toString();
+  let max = 0;
+  for (const m of doc.matchAll(/\[\^(\d+)\]/g)) max = Math.max(max, Number(m[1]));
+  const label = String(max + 1);
+  const { from, to } = state.selection.main;
+  const marker = `[^${label}]`;
+  // Notes go together at the end: one line break after an existing note,
+  // otherwise a blank line.
+  const trimmed = doc.replace(/\s+$/, "");
+  const lastLine = trimmed.slice(trimmed.lastIndexOf("\n") + 1);
+  const sep = !trimmed ? "" : /^\[\^[^\]\s]+\]:/.test(lastLine) ? "\n" : "\n\n";
+  const note = `${sep}[^${label}]: `;
+  const end = doc.length;
+  const changes: ChangeSpec[] = [
+    { from, to, insert: marker },
+    { from: trimmed.length, to: end, insert: note },
+  ];
+  // If the cursor sits in trailing whitespace, the two changes would overlap.
+  if (to > trimmed.length) changes.splice(0, 2, { from: trimmed.length, to: end, insert: marker + note });
+  const set = state.changes(changes);
+  dispatch(
+    state.update({
+      changes: set,
+      selection: EditorSelection.cursor(set.newLength),
+      scrollIntoView: true,
+      userEvent: "input.format",
+    }),
+  );
+  return true;
+};

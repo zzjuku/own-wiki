@@ -8,10 +8,13 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { deleteMarkupBackward, insertNewlineContinueMarkupCommand, markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { search, searchKeymap } from "@codemirror/search";
 import { tags as t } from "@lezer/highlight";
+import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   activeFormats,
   indentListItem,
   insertDivider,
+  insertFootnote,
+  insertTable,
   sameFormats,
   toggleHeading,
   toggleInline,
@@ -20,7 +23,9 @@ import {
   type ActiveFormats,
 } from "./formatting";
 import { handleContentClick } from "./links";
-import { countWords, plainText, renderWithLineAnchors } from "./markdown";
+import { countWords, plainText, renderPage } from "./markdown";
+import { htmlToMarkdown } from "./paste";
+import { TableDialog } from "./TableDialog";
 import { IS_MAC } from "./QuickOpen";
 
 interface Props {
@@ -60,7 +65,34 @@ const TOOLS: (Tool | "|")[] = [
   { id: "ordered", label: <Icon name="ordered" />, title: `Numbered list (${MOD}${SHIFT}7)`, run: cmd(toggleList(true)), active: (f) => f.ordered },
   { id: "quote", label: <Icon name="quote" />, title: "Quote", run: cmd(toggleQuote()), active: (f) => f.quote },
   { id: "divider", label: <Icon name="divider" />, title: "Divider line", run: cmd(insertDivider) },
+  "|",
+  { id: "table", label: <Icon name="table" />, title: "Insert table", run: () => true },
+  { id: "footnote", label: <Icon name="footnote" />, title: "Footnote", run: cmd(insertFootnote) },
 ];
+
+/** Pastes text without formatting (Cmd+Shift+V / Ctrl+Shift+V). */
+const pastePlain: Command = (view) => {
+  readText().then(
+    (text) => {
+      if (text) view.dispatch(view.state.replaceSelection(text), { userEvent: "input.paste", scrollIntoView: true });
+    },
+    () => {},
+  );
+  return true;
+};
+
+/** Pasted formatted text (Word, Google Docs, web pages) becomes Markdown. */
+const pasteFormatted = EditorView.domEventHandlers({
+  paste(event, view) {
+    const html = event.clipboardData?.getData("text/html");
+    if (!html) return false;
+    const md = htmlToMarkdown(html);
+    if (md === null) return false;
+    event.preventDefault();
+    view.dispatch(view.state.replaceSelection(md), { userEvent: "input.paste", scrollIntoView: true });
+    return true;
+  },
+});
 
 const formatKeymap = [
   { key: "Mod-b", run: cmd(toggleInline("bold")) },
@@ -73,6 +105,7 @@ const formatKeymap = [
   { key: "Mod-Shift-7", run: cmd(toggleList(true)) },
   // Redo: Cmd+Shift+Z everywhere, and Ctrl+Y on Windows (from historyKeymap).
   { key: "Mod-Shift-z", run: redo, preventDefault: true },
+  { key: "Mod-Shift-v", run: pastePlain, preventDefault: true },
   { key: "Enter", run: cmd(insertNewlineContinueMarkupCommand({ nonTightLists: false })) },
   { key: "Backspace", run: cmd(deleteMarkupBackward) },
   { key: "Tab", run: cmd(indentListItem(false)) },
@@ -156,6 +189,7 @@ export function SplitEditor({ initial, onChange, status }: Props) {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [split, setSplit] = useState(() => Math.min(0.8, Math.max(0.2, loadNumber(SPLIT_KEY, 0.5))));
+  const [tableOpen, setTableOpen] = useState(false);
   const [previewHidden, setPreviewHidden] = useState(() => loadNumber(PREVIEW_KEY, 0) === 1);
   const hiddenRef = useRef(previewHidden);
   hiddenRef.current = previewHidden;
@@ -183,6 +217,7 @@ export function SplitEditor({ initial, onChange, status }: Props) {
         "replace all": "Replace all",
       }),
       theme,
+      pasteFormatted,
       Prec.high(keymap.of(formatKeymap)),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
       EditorView.updateListener.of((u) => {
@@ -222,7 +257,7 @@ export function SplitEditor({ initial, onChange, status }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const html = useMemo(() => renderWithLineAnchors(text), [text]);
+  const html = useMemo(() => renderPage(text, { lineAnchors: true }).html, [text]);
   const counts = useMemo(() => {
     const plain = plainText(text);
     return { words: countWords(plain), chars: plain.length };
@@ -306,7 +341,7 @@ export function SplitEditor({ initial, onChange, status }: Props) {
               title={tool.title}
               aria-label={tool.title}
               aria-pressed={tool.active ? tool.active(formats) : undefined}
-              onClick={() => run(tool.run)}
+              onClick={() => (tool.id === "table" ? setTableOpen(true) : run(tool.run))}
             >
               {tool.label}
             </button>
@@ -355,6 +390,19 @@ export function SplitEditor({ initial, onChange, status }: Props) {
         <div className="spacer" />
         {status}
       </div>
+
+      {tableOpen && (
+        <TableDialog
+          onInsert={(rows, cols) => {
+            setTableOpen(false);
+            run(cmd(insertTable(rows, cols)));
+          }}
+          close={() => {
+            setTableOpen(false);
+            viewRef.current?.focus();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -377,6 +425,19 @@ const ICONS: Record<string, ReactNode> = {
   ),
   quote: <path d="M2.5 9.5c0-3 1.3-5 4-5.5M2.5 9.5h3v3h-3zM9 9.5c0-3 1.3-5 4-5.5M9 9.5h3v3H9z" className="stroke" />,
   divider: <path d="M1.5 8h13M4 4h8M4 12h8" className="stroke thin" />,
+  table: (
+    <path
+      d="M2 3h12v10H2zM2 6.4h12M2 9.7h12M6 3v10M10 3v10"
+      className="stroke thin"
+    />
+  ),
+  footnote: (
+    <>
+      <path d="M2 12.5h7" className="stroke thin" />
+      <text x="9.6" y="7.4" fontSize="7" fontWeight="700">1</text>
+      <path d="M2 9h5" className="stroke thin" />
+    </>
+  ),
   undo: <path d="M5 3.5 2 6.5l3 3M2.5 6.5h7a4 4 0 0 1 0 8H7" className="stroke" />,
   redo: <path d="m11 3.5 3 3-3 3M13.5 6.5h-7a4 4 0 0 0 0 8H9" className="stroke" />,
 };

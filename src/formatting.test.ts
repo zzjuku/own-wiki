@@ -5,6 +5,8 @@ import {
   activeFormats,
   indentListItem,
   insertDivider,
+  insertFootnote,
+  insertTable,
   toggleHeading,
   toggleInline,
   toggleList,
@@ -21,7 +23,7 @@ function run(command: StateCommand, input: string): string {
 
 function make(input: string) {
   const ext = markdown({ base: markdownLanguage });
-  if (input.includes("[")) {
+  if (!input.includes("|")) {
     const from = input.indexOf("[");
     const to = input.indexOf("]") - 1;
     return EditorState.create({
@@ -157,5 +159,39 @@ describe("active formats", () => {
     expect(activeFormats(make("1. it|em")).ordered).toBe(true);
     expect(activeFormats(make("- it|em")).bullet).toBe(true);
     expect(activeFormats(make("> qu|ote")).quote).toBe(true);
+  });
+});
+
+describe("insert table", () => {
+  it("inserts a table with a header row and selects the first header", () => {
+    expect(run(insertTable(2, 2), "Text|")).toBe(
+      "Text\n\n| [Column 1] | Column 2 |\n| --- | --- |\n|   |   |\n|   |   |\n\n",
+    );
+  });
+
+  it("replaces an empty line", () => {
+    expect(run(insertTable(1, 1), "|")).toBe("| [Column 1] |\n| --- |\n|   |\n\n");
+  });
+});
+
+describe("insert footnote", () => {
+  it("adds a marker and an empty note at the end, cursor in the note", () => {
+    expect(run(insertFootnote, "Some| text.")).toBe("Some[^1] text.\n\n[^1]: |");
+  });
+
+  it("numbers on from existing notes and keeps notes together", () => {
+    expect(run(insertFootnote, "A[^1] b|.\n\n[^1]: One\n")).toBe("A[^1] b[^2].\n\n[^1]: One\n[^2]: |");
+  });
+
+  it("works with the cursor at the very end", () => {
+    expect(run(insertFootnote, "Text|")).toBe("Text[^1]\n\n[^1]: |");
+  });
+});
+
+describe("blocks next to blank lines", () => {
+  it("don't add extra blank lines", () => {
+    expect(run(insertTable(1, 1), "Text|\n\nMore")).toBe("Text\n\n| [Column 1] |\n| --- |\n|   |\n\nMore");
+    expect(run(insertTable(1, 1), "Text|\nMore")).toBe("Text\n\n| [Column 1] |\n| --- |\n|   |\n\nMore");
+    expect(run(insertDivider, "Text|\n\nMore")).toBe("Text\n\n---\n\n|More");
   });
 });

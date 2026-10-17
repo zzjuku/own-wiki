@@ -12,6 +12,12 @@ export function handleContentClick(e: React.MouseEvent<HTMLElement>) {
     void openUrl(href).catch(() => {});
   } else if (href.startsWith("#")) {
     const target = e.currentTarget.ownerDocument.getElementById(decodeURIComponent(href.slice(1)));
-    target?.scrollIntoView({ block: "start", behavior: "smooth" });
+    if (!target) return;
+    target.scrollIntoView({ block: target.matches("h1, h2, h3, h4, h5, h6") ? "start" : "center" });
+    // Briefly highlight where a footnote link landed.
+    if (!target.matches("h1, h2, h3, h4, h5, h6")) {
+      target.classList.add("flash");
+      setTimeout(() => target.classList.remove("flash"), 1500);
+    }
   }
 }

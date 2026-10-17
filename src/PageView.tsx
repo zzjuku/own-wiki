@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, type Page } from "./api";
 import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
 import { handleContentClick } from "./links";
-import { renderMarkdown } from "./markdown";
+import { renderPage } from "./markdown";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
 import { SplitEditor } from "./SplitEditor";
@@ -71,7 +71,16 @@ export function PageView(props: Props) {
     );
   }, [project, pageId]);
 
-  const html = useMemo(() => renderMarkdown(body), [body]);
+  const rendered = useMemo(() => renderPage(body), [body]);
+  const readRef = useRef<HTMLDivElement>(null);
+  const [sideToc, setSideToc] = useState(false);
+
+  // The side contents panel appears once the contents box has scrolled away.
+  function onReadScroll() {
+    const view = readRef.current;
+    const box = view?.querySelector(".markdown > .toc");
+    setSideToc(!!box && box.getBoundingClientRect().bottom < view!.getBoundingClientRect().top);
+  }
 
   async function toggle() {
     if (editing) {
@@ -138,8 +147,22 @@ export function PageView(props: Props) {
           }
         />
       ) : body.trim() ? (
-        <div className="read-view">
-          <div className="markdown" onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: html }} />
+        <div className="read-view" ref={readRef} onScroll={onReadScroll}>
+          <div className="markdown" onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: rendered.html }} />
+          {rendered.toc.length > 0 && (
+            <nav className={`toc-side ${sideToc ? "shown" : ""}`} aria-label="Contents" onClick={handleContentClick}>
+              <div className="toc-side-title">Contents</div>
+              <ol>
+                {rendered.toc.map((e) => (
+                  <li key={e.id} className={`toc-depth-${Math.min(e.depth, 5)}`}>
+                    <a href={`#${encodeURIComponent(e.id)}`}>
+                      <span className="toc-number">{e.number}</span> {e.text}
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </nav>
+          )}
         </div>
       ) : (
         <p className="empty">This page is empty. Click Edit to write.</p>
