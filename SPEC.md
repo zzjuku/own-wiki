@@ -60,7 +60,7 @@ A blank, local desktop program for building personal wikis for fictional stories
 ## Milestones
 Milestones are defined here before they are built. Later milestones get added after Juku's feature list.
 
-### M1 — Foundation (built 2026-10-17; Windows installer pending first CI run)
+### M1 — Foundation (done 2026-10-17)
 - Tauri 2 app that launches on the Mac.
 - Settings: choose the library folder (stored per machine).
 - Projects: create, open, rename, delete. Each project is created with the folder layout from section 3.
@@ -91,4 +91,5 @@ Templates, links between pages, search, images, spoilers, file watching / sync-c
 - 2026-10-17: repo github.com/zzjuku/own-wiki (public). Coding happens in local Claude Code on the Mac; Windows builds via GitHub Actions. This SPEC.md in the repo replaces the claude.ai project copy as source of truth.
 - 2026-10-17: milestone list added to SPEC; M1 = app shell, library folder, projects, basic Markdown pages, safe writes, Windows CI.
 - 2026-10-17: M1 behaviour: delete = move to system Trash; autosave (no Save button); separate View and Edit modes, plain Markdown editor for now (better editor later).
+- 2026-10-17: M1 done. Mac app clicked through; tests pass on Mac and Windows; first CI run produced `Own WIKI_0.1.0_x64-setup.exe`.
 - 2026-10-17: technical: Tauri 2 + React + TypeScript; Rust handles all file access. File/folder names follow the page/project name and change on rename. Per-machine settings in the OS app-config folder (`settings.json`). App id `io.github.zzjuku.ownwiki`, display name "Own WIKI" (placeholder until the app name is decided). Windows installer is NSIS, built by `.github/workflows/windows.yml` and attached to each run as an artifact.
