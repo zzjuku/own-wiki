@@ -274,7 +274,9 @@ textarea:focus-visible {
 }
 .project-name {
   font-size: 17px;
-  padding: 0 6px;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -766,4 +768,22 @@ body.dragging .project-name::after {
 body.drag-root .project-name {
   background: var(--drop);
   outline: 2px solid var(--accent);
+}
+
+.project-name.selected,
+.tree-row.is-group.selected {
+  background: var(--drop);
+}
+.target-hint {
+  margin: -4px 0 0;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.target-hint strong {
+  font-weight: 600;
+  color: var(--text);
 }

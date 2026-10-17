@@ -60,6 +60,9 @@ export function ProjectView({ project, onBack }: Props) {
   const [tree, setTree] = useState<Tree | null>(null);
   const [expanded, setExpandedState] = useState(() => loadExpanded(project.id));
   const [selected, setSelected] = useState<string | null>(null);
+  // A clicked group (or ROOT after clicking the project name). null = follow
+  // the open page: new pages then go into that page's group.
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [revealRow, setRevealRow] = useState<{ id: string } | null>(null);
@@ -118,6 +121,7 @@ export function ProjectView({ project, onBack }: Props) {
     if (id !== selected) await flushAll();
     reveal(parentOf(id));
     setSelected(id);
+    setSelectedGroup(null);
     setEditing(edit);
     setRevealRow({ id });
   }
@@ -136,6 +140,7 @@ export function ProjectView({ project, onBack }: Props) {
     if (from === to) return;
     setExpanded((prev) => new Set([...prev].map((id) => remapId(id, from, to))));
     setSelected((s) => (s === null ? s : remapId(s, from, to)));
+    setSelectedGroup((g) => (g === null ? g : remapId(g, from, to)));
   }
 
   async function back() {
@@ -168,8 +173,10 @@ export function ProjectView({ project, onBack }: Props) {
         const g = await api.createGroup(project.id, parent, name, allowLong);
         await reload();
         reveal(parent);
-        // Open the new group so "empty" shows and it's ready to fill.
+        // Open and select the new group, so it's visible and new pages go into it.
         toggle(g.id, true);
+        setSelectedGroup(g.id);
+        setRevealRow({ id: g.id });
       },
     });
   }
@@ -258,6 +265,7 @@ export function ProjectView({ project, onBack }: Props) {
           setSelected(null);
           setEditing(false);
         }
+        setSelectedGroup((g) => (g !== null && isWithin(g, id) ? null : g));
         setExpanded((prev) => new Set([...prev].filter((x) => !isWithin(x, id))));
         await reload();
       },
@@ -350,6 +358,14 @@ export function ProjectView({ project, onBack }: Props) {
   }
 
   const selectedExists = selected !== null && (tree === null || index.pages.has(selected));
+  // Where "New page" / "New group" create things.
+  const targetGroup =
+    selectedGroup !== null && (selectedGroup === ROOT || index.groups.has(selectedGroup))
+      ? selectedGroup
+      : selected && selectedExists
+        ? parentOf(selected)
+        : ROOT;
+  const targetHint = targetGroup ? `in ${displayGroup(targetGroup)}` : "at the top level";
 
   return (
     <div className="project">
@@ -357,17 +373,33 @@ export function ProjectView({ project, onBack }: Props) {
         <button className="plain back" onClick={back}>
           ← Projects
         </button>
-        <h1 className="project-name" title={project.name} data-drop={ROOT}>
+        <h1
+          className={`project-name ${selectedGroup === ROOT ? "selected" : ""}`}
+          title={`${project.name} — click to add new pages at the top level`}
+          data-drop={ROOT}
+          onClick={() => setSelectedGroup(ROOT)}
+        >
           {project.name}
         </h1>
         <div className="row">
-          <button className="primary grow" onClick={() => newPage(ROOT)}>
+          <button
+            className="primary grow"
+            title={`New page ${targetHint}`}
+            onClick={() => newPage(targetGroup)}
+          >
             New page
           </button>
-          <button className="grow" onClick={() => newGroup(ROOT)}>
+          <button
+            className="grow"
+            title={`New group ${targetHint}`}
+            onClick={() => newGroup(targetGroup)}
+          >
             New group
           </button>
         </div>
+        <p className="target-hint" title="Click a group, or the project name for the top level">
+          Adding to: <strong>{targetGroup ? displayGroup(targetGroup) : "top level"}</strong>
+        </p>
         <button className="find" onClick={() => setQuickOpen(true)}>
           <span>Find page…</span>
           <kbd>{QUICK_OPEN_KEYS}</kbd>
@@ -375,6 +407,9 @@ export function ProjectView({ project, onBack }: Props) {
         <Sidebar
           rows={rows}
           selected={selected}
+          selectedGroup={selectedGroup}
+          onSelectGroup={setSelectedGroup}
+          onSelectTop={() => setSelectedGroup(ROOT)}
           reveal={revealRow}
           onOpenPage={(id) => void openPage(id)}
           onToggle={toggle}

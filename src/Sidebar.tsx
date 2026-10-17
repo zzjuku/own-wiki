@@ -19,9 +19,14 @@ export interface MenuItem {
 interface Props {
   rows: Row[];
   selected: string | null;
+  /** Group highlighted as the place new pages and groups go (null = none). */
+  selectedGroup: string | null;
   /** Row to scroll into view; a new object each time it's asked for. */
   reveal: { id: string } | null;
   onOpenPage: (id: string) => void;
+  onSelectGroup: (id: string) => void;
+  /** Click on empty space below the rows. */
+  onSelectTop: () => void;
   onToggle: (groupId: string, open: boolean) => void;
   menuFor: (row: Row) => MenuItem[];
   canDrop: (row: Row, target: string) => boolean;
@@ -158,8 +163,10 @@ export function Sidebar(props: Props) {
 
   function activate(row: Row) {
     if (suppressClick.current) return;
-    if (row.kind === "group") props.onToggle(row.id, !row.expanded);
-    else props.onOpenPage(row.id);
+    if (row.kind === "group") {
+      props.onSelectGroup(row.id);
+      props.onToggle(row.id, !row.expanded);
+    } else props.onOpenPage(row.id);
   }
 
   return (
@@ -168,6 +175,10 @@ export function Sidebar(props: Props) {
         ref={scrollRef}
         className={`tree ${drag?.target === ROOT ? "drop-root" : ""}`}
         data-drop={ROOT}
+        onClick={(e) => {
+          const t = e.target as HTMLElement;
+          if (t === e.currentTarget || t.classList.contains("tree-inner")) props.onSelectTop();
+        }}
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
         role="tree"
         aria-label="Pages"
@@ -175,7 +186,8 @@ export function Sidebar(props: Props) {
         {rows.length === 0 && <div className="tree-empty">{props.empty}</div>}
         <div className="tree-inner" style={{ height: rows.length * ROW_HEIGHT }}>
           {rows.slice(first, last).map((row, i) => {
-            const isSelected = row.kind === "page" && row.id === selected;
+            const isSelected =
+              row.kind === "page" ? row.id === selected : row.id === props.selectedGroup;
             const isTarget = row.kind === "group" && drag?.target === row.id;
             const isDragged = drag?.row.id === row.id;
             return (
