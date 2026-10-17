@@ -4,10 +4,12 @@ import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
 import { renderPage } from "./markdown";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
+import { AliasEditor } from "./AliasEditor";
+import { Backlinks } from "./Backlinks";
 import { SplitEditor } from "./SplitEditor";
 import { TocPanel } from "./TocPanel";
 import { groupChain } from "./tree";
-import { scrollToSection, useContentClick, useLinkContext } from "./wiki";
+import { scrollToSection, useContentClick, useLinkContext, useWiki } from "./wiki";
 import { LINK_CHARS } from "./wikilinks";
 
 interface Props {
@@ -15,11 +17,17 @@ interface Props {
   pageId: string;
   /** Current title from the tree (it can change without the id changing). */
   title?: string;
+  aliases: string[];
+  /** This is the project's main page. */
+  isMain: boolean;
   editing: boolean;
   setEditing: (v: boolean) => void;
   onRename: () => void;
   onMove: () => void;
   onDelete: () => void;
+  onSetMain: () => void;
+  /** Aliases changed: the page list needs reloading. */
+  onNamesChanged: () => void;
   /** Opens a group of the breadcrumb in the sidebar. */
   onReveal: (group: string) => void;
   /** How the page was reached: a section to scroll to, an alias it was linked by. */
@@ -75,7 +83,22 @@ export function PageView(props: Props) {
     );
   }, [project, pageId]);
 
+  const wiki = useWiki();
   const links = useLinkContext(pageId);
+  // How many pages link here (refreshed when pages change).
+  const [linkingPages, setLinkingPages] = useState<number | null>(null);
+  const [backlinksOpen, setBacklinksOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => {
+    let live = true;
+    api.backlinks(project, pageId, false).then(
+      (l) => live && setLinkingPages(l.length),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [project, pageId, wiki.names]);
   const onContentClick = useContentClick(pageId);
   // The read view shows the contents in the left panel, not in the text.
   const rendered = useMemo(() => renderPage(body, { tocBox: false, links }), [body, links]);
@@ -132,17 +155,49 @@ export function PageView(props: Props) {
           )}
           <h1 title={props.title ?? page.title}>{props.title ?? page.title}</h1>
           {arrival.via && <p className="redirect-note">(Redirected from {arrival.via})</p>}
+          {editing && (
+            <AliasEditor project={project} pageId={pageId} aliases={props.aliases} onChanged={props.onNamesChanged} />
+          )}
         </div>
         <div className="spacer" />
+        <button title="Pages that link to this page" onClick={() => setBacklinksOpen(true)}>
+          Links here{linkingPages !== null && <span className="count">{linkingPages}</span>}
+        </button>
         <button onClick={props.onRename}>Rename</button>
         <button onClick={props.onMove}>Move…</button>
         <button className="danger-text" onClick={props.onDelete}>
           Delete
         </button>
+        <div className="more-wrap">
+          <button className="more" aria-label="More" title="More" onClick={() => setMenuOpen((o) => !o)}>
+            ⋯
+          </button>
+          {menuOpen && (
+            <>
+              <div className="menu-catcher" onMouseDown={() => setMenuOpen(false)} />
+              <div className="menu page-menu" role="menu">
+                <button
+                  role="menuitem"
+                  disabled={props.isMain}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    props.onSetMain();
+                  }}
+                >
+                  {props.isMain ? "This is the main page" : "Set as main page"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
         <button className="primary" title={`${editing ? "Read" : "Edit"} (${IS_MAC ? "⌘" : "Ctrl+"}E)`} onClick={toggle}>
           {editing ? "View" : "Edit"}
         </button>
       </header>
+
+      {backlinksOpen && (
+        <Backlinks pageId={pageId} title={props.title ?? page.title} close={() => setBacklinksOpen(false)} />
+      )}
 
       {LINK_CHARS.test(props.title ?? page.title) && (
         <p className="notice title-notice">

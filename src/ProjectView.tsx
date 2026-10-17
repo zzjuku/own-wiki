@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, isLongPath, type ProjectInfo, type Tree } from "./api";
 import { flushAll } from "./autosave";
 import { useDialogs, type PickOption } from "./dialogs";
+import { HoverCards } from "./HoverCard";
 import { NameIndex } from "./names";
 import { useReportError } from "./notify";
 import { PageView } from "./PageView";
@@ -91,6 +92,8 @@ export function ProjectView({ project, onBack }: Props) {
   const [quickOpen, setQuickOpen] = useState(false);
   const [revealRow, setRevealRow] = useState<{ id: string } | null>(null);
   const [history, setHistory] = useState<History>({ back: [], forward: [] });
+  // Bumped when the open page's file changed behind its back (rename rewrote its links).
+  const [pageVersion, setPageVersion] = useState(0);
   // Where to scroll and what to say when a page was opened through a link.
   const [arrival, setArrival] = useState<{ section: string | null; via: string | null; key: number }>({
     section: null,
@@ -322,23 +325,47 @@ export function ProjectView({ project, onBack }: Props) {
     });
   }
 
-  function renamePage(id: string) {
+  async function renamePage(id: string) {
     const page = index.pages.get(id);
     if (!page) return;
+    let count = { links: 0, pages: 0 };
+    try {
+      await flushAll();
+      count = await api.linkCount(project.id, page.title);
+    } catch (e) {
+      return report(e);
+    }
     dialogs.prompt({
       title: "Rename page",
       label: "Page title",
       initial: page.title,
+      note: count.links ? (
+        <>
+          {plural(count.links, "link")} in {plural(count.pages, "page")} will be updated to the new title.
+        </>
+      ) : (
+        <>No links point to this page yet.</>
+      ),
+      checkbox: { label: "Keep old title as alias", initial: false },
       confirmLabel: "Rename",
-      submit: async (title, allowLong) => {
+      submit: async (title, allowLong, { checked }) => {
         await flushAll();
-        const { page: info } = await api.renamePage(project.id, id, title, allowLong, false);
+        const result = await api.renamePage(project.id, id, title, allowLong, checked);
         await reload(() => {
-          if (selected === id) setSelected(info.id);
-          remapHistory(id, info.id);
+          if (selected === id) setSelected(result.page.id);
+          remapHistory(id, result.page.id);
+          setPageVersion((v) => v + 1);
         });
+        if (result.failed.length)
+          report(`The page was renamed, but links in these pages couldn't be updated: ${result.failed.join(", ")}.`);
       },
     });
+  }
+
+  function setAsMainPage(id: string) {
+    const page = index.pages.get(id);
+    if (!page) return;
+    api.setMainPage(project.id, page.title).then(() => reload(), report);
   }
 
   function renameGroup(id: string) {
@@ -357,14 +384,29 @@ export function ProjectView({ project, onBack }: Props) {
     });
   }
 
-  function deletePage(id: string) {
+  async function deletePage(id: string) {
     const page = index.pages.get(id);
     if (!page) return;
+    let linking = 0;
+    try {
+      await flushAll();
+      linking = (await api.backlinks(project.id, id, false)).length;
+    } catch (e) {
+      return report(e);
+    }
+    const isMain = mainPage?.id === id;
     dialogs.confirm({
       title: "Delete page",
       message: (
         <>
           Move <strong>{page.title}</strong> to the Trash?
+          {isMain && <> It is the project's main page.</>}
+          {linking > 0 && (
+            <>
+              {" "}
+              {plural(linking, "page")} {linking === 1 ? "links" : "link"} to it; those links will turn red.
+            </>
+          )}
         </>
       ),
       confirmLabel: "Move to Trash",
@@ -489,9 +531,10 @@ export function ProjectView({ project, onBack }: Props) {
     if (row.kind === "page") {
       return [
         { label: "Open", action: () => void openPage(row.id) },
-        { label: "Rename…", action: () => renamePage(row.id) },
+        { label: "Rename…", action: () => void renamePage(row.id) },
         { label: "Move to…", action: () => moveTo("page", row.id) },
-        { label: "Delete…", action: () => deletePage(row.id), danger: true },
+        ...(mainPage?.id === row.id ? [] : [{ label: "Set as main page", action: () => setAsMainPage(row.id) }]),
+        { label: "Delete…", action: () => void deletePage(row.id), danger: true },
       ];
     }
     return [
@@ -614,15 +657,19 @@ export function ProjectView({ project, onBack }: Props) {
       <main className="content">
         {selected && selectedExists ? (
           <PageView
-            key={selected}
+            key={`${selected}\n${pageVersion}`}
             project={project.id}
             pageId={selected}
             title={index.pages.get(selected)?.title}
+            aliases={index.pages.get(selected)?.aliases ?? []}
+            isMain={mainPage?.id === selected}
             editing={editing}
             setEditing={setEditing}
-            onRename={() => renamePage(selected)}
+            onRename={() => void renamePage(selected)}
             onMove={() => moveTo("page", selected)}
-            onDelete={() => deletePage(selected)}
+            onDelete={() => void deletePage(selected)}
+            onSetMain={() => setAsMainPage(selected)}
+            onNamesChanged={() => void reload()}
             onReveal={(group) => {
               reveal(parentOf(group));
               setRevealRow({ id: group });
@@ -635,6 +682,8 @@ export function ProjectView({ project, onBack }: Props) {
           </p>
         )}
       </main>
+
+      <HoverCards />
 
       {quickOpen && (
         <QuickOpen names={names} onOpen={(e) => void openPage(e.page.id)} close={() => setQuickOpen(false)} />

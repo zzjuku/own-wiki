@@ -320,4 +320,51 @@ mod tests {
         let s: Vec<_> = sections(&idx, "A.md").unwrap().into_iter().map(|h| h.anchor).collect();
         assert_eq!(s, ["early-life", "early-life-2"]);
     }
+
+    /// Speed check from the M4 spec. Run with
+    /// `cargo test --release -- --ignored --nocapture big_project`.
+    #[test]
+    #[ignore]
+    fn big_project_speed() {
+        use std::time::Instant;
+        let (lib, p, _) = setup(&[]);
+        let dir = lib.path().join(&p);
+        for g in 0..50 {
+            fs::create_dir_all(dir.join(format!("pages/Group {g}"))).unwrap();
+        }
+        for i in 0..5000 {
+            let mut body = format!("Opening paragraph of page {i} with some words.\n\n## Section one\n\n");
+            for k in 0..20 {
+                let target = if i % 10 == 0 && k == 0 { 0 } else { (i * 7 + k * 13) % 5000 };
+                body.push_str(&format!("Text [[Page {target}]] more text.\n"));
+            }
+            let text = format!("---\ntitle: Page {i}\n---\n{body}");
+            fs::write(dir.join(format!("pages/Group {}/Page {i}.md", i % 50)), text).unwrap();
+        }
+        let t = Instant::now();
+        let mut idx = ProjectIndex::open(&dir).unwrap();
+        println!("first open (no cache): {:?}", t.elapsed());
+        drop(idx);
+        let t = Instant::now();
+        idx = ProjectIndex::open(&dir).unwrap();
+        let reopen = t.elapsed();
+        println!("reopen (cache): {reopen:?}");
+        let t = Instant::now();
+        let infos = idx.page_infos();
+        println!("page list: {:?} ({} pages)", t.elapsed(), infos.len());
+        let before = link_count(&idx, "Page 0");
+        println!("links to Page 0: {} in {} pages", before.links, before.pages);
+        assert!(before.pages >= 500);
+        let t = Instant::now();
+        let r = rename_with_links(lib.path(), &p, &mut idx, "Group 0/Page 0.md", "Renamed page", false, false).unwrap();
+        let rename = t.elapsed();
+        println!("rename with {} links in {} pages: {rename:?}", r.links, r.pages);
+        assert!(r.failed.is_empty());
+        assert_eq!(link_count(&idx, "Page 0").links, 0);
+        let t = Instant::now();
+        let bl = backlinks(lib.path(), &p, &idx, "Group 0/Renamed page.md", true).unwrap();
+        println!("backlinks with context: {:?} ({} pages)", t.elapsed(), bl.len());
+        assert!(reopen.as_millis() < 1000, "reopen too slow");
+        assert!(rename.as_secs() < 5, "rename too slow");
+    }
 }

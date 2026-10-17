@@ -47,6 +47,8 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--table-border` / `--table-bg` / `--table-header-bg` | Tables |
 | `--toc-bg` / `--toc-border` / `--toc-number` | Table of contents box/panel and numbers |
 | `--toc-active` | Bar beside the section being read, in the contents panel |
+| `--card-bg` / `--card-border` | Link hover preview cards |
+| `--card-width` | Width of hover preview cards |
 
 ## Infobox (used from M5)
 | Variable | Used for |

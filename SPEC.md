@@ -2,7 +2,7 @@
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: M1, M2 and M3 done; M4 defined, next to build; roadmap M5–M16 drafted.
+Status: M1, M2 and M3 done; M4 built, waiting for Juku's review; roadmap M5–M16 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -250,3 +250,5 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-17: M3 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer.
 - 2026-10-17: M4 defined: rename rewrites `[[Old]]` → `[[New]]` with optional "keep old title as alias"; red links create pages via a dialog prefilled with the linking page's group; "What links here" as a header button with count and a list with context lines; aliases edited under the title in edit mode, autocomplete inserts `[[Alias]]`, alias links show "Redirected from"; new projects get an empty "Main Page" and open on the main page; back/forward added; `[ ] | #` banned in titles and aliases; pipe trick and word endings added; Link button + Cmd+K.
 - 2026-10-17: M4 technical: aliases live in front matter (`aliases:`), not in redirect pages; main page stored in `project.json` (`mainPage`, by title). The link index lives in `.cache/` with per-file modification time and size for incremental rebuilds. Links are parsed in Rust (index, rename rewrite) and TypeScript (rendering, editor); both run the same shared test cases so they can't disagree. In tables, the link's `|` is written as `\|` so it doesn't split the cell.
+- 2026-10-18: M4 built (Claude's choices, open to Juku's review): a section link without its own text shows "Page § Section" (same-page: "§ Section"); back/forward and the main page button sit at the top of the sidebar; "Set as main page" is in the page's ⋯ menu and the sidebar menu; "Links here (N)" button in the page header; hover cards also show for red links ("Page doesn't exist"); the Link picker (Cmd+K) can also link to a page that doesn't exist yet (red link); quick-open lists aliases with "→ Title"; the mouse's back/forward buttons also work.
+- 2026-10-18: M4 technical: the link index (`.cache/link-index.json`) also serves the page list (`get_tree`), so titles and aliases are read once; cache written at most every 10 s for small changes (a stale cache only costs re-reading changed files). Files without front matter stay without it when saved. Rename rewrites linking files in parallel. Measured (release build, 5,000 pages × 20 links): first index build 68 ms, reopen 16 ms, rename of a page with 519 links in 518 pages 1.4 s. The CodeMirror keys Cmd+[ / Cmd+] (indent) and, on Windows, Alt+Left/Right are given to back/forward.

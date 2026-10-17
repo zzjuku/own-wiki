@@ -450,6 +450,7 @@ body.dragging * {
   height: 100%;
 }
 .page-head {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -888,7 +889,7 @@ body.dragging * {
 .dialog-note {
   font-size: var(--text-md);
   color: var(--muted);
-  margin-top: 10px !important;
+  margin: 0 0 12px !important;
 }
 .check {
   display: flex;
@@ -1196,4 +1197,188 @@ body.resizing * {
 }
 .cm-searchMatch-selected {
   background: var(--search-match-current);
+}
+
+/* ---- M4: page header extras, aliases, What links here, hover cards ---- */
+.page-head .count {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: var(--text-xs);
+  background: var(--bg-hover);
+  color: var(--muted);
+}
+.more-wrap {
+  position: relative;
+}
+button.more {
+  padding-left: 10px;
+  padding-right: 10px;
+  font-weight: 700;
+}
+.menu-catcher {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+}
+.menu.page-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+}
+.aliases {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: var(--text-sm);
+}
+.aliases-label {
+  color: var(--muted);
+}
+.alias-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+}
+.alias-chip button {
+  padding: 0 4px;
+  color: var(--muted);
+  line-height: 1;
+}
+.alias-chip button:hover {
+  color: var(--danger);
+}
+button.alias-add {
+  padding: 1px 6px;
+  color: var(--accent);
+  font-size: var(--text-sm);
+}
+.alias-input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 1px 8px;
+  width: 180px;
+}
+.alias-error {
+  flex-basis: 100%;
+  color: var(--danger);
+}
+.dialog.backlinks {
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.backlink-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  min-height: 0;
+}
+.backlink-list li + li {
+  border-top: 1px solid var(--border);
+}
+button.backlink {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+}
+button.backlink:hover {
+  background: var(--bg-hover);
+}
+.backlink-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.backlink-title {
+  font-weight: 600;
+}
+.backlink-group,
+.backlink-via {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.backlink-group {
+  margin-left: auto;
+}
+.backlink-line.markdown {
+  display: block;
+  max-width: none;
+  padding: 0;
+  font-size: var(--text-md);
+  color: var(--muted);
+}
+.backlink-line.markdown p {
+  margin: 0;
+}
+.backlink-line.markdown::after {
+  content: none;
+}
+.hover-card {
+  position: fixed;
+  z-index: 30;
+  width: var(--card-width);
+  max-width: calc(100vw - 24px);
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-size: var(--text-md);
+}
+.hover-card-body {
+  min-width: 0;
+  flex: 1;
+}
+/* Room for a picture (M6). */
+.hover-card-image:empty {
+  display: none;
+}
+.hover-card-title {
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  color: var(--heading-color);
+}
+.hover-card-group {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.hover-card .markdown {
+  padding: 0;
+  max-width: none;
+  font-size: var(--text-md);
+  line-height: 1.5;
+  max-height: 12em;
+  overflow: hidden;
+}
+.hover-card .markdown::after {
+  content: none;
+}
+.hover-card .markdown p {
+  margin: 0 0 0.4em;
+}
+.hover-card-empty {
+  color: var(--muted);
+  font-style: italic;
+}
+.hover-card.missing {
+  color: var(--link-new);
 }

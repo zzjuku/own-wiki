@@ -191,7 +191,7 @@ export async function linkCompletions(ctx: CompletionContext): Promise<Completio
       if (q && !norm(h.text).includes(q)) continue;
       // A repeated heading is linked by its anchor ("early-life-2").
       const insert = (seen.get(key) ?? 0) > 1 ? h.anchor : h.text;
-      options.push({ label: h.text || h.anchor, detail: `§ ${"·".repeat(Math.max(0, h.level - 2))}`, apply: closeLink(insert) });
+      options.push({ label: h.text || h.anchor, detail: h.level > 2 ? "subsection" : undefined, apply: closeLink(insert) });
     }
     return { from: sec.from + hash + 1, options, filter: false };
   }

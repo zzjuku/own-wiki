@@ -164,6 +164,7 @@ function Dialog({ open, close }: { open: Open; close: () => void }) {
         onKeyDown={(e) => e.key === "Escape" && !busy && close()}
       >
         <h2>{open.title}</h2>
+        {open.kind === "prompt" && open.note && <p className="dialog-note">{open.note}</p>}
         {open.kind === "prompt" && (
           <label className="field">
             <span>{open.label}</span>
@@ -196,7 +197,6 @@ function Dialog({ open, close }: { open: Open; close: () => void }) {
             </select>
           </label>
         )}
-        {open.kind === "prompt" && open.note && <p className="dialog-note">{open.note}</p>}
         {open.kind === "prompt" && open.checkbox && (
           <label className="check">
             <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
