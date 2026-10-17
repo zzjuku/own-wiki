@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.4, 2026-10-17)
+# Own WIKI — Spec (v0.5, 2026-10-17)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: foundation decisions settled. Feature list still to come from Juku.
+Status: foundation and feature decisions settled; roadmap M2–M16 drafted. Some open questions remain (see Open items).
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -13,6 +13,10 @@ A blank, local desktop program for building personal wikis for fictional stories
 - Top level: **Projects**. One project = one independent wiki (one story/world).
 - The app ships **blank**. No built-in entity types such as "Character" or "Place". The user defines their own page types or templates (fields, infobox layout) per project.
 - Projects are fully self-contained and can be copied, moved, or deleted as one folder.
+- Inside a project: **groups** (folders) and **pages**. Groups can contain groups (nested). A page sits in exactly one group (or at the top level).
+- **Categories** are separate from groups: tags, many per page, AWOIAF-style. Each category gets an automatic category page listing its members.
+- **Page titles are unique across the whole project**, regardless of group. Duplicates are named Wikipedia-style, e.g. "Page A (Example)". Links never contain the group path, so moving a page between groups breaks nothing.
+- Expected size: projects can reach **thousands of pages**. Index, search, sidebar and graph must stay fast at that size.
 
 ### 2. Platform
 - Primary: **macOS**. Also needs a **Windows** build of the same program.
@@ -26,7 +30,8 @@ A blank, local desktop program for building personal wikis for fictional stories
   ```
   MyStory/
     project.json        # project name, settings, template definitions
-    pages/              # one Markdown file per page, structured fields in YAML front matter
+    pages/              # one Markdown file per page, structured fields in YAML front matter;
+                        # groups are subfolders here (nested allowed)
     assets/             # images and other media, copied in on import (never linked to outside paths)
     .cache/             # search index etc. Rebuildable, never synced, never exported.
   ```
@@ -45,17 +50,37 @@ A blank, local desktop program for building personal wikis for fictional stories
   - keep caches/indexes out of the synced data (`.cache/`)
   - write files safely (write a temp file, then rename) so a half-synced file can't corrupt a page
 - Limitation: don't edit the same page on both machines at the same time.
+- Windows path limit (~260 characters): deeply nested groups plus long titles inside the Drive folder can exceed it. The app warns when a path gets close to the limit.
 
 ### 5. Users and privacy
 - Single user. No accounts, no server, no cloud dependency.
 
 ### 6. Spoilers
-- **Inline** spoiler markup inside page text. The text stays hidden until clicked to reveal.
+- **Inline**, Discord-style: `||hidden text||`. The text stays hidden until clicked to reveal.
 
 ### 7. Working mode
 - Juku doesn't need to understand or maintain the code. Claude builds, tests, and documents. Explanations stay short and user-facing.
 - Building happens in **Claude Code on Juku's Mac**, working in this repo. Planning and feature discussion happen in the claude.ai project "Own WIKI".
 - This repo contains only program code, never story content. Test fixtures use neutral placeholder data.
+
+### 8. Features (Juku, 2026-10-17)
+Inspiration: Wikipedia, A Wiki of Ice and Fire (AWOIAF), Chronicler.
+- **Links:** manual, `[[Page]]`, with autocomplete while typing. Display text can differ from the target (`[[John Snow|John]]` shows "John"). Renaming a page updates every link to it. No automatic linking of plain words.
+- **Editor:** Markdown stays the file format. Editor = Markdown source with a formatting toolbar and keyboard shortcuts (headings, bold, lists, links…), plus a **live preview side by side** (option A). Juku never has to type Markdown syntax. Possible later upgrade: Obsidian-style inline live preview.
+- **Templates and infoboxes:** user-defined templates per project (characters, locations, items… — defined by the user, never shipped). New pages are pre-filled. AWOIAF-style infobox with images and captions. Fields are **typed** (text, link to page, date, image, list…) so maps, timelines and family trees can read them.
+  - Changing a template updates the layout and fields of all existing pages that use it; values stay.
+  - Deleting a field from a template **hides** the values on existing pages, it doesn't delete them.
+- **Categories:** easy to add per page, AWOIAF-style list at the bottom of the page, automatic category pages.
+- **Embeds:** insert the content of one page into another (navboxes, item cards, stat blocks). Plain embeds first; embeds with parameters only if needed later. Embed loops are detected and blocked.
+- **Health reports:** auto-generated reports (broken links, orphan pages, unlinked mentions, missing images, duplicate titles, sync conflicts, hidden template values…) with tools to fix them.
+- **Graph view:** Obsidian-style interactive network of linked pages. Must handle thousands of pages: local graph (neighbours of the current page) plus a filterable global graph.
+- **Themes:** user-created, selectable, editable themes. UI styling uses CSS variables from the start so themes are cheap to add.
+- **Interactive maps:** zoomable, pannable; pins linked to pages with hover preview; drawable regions; nested maps (a pin opens another map); distance measuring.
+- **Timelines** with **custom calendars** (own months, eras), fuzzy dates ("c. 250") and date ranges (e.g. reigns).
+- **Family trees:** generated automatically from infobox link fields, editable, and also creatable manually. Must support multiple spouses, unknown parents, intermarriage and incest (the "tree" is really a graph).
+- **Deep search:** full-text search across page text, infobox fields and aliases; finds every mention.
+- **Solar system map:** later version, details to be defined.
+- Additions proposed by Claude (2026-10-17), in the roadmap unless Juku vetoes: red links (link to a missing page, click to create it), "What links here" (backlinks), hover previews for every link, aliases/redirects, automatic table of contents, footnotes/citations, a main page per project, tables, image galleries, quick-open by title (Cmd+O). Page history/undo of edits: later.
 
 ## Milestones
 Milestones are defined here before they are built. Later milestones get added after Juku's feature list.
@@ -77,12 +102,36 @@ Milestones are defined here before they are built. Later milestones get added af
   - Project folders are named after the project; renaming a project renames its folder. `project.json` holds `name`, `formatVersion` and `templates`; unknown keys are kept.
   - Names that differ only in upper/lower case count as the same name (keeps projects valid across file systems).
 
-### M2+ — to be defined
-Templates, links between pages, search, images, spoilers, file watching / sync-conflict handling, export. Order and scope come from the feature list.
+### Roadmap (draft, 2026-10-17)
+Order follows dependencies: typed fields before maps/timelines/trees; links before graph and health reports. Each milestone gets its detailed scope here before it is built. Juku plans to start entering real content **after M7**.
+
+**v1**
+- **M2 Structure:** groups (nested folders), sidebar tree, move pages between groups, quick-open by title, project-wide unique titles, path-length warning.
+- **M3 Editor:** split-screen live preview, toolbar + shortcuts, table of contents, theme-ready styling (CSS variables). Replaces M1's separate View/Edit modes for editing.
+- **M4 Links:** `[[ ]]` with autocomplete and display text, red links, backlinks, link rewrite on rename, hover previews, aliases/redirects. Introduces the link index in `.cache/`.
+- **M5 Templates & infoboxes:** template editor, typed fields, AWOIAF-style infobox. Date fields are stored in a calendar-ready format (era, year, optional month/day, approximate flag, ranges) so M13 doesn't need a migration.
+- **M6 Images & categories:** image import into `assets/`, captions, galleries, categories with automatic category pages.
+- **M7 Spoilers & embeds.**
+
+**After v1 start**
+- **M8 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. *(Timing open — see Open items.)*
+- **M9 Health reports.**
+- **M10 Graph view.**
+- **M11 Themes.**
+- **M12 Interactive maps.**
+- **M13 Calendars & timelines.**
+- **M14 Family trees.**
+- **M15 Solar system map** (later version, scope to be defined).
+- **M16 Export:** zip, static HTML site.
 
 ## Open items (from Juku)
-- Feature list, split into v1 must-haves and later
-- Visual references (wikis/apps he likes, and what he likes about them)
+- **Sync safety timing:** Juku starts real use after M7, but sync-change detection and conflict copies are planned for M8. Move it earlier, or use only one machine until M8?
+- **Maps:** painted Photoshop map. Proposed: no SVG conversion (auto-tracing a painted map ruins it); export a large PNG, the app tiles it for smooth deep zoom; pins, regions, labels and distance lines are vector overlays drawn by the app and stay sharp. Needs Juku's OK.
+- **Family trees:** does editing the tree write back to the infobox fields (one source of truth), and may trees contain people who have no page?
+- **Spoilers:** hidden in search results, hover previews and infobox fields too? A "reveal all" switch?
+- **Themes:** colours + fonts only, or also custom CSS? Themes per app or per project?
+- **Claude's proposed additions** (section 8): confirm or veto.
+- Visual references (beyond Wikipedia/AWOIAF/Chronicler: what exactly he likes about them)
 - App name
 
 ## Decision log
@@ -94,3 +143,4 @@ Templates, links between pages, search, images, spoilers, file watching / sync-c
 - 2026-10-17: M1 done. Mac app clicked through; tests pass on Mac and Windows; first CI run produced `Own WIKI_0.1.0_x64-setup.exe`.
 - 2026-10-17: technical: Tauri 2 + React + TypeScript; Rust handles all file access. File/folder names follow the page/project name and change on rename. Per-machine settings in the OS app-config folder (`settings.json`). App id `io.github.zzjuku.ownwiki`, display name "Own WIKI" (placeholder until the app name is decided). Windows installer is NSIS, built by `.github/workflows/windows.yml` and attached to each run as an artifact.
 - 2026-10-17: every milestone ends with Juku's review on his Mac; the app is installed to Applications at each review handoff; out-of-scope feedback is either added or recorded for a later milestone, his choice.
+- 2026-10-17: feature list from Juku recorded (section 8). Groups = nested folders, categories = tags, project-wide unique titles; manual `[[ ]]` links with display text; editor option A (Markdown + toolbar + live side preview); template changes propagate, deleted fields are hidden not deleted; Discord-style `||spoilers||`; maps with regions, nested maps and distance; custom calendars with fuzzy dates and ranges; family trees auto-generated, editable and manual, supporting complex relations; solar system map later. Roadmap M2–M16 drafted; real use starts after M7.
