@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.5, 2026-10-17)
+# Own WIKI — Spec (v0.6, 2026-10-17)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: M1 and M2 done; roadmap M3–M16 drafted; M3 next (scope to be detailed before building).
+Status: M1 and M2 done; M3 defined and next; roadmap M4–M16 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -112,8 +112,8 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 
 **v1**
 - **M2 Structure:** groups (nested folders), sidebar tree, move pages between groups, quick-open by title, project-wide unique titles, path-length warning. *(Detailed scope below.)*
-- **M3 Editor:** split-screen live preview, toolbar + shortcuts, table of contents, theme-ready styling (CSS variables). Replaces M1's separate View/Edit modes for editing.
-- **M4 Links:** `[[ ]]` with autocomplete and display text, red links, backlinks, link rewrite on rename, hover previews, aliases/redirects. Introduces the link index in `.cache/`.
+- **M3 Editor:** split-screen live preview, toolbar + shortcuts, table of contents, tables, footnotes, paste with formatting, word count, Wikipedia-like page look, theme-ready styling (CSS variables). *(Detailed scope below.)*
+- **M4 Links:** `[[ ]]` with autocomplete and display text, red links, backlinks, link rewrite on rename, hover previews, aliases/redirects, main page per project. Introduces the link index in `.cache/`.
 - **M5 Templates & infoboxes:** template editor, typed fields, AWOIAF-style infobox. Date fields are stored in a calendar-ready format (era, year, optional month/day, approximate flag, ranges) so M13 doesn't need a migration.
 - **M6 Images & categories:** image import into `assets/`, captions, galleries, categories with automatic category pages.
 - **M7 Spoilers & embeds.**
@@ -138,6 +138,37 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - Path-length warning: when a create, rename or move would make a file path longer than ~240 characters, the app warns (applies on Mac too, because the files sync to Windows).
 - Not in M2: group overview pages (later, see Open items), file watching/sync (M8).
 - Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen (including a test project with several hundred placeholder pages in nested groups to check speed), the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
+
+**M3 — Editor (defined 2026-10-17)**
+- Read and edit (Juku, 2026-10-17): a page opens in a full-width **read view**. **Edit** (or Cmd+E / Ctrl+E) opens the **split editor**: Markdown source on the left, live preview on the right; Cmd+E or **View** goes back. New pages still open in the editor; opening an existing page opens the read view (as in M2).
+- Split editor:
+  - The preview updates as you type and scrolls along with the editor.
+  - Draggable divider between source and preview; its position is remembered per machine. A button hides/shows the preview (source full width).
+  - The source side uses light highlighting (headings larger, bold shown bold, etc.) so it reads less like code.
+  - Find & replace within the page: Cmd+F / Ctrl+F in the editor.
+  - Autosave unchanged from M1.
+- Toolbar: Heading, Subheading, Sub-subheading, Bold, Italic, Strikethrough, Bulleted list, Numbered list, Quote, Divider line, Insert table, Footnote, Undo, Redo. Buttons toggle (Bold on bold text removes it) and show when the cursor is inside that formatting. Tooltips show each shortcut.
+  - Toolbar headings write `##`, `###`, `####` (the page title is the top heading, as on Wikipedia). A `#` typed by hand still renders as a heading.
+  - No link button in M3; page links come in M4. Web addresses in the text open in the default browser when clicked.
+- Shortcuts (Ctrl instead of Cmd on Windows): Cmd+B bold, Cmd+I italic, Cmd+Shift+X strikethrough, Cmd+Alt+1/2/3 headings, Cmd+Shift+8 bulleted list, Cmd+Shift+7 numbered list, Cmd+Z undo, Cmd+Shift+Z redo (Ctrl+Y also on Windows), Cmd+F find & replace, Cmd+E read/edit. Cmd+O stays quick-open.
+- Typing behaviour:
+  - One Enter = new line in the preview; an empty line = new paragraph (Obsidian's default). Files stay valid Markdown.
+  - Lists continue on Enter; Enter on an empty item ends the list; Tab / Shift+Tab indent and outdent list items.
+  - Undo/redo covers every toolbar action and shortcut.
+- Tables: **Insert table** asks for rows and columns (default 3 × 3) and inserts a table with a header row. Tables display in a Wikipedia-style table look. Tables are edited in the source; no visual table editor.
+- Footnotes: the **Footnote** button inserts a numbered marker at the cursor and an empty note at the end of the page, and puts the cursor in the note. Notes are listed under a "Notes" heading at the bottom of the page, numbered in order of appearance; clicking a number jumps to its note and back.
+- Paste with formatting: text pasted from Word, Google Docs or web pages keeps bold, italics, strikethrough, headings, lists, quotes, tables and web links (converted to Markdown). Colours, fonts and images are dropped (images come in M6). Cmd+Shift+V / Ctrl+Shift+V pastes plain text.
+- Word count: words and characters of the page text (without Markdown symbols), shown in the editor's status line.
+- Table of contents (Juku, 2026-10-17: both box and side panel):
+  - Built from the page's headings; shown when a page has 3 or more. Numbered (1, 1.1, …), entries jump to their section.
+  - **Box** after the opening text, before the first heading (AWOIAF / classic Wikipedia), collapsible. Also shown in the editor preview.
+  - **Side panel:** in the read view, once the box has scrolled out of view, a slim panel with the same contents appears at the right edge. Not shown in narrow windows or in the editor.
+  - Headings get stable anchor ids (lower-case, spaces → `-`, duplicates numbered `-2`, `-3`…) so M4 can link to `[[Page#Section]]` without changing them.
+- Page look (Juku, 2026-10-17): **Wikipedia-like**: serif section headings (Georgia, present on Mac and Windows) with a line under main headings, sans-serif body text, limited text width.
+- Theme-ready styling: every colour, font, size and spacing used by the app moves into CSS variables (no hard-coded colours left). The variable list is documented as the contract for M11 themes and already includes the infobox colours and layout, and the page layout leaves room for a right-floating infobox (infoboxes themselves: M5). Light/dark keeps following the system.
+- Not in M3: page links (M4), infoboxes (M5, Juku confirmed 2026-10-17), images (M6), spoilers (M7), Obsidian-style inline live preview (later), page history.
+- Checkpoint for Juku partway: split editor + toolbar + shortcuts, before tables, footnotes, paste, table of contents and styling.
+- Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen, a ~20,000-word placeholder page types and previews without noticeable lag, undo works after every toolbar action, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it. Windows shortcuts can't be clicked through by Claude; Juku checks them on the PC if he wants them verified.
 
 **After v1 start**
 - **M8 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. Until M8 is done, Juku uses **only one computer** for real content.
@@ -172,3 +203,5 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-17: M2 technical: page and group ids are `/`-separated paths inside `pages/`. A group's name is its folder name (characters invalid in file names become `-`). If two different titles map to the same file name in one folder, the second file gets " (2)" etc.; the real title stays in the front matter. Path-length warning counts the path from the library folder plus 60 characters reserved for the library's location on Windows, warning above 240; the user can continue anyway. Sidebar order is natural alphabetical (ignores case and accents, "Page 2" before "Page 10"). Open/closed groups are remembered in the app's local browser storage on each computer. Drag and drop uses pointer events (the Windows webview intercepts HTML5 drag and drop). Moving a page whose title duplicates another page's is refused, as the unique-title rule says.
 - 2026-10-17: M2 review: groups can be selected; New page / New group create in the selected group, else in the open page's group; project name = top level.
 - 2026-10-17: M2 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer.
+- 2026-10-17: M3 defined: read view + split editor (source | live preview); toolbar with toggling buttons and shortcuts; one Enter = new line; toolbar headings start at `##`; no link button before M4, web links open in the browser; tables, footnotes, paste with formatting and word count added to M3; table of contents as box after the intro plus a right-side panel once the box scrolls away; Wikipedia-like page look; infoboxes stay in M5. Previously unassigned additions placed: tables and footnotes → M3, main page per project → M4.
+- 2026-10-17: M3 technical: the editor uses CodeMirror 6 (undo across toolbar actions, base for `[[` autocomplete in M4 and a later inline live preview, fast on long pages).
