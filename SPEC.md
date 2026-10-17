@@ -2,7 +2,7 @@
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: foundation and feature decisions settled; roadmap M2–M16 drafted. Some open questions remain (see Open items).
+Status: foundation and feature decisions settled; roadmap M2–M16 drafted. Next: define M2 in detail.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -57,6 +57,8 @@ A blank, local desktop program for building personal wikis for fictional stories
 
 ### 6. Spoilers
 - **Inline**, Discord-style: `||hidden text||`. The text stays hidden until clicked to reveal.
+- Spoilers stay hidden everywhere their text appears: page text, infobox fields, hover previews, embeds and search results.
+- A "reveal all spoilers" control exists (scope: see Open items).
 
 ### 7. Working mode
 - Juku doesn't need to understand or maintain the code. Claude builds, tests, and documents. Explanations stay short and user-facing.
@@ -74,13 +76,16 @@ Inspiration: Wikipedia, A Wiki of Ice and Fire (AWOIAF), Chronicler.
 - **Embeds:** insert the content of one page into another (navboxes, item cards, stat blocks). Plain embeds first; embeds with parameters only if needed later. Embed loops are detected and blocked.
 - **Health reports:** auto-generated reports (broken links, orphan pages, unlinked mentions, missing images, duplicate titles, sync conflicts, hidden template values…) with tools to fix them.
 - **Graph view:** Obsidian-style interactive network of linked pages. Must handle thousands of pages: local graph (neighbours of the current page) plus a filterable global graph.
-- **Themes:** user-created, selectable, editable themes. UI styling uses CSS variables from the start so themes are cheap to add.
+- **Themes:** user-created, selectable, editable themes. A theme is either app-wide or belongs to one project (stored in and synced with that project); a project can use its own theme instead of the app-wide one. UI styling uses CSS variables from the start so themes are cheap to add. Colours/fonts only vs. custom CSS: undecided, settle before M11.
 - **Interactive maps:** zoomable, pannable; pins linked to pages with hover preview; drawable regions; nested maps (a pin opens another map); distance measuring.
+  - Map source is a painted image (Photoshop), not SVG. Juku exports a large PNG (ideally 8,000+ px on the long side); the app tiles it for smooth deep zoom. Pins, regions, labels and distance lines are vector overlays drawn by the app and stay sharp at any zoom.
 - **Timelines** with **custom calendars** (own months, eras), fuzzy dates ("c. 250") and date ranges (e.g. reigns).
 - **Family trees:** generated automatically from infobox link fields, editable, and also creatable manually. Must support multiple spouses, unknown parents, intermarriage and incest (the "tree" is really a graph).
+  - Editing a relation in the tree writes it back to the infobox fields of the pages involved (one source of truth).
+  - Trees may contain people without a page (placeholders); a placeholder can later be turned into a page.
 - **Deep search:** full-text search across page text, infobox fields and aliases; finds every mention.
 - **Solar system map:** later version, details to be defined.
-- Additions proposed by Claude (2026-10-17), in the roadmap unless Juku vetoes: red links (link to a missing page, click to create it), "What links here" (backlinks), hover previews for every link, aliases/redirects, automatic table of contents, footnotes/citations, a main page per project, tables, image galleries, quick-open by title (Cmd+O). Page history/undo of edits: later.
+- Additions proposed by Claude and approved by Juku (2026-10-17): red links (link to a missing page, click to create it), "What links here" (backlinks), hover previews for every link, aliases/redirects, automatic table of contents, footnotes/citations, a main page per project, tables, image galleries, quick-open by title (Cmd+O). Page history/undo of edits: later.
 
 ## Milestones
 Milestones are defined here before they are built. Later milestones get added after Juku's feature list.
@@ -114,7 +119,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M7 Spoilers & embeds.**
 
 **After v1 start**
-- **M8 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. *(Timing open — see Open items.)*
+- **M8 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. Until M8 is done, Juku uses **only one computer** for real content.
 - **M9 Health reports.**
 - **M10 Graph view.**
 - **M11 Themes.**
@@ -125,12 +130,8 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M16 Export:** zip, static HTML site.
 
 ## Open items (from Juku)
-- **Sync safety timing:** Juku starts real use after M7, but sync-change detection and conflict copies are planned for M8. Move it earlier, or use only one machine until M8?
-- **Maps:** painted Photoshop map. Proposed: no SVG conversion (auto-tracing a painted map ruins it); export a large PNG, the app tiles it for smooth deep zoom; pins, regions, labels and distance lines are vector overlays drawn by the app and stay sharp. Needs Juku's OK.
-- **Family trees:** does editing the tree write back to the infobox fields (one source of truth), and may trees contain people who have no page?
-- **Spoilers:** hidden in search results, hover previews and infobox fields too? A "reveal all" switch?
-- **Themes:** colours + fonts only, or also custom CSS? Themes per app or per project?
-- **Claude's proposed additions** (section 8): confirm or veto.
+- **Spoilers:** scope of "reveal all" — per page, everywhere (global switch), or both? Needed before M7.
+- **Themes:** colours + fonts only, or also custom CSS? Needed before M11.
 - Visual references (beyond Wikipedia/AWOIAF/Chronicler: what exactly he likes about them)
 - App name
 
@@ -144,3 +145,4 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-17: technical: Tauri 2 + React + TypeScript; Rust handles all file access. File/folder names follow the page/project name and change on rename. Per-machine settings in the OS app-config folder (`settings.json`). App id `io.github.zzjuku.ownwiki`, display name "Own WIKI" (placeholder until the app name is decided). Windows installer is NSIS, built by `.github/workflows/windows.yml` and attached to each run as an artifact.
 - 2026-10-17: every milestone ends with Juku's review on his Mac; the app is installed to Applications at each review handoff; out-of-scope feedback is either added or recorded for a later milestone, his choice.
 - 2026-10-17: feature list from Juku recorded (section 8). Groups = nested folders, categories = tags, project-wide unique titles; manual `[[ ]]` links with display text; editor option A (Markdown + toolbar + live side preview); template changes propagate, deleted fields are hidden not deleted; Discord-style `||spoilers||`; maps with regions, nested maps and distance; custom calendars with fuzzy dates and ranges; family trees auto-generated, editable and manual, supporting complex relations; solar system map later. Roadmap M2–M16 drafted; real use starts after M7.
+- 2026-10-17: one computer only until M8 (sync safety stays in M8); maps from a large exported PNG with tiled zoom and vector overlays, no SVG conversion; family-tree edits write back to infobox fields, placeholder people without pages allowed; spoilers hidden everywhere incl. search, previews and infoboxes, with a reveal-all control; themes app-wide or per project; all of Claude's proposed additions approved.
