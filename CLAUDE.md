@@ -12,4 +12,5 @@
 - **Keep SPEC.md current.** When a decision changes or a new one is made, update the relevant section and add a dated line to the decision log.
 - **Ask Juku whenever an instruction of his is ambiguous, unclear, or open to more than one reading — before building on it.** Don't guess at what he meant. Name the specific options you see.
 - Features, look and behaviour are always his call. Purely technical details his instructions don't touch, decide yourself and note significant ones in the decision log.
+- **Git:** commit and push directly to `main` (no branches or pull requests needed). Run `git pull --rebase` right before every push, because planning chats also push. Only push states that build and pass tests. Never force-push.
 - Replies: short and direct, no repetition. Don't drop important questions or trade-offs to stay short.
