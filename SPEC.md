@@ -2,7 +2,7 @@
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: foundation and feature decisions settled; roadmap M2–M16 drafted. Next: define M2 in detail.
+Status: foundation and feature decisions settled; roadmap M2–M16 drafted; M2 defined and ready to build.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -111,12 +111,32 @@ Milestones are defined here before they are built. Later milestones get added af
 Order follows dependencies: typed fields before maps/timelines/trees; links before graph and health reports. Each milestone gets its detailed scope here before it is built. Juku plans to start entering real content **after M7**.
 
 **v1**
-- **M2 Structure:** groups (nested folders), sidebar tree, move pages between groups, quick-open by title, project-wide unique titles, path-length warning.
+- **M2 Structure:** groups (nested folders), sidebar tree, move pages between groups, quick-open by title, project-wide unique titles, path-length warning. *(Detailed scope below.)*
 - **M3 Editor:** split-screen live preview, toolbar + shortcuts, table of contents, theme-ready styling (CSS variables). Replaces M1's separate View/Edit modes for editing.
 - **M4 Links:** `[[ ]]` with autocomplete and display text, red links, backlinks, link rewrite on rename, hover previews, aliases/redirects. Introduces the link index in `.cache/`.
 - **M5 Templates & infoboxes:** template editor, typed fields, AWOIAF-style infobox. Date fields are stored in a calendar-ready format (era, year, optional month/day, approximate flag, ranges) so M13 doesn't need a migration.
 - **M6 Images & categories:** image import into `assets/`, captions, galleries, categories with automatic category pages.
 - **M7 Spoilers & embeds.**
+
+**M2 — Structure (defined 2026-10-17, ready to build)**
+- Groups:
+  - Create a group at the top level of a project or inside another group (any depth). Empty groups are allowed.
+  - Rename a group (renames its folder).
+  - Move a group into another group or to the top level. Moving a group into itself or one of its own subgroups is blocked.
+  - Delete a group: after a confirmation that states how many pages and subgroups are inside, the whole group with its contents goes to the system Trash / Recycle Bin.
+  - Group names are unique among siblings (case-insensitive). A move that would collide with a same-named group in the target is refused with a clear message (no merging).
+- Pages:
+  - Create a page at the top level or inside a group.
+  - Move pages between groups and to the top level.
+  - Existing M1 pages stay at the top level.
+  - The page header shows the page's group path (breadcrumb).
+- Moving (pages and groups): both **drag and drop** in the sidebar and a **"Move to…"** menu with a group picker.
+- Sidebar tree: replaces M1's flat page list. Groups expand/collapse; expanded state is remembered per machine (not synced). Order is **alphabetical**, groups listed before pages. Must stay fast with thousands of pages.
+- Quick-open: **Cmd+O** (Ctrl+O on Windows) opens a search box that finds pages by title as you type and opens the chosen page.
+- Unique titles: creating, renaming or moving a page checks the title against every page in the project (case-insensitive). If taken, the message names the existing page and its group.
+- Path-length warning: when a create, rename or move would make a file path longer than ~240 characters, the app warns (applies on Mac too, because the files sync to Windows).
+- Not in M2: group overview pages (later, see Open items), file watching/sync (M8).
+- Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen (including a test project with several hundred placeholder pages in nested groups to check speed), the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
 
 **After v1 start**
 - **M8 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. Until M8 is done, Juku uses **only one computer** for real content.
@@ -132,6 +152,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 ## Open items (from Juku)
 - **Spoilers:** scope of "reveal all" — per page, everywhere (global switch), or both? Needed before M7.
 - **Themes:** colours + fonts only, or also custom CSS? Needed before M11.
+- **Group overview pages** (a page per group listing its contents, maybe with own text): wanted later; overlaps with category pages (M6), decide where it fits after M6.
 - Visual references (beyond Wikipedia/AWOIAF/Chronicler: what exactly he likes about them)
 - App name
 
@@ -146,3 +167,4 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-17: every milestone ends with Juku's review on his Mac; the app is installed to Applications at each review handoff; out-of-scope feedback is either added or recorded for a later milestone, his choice.
 - 2026-10-17: feature list from Juku recorded (section 8). Groups = nested folders, categories = tags, project-wide unique titles; manual `[[ ]]` links with display text; editor option A (Markdown + toolbar + live side preview); template changes propagate, deleted fields are hidden not deleted; Discord-style `||spoilers||`; maps with regions, nested maps and distance; custom calendars with fuzzy dates and ranges; family trees auto-generated, editable and manual, supporting complex relations; solar system map later. Roadmap M2–M16 drafted; real use starts after M7.
 - 2026-10-17: one computer only until M8 (sync safety stays in M8); maps from a large exported PNG with tiled zoom and vector overlays, no SVG conversion; family-tree edits write back to infobox fields, placeholder people without pages allowed; spoilers hidden everywhere incl. search, previews and infoboxes, with a reveal-all control; themes app-wide or per project; all of Claude's proposed additions approved.
+- 2026-10-17: M2 defined: moving via drag and drop and "Move to…"; deleting a non-empty group trashes it with its contents after a confirmation; alphabetical sidebar order (groups first); group overview pages postponed; M1 pages stay at top level.
