@@ -20,8 +20,10 @@ export const KINDS: KindInfo[] = [
   { kind: "yesno", label: "Yes/No", hasValue: true },
   { kind: "choice", label: "Choice", hasValue: true },
   { kind: "list", label: "List", hasValue: true },
-  { kind: "link", label: "Page link", hasValue: true },
-  { kind: "links", label: "Page links", hasValue: true },
+  // One type for links to pages: one page or several (Juku, 2026-10-18).
+  // "link" (exactly one page) still reads and edits, but isn't offered.
+  { kind: "links", label: "Page link", hasValue: true },
+  { kind: "link", label: "Page link (one page)", hasValue: true },
   { kind: "linkedfrom", label: "Linked from", hasValue: false },
   { kind: "date", label: "Date", hasValue: true },
   { kind: "image", label: "Image", hasValue: true },

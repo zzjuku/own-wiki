@@ -2,7 +2,7 @@
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: M1–M4 done; M5 defined, next to build; roadmap M6–M16 drafted.
+Status: M1–M5 done; roadmap M6–M16 drafted, M6 next to define.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -115,7 +115,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M2 Structure:** groups (nested folders), sidebar tree, move pages between groups, quick-open by title, project-wide unique titles, path-length warning. *(Detailed scope below.)*
 - **M3 Editor:** split-screen live preview, toolbar + shortcuts, table of contents, tables, footnotes, paste with formatting, word count, Wikipedia-like page look, theme-ready styling (CSS variables). *(Detailed scope below.)*
 - **M4 Links:** `[[ ]]` with autocomplete and display text, red links, backlinks, link rewrite on rename, hover previews, aliases/redirects, main page per project, back/forward. Introduces the link index in `.cache/`. *(Detailed scope below.)*
-- **M5 Templates & infoboxes:** template editor, typed fields, AWOIAF-style infobox, reverse fields, image fields (basic image import moved here from M6). Date fields are stored in a calendar-ready format (era, year, optional month/day, approximate flag, ranges) so M13 doesn't need a migration. *(Detailed scope below.)*
+- **M5 Templates & infoboxes:** template editor, typed fields, AWOIAF-style infobox, image fields (reverse fields postponed, see Open items) (basic image import moved here from M6). Date fields are stored in a calendar-ready format (era, year, optional month/day, approximate flag, ranges) so M13 doesn't need a migration. *(Detailed scope below.)*
 - **M6 Images & categories:** images in page text, captions, galleries, drag and drop, categories with automatic category pages (image import into `assets/` itself arrives in M5). To discuss: templates that add categories automatically.
 - **M7 Spoilers & embeds.**
 
@@ -212,7 +212,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - Checkpoint for Juku partway: link syntax, autocomplete, Link button, red links incl. creating pages from them, following links, back/forward. Then: rename rewrite, backlinks, previews, aliases, main page, title rule.
 - Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen, a test project with 5,000 placeholder pages and ~20 links each reopens in under 1 s, autocomplete has no noticeable delay, renaming a page with 500 backlinks finishes within a few seconds and leaves no stale links, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
 
-**M5 — Templates & infoboxes (defined 2026-10-18)**
+**M5 — Templates & infoboxes (done 2026-10-18)**
 - Model (Juku, 2026-10-18): a template is a **starting point**. A page created from it gets its own copy of the template's fields, colour and starter text. Editing, renaming or deleting a template never changes existing pages by itself. Each page can add, remove, rename and reorder its own fields.
 - Templates screen (per project):
   - Create, rename, copy and delete templates. Deleting a template leaves every page as it is.
@@ -224,7 +224,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - Field types:
   - **Text** (one line) and **Long text**: bold, italic and `[[links]]` work, with the same shortcuts (Cmd+B, Cmd+I, Cmd+K) and `[[` autocomplete as the editor. (Juku, 2026-10-18, checkpoint review:) each text field also shows **Bold**, **Italic** and **Link** buttons while in use, and clicking a link in a field opens the M4 Edit link popup.
   - **Number**, **Yes/No**, **Choice** (a dropdown with own options), **List** (several text entries).
-  - **Page link** (one page) and **Page links** (several).
+  - **Page link**: one page or several (Juku, 2026-10-18: one type instead of separate Page link / Page links).
   - **Linked from** and **Two-way** fields: postponed (Juku, 2026-10-18), see Open items.
   - **Date:** year (whole number, negative allowed), era (short free text until M13), optional month and day (numbers until M13), qualifier exact / c. / before / after. Field option **allow ranges**: start and end date, the end can be open ("present"). Shown e.g. "c. 250 Era", "12.3.250 Era" (day.month.year, Juku 2026-10-18) or "283 – 298 Era". M13 maps eras and month numbers to the real calendar without a migration.
   - **Image:** pick an image file (PNG, JPG, GIF, WebP); it's copied into the project's `assets/` folder; with a caption. Removing it from the field doesn't delete the file (unused images: M9).
@@ -293,3 +293,5 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-18: M5 technical: template field keys are random ("f-k2j4"), never reused, so Apply can't mistake a deleted field for a new one; template ids are readable plus random ("template-a-54px"). Images are served to the page through a `wikiasset:` URL scheme that only reads a project's `assets/` folder.
 - 2026-10-18: M5 checkpoint answers (Juku): dates shown day.month.year ("12.3.250 AC") until M13; Apply details left to Claude (re-adds template fields deleted on a page; a page's own field with the same name as a new template field becomes that field); Linked from and two-way fields postponed (Open items).
 - 2026-10-18: M5 built (Claude's choices, open to Juku's review): Page link fields suggest titles and aliases as you type and show missing pages in red; date fields have boxes for qualifier, day, month, year and era, ranges add "To" with a "present" tick; image fields show a thumbnail with Replace/Remove (Remove keeps the file in `assets/`), the same image file imported twice is stored once; Apply shows per page what changes ("adds 2 fields · hides 1 value"); copying a template whose name is taken shows a box for a new name (untick = skip). Measured (release build, 5,000 pages with infoboxes): reopen 12 ms, Apply to 1,000 pages 3.2 s.
+- 2026-10-18: M5 review (Juku): Page link and Page links merged into one **Page link** type that holds one page or several (stored as a list; fields of the older one-page type still read and edit).
+- 2026-10-18: M5 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer.

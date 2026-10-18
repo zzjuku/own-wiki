@@ -16,7 +16,7 @@ import { useLinkContext, useWiki } from "./wiki";
 import { norm } from "./wikilinks";
 
 /** Field types offered (Linked from is postponed; see SPEC.md, Open items). */
-export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "link", "links", "date", "image", "heading"];
+export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "links", "date", "image", "heading"];
 
 const STATUS_TEXT: Record<SaveStatus, string> = {
   saved: "Saved",
