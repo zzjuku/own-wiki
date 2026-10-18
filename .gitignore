@@ -29,3 +29,4 @@ src-tauri/target
 # Playwright
 test-results
 playwright-report
+*.tsbuildinfo
