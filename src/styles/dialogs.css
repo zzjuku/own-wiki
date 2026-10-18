@@ -1,0 +1,232 @@
+/* Dialogs */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 18vh;
+  background: var(--backdrop);
+}
+.dialog {
+  width: min(440px, 90vw);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+.dialog h2 {
+  font-size: var(--text-lg);
+  margin-bottom: 14px;
+}
+.dialog p {
+  margin: 0 0 8px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.field input {
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+}
+.path {
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--bg-soft);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  word-break: break-all;
+}
+.field select {
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+}
+.dialog .field + .field {
+  margin-top: 12px;
+}
+.dialog-note {
+  font-size: var(--text-md);
+  color: var(--muted);
+  margin: 0 0 12px !important;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: var(--text-md);
+}
+.dialog-error {
+  color: var(--danger);
+  font-size: var(--text-md);
+  margin-top: 10px !important;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+.dialog-warning {
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-size: var(--text-md);
+  margin-top: 12px !important;
+}
+.dialog.wide {
+  width: min(520px, 92vw);
+}
+.picker-filter,
+.quick-input {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+}
+.picker {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.picker button {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 4px 10px;
+}
+.picker button.selected {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.picker button:disabled {
+  opacity: 0.55;
+}
+.picker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.picker-note {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+/* Quick open */
+.backdrop:has(.quick-open) {
+  padding-top: 12vh;
+}
+.dialog.quick-open {
+  width: min(560px, 92vw);
+  padding: 10px;
+}
+.quick-input {
+  font-size: var(--text-lg);
+  padding: 9px 12px;
+}
+.quick-results {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.quick-results li[role="option"] {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.quick-results li.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.quick-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-alias {
+  font-size: var(--text-sm);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.quick-new .quick-title {
+  color: var(--link-new);
+}
+.quick-new.active .quick-title {
+  color: inherit;
+}
+.quick-group {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+}
+
+/* While dragging, the project name is the drop target for the top level. */
+body.dragging .project-name {
+  outline: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+body.dragging .project-name::after {
+  content: " · top level";
+  font-weight: 400;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+body.drag-root .project-name {
+  background: var(--drop);
+  outline: 2px solid var(--accent);
+}
+
+.project-name.selected,
+.tree-row.is-group.selected {
+  background: var(--drop);
+}
+.target-hint {
+  margin: -4px 0 0;
+  padding: 0 6px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.target-hint strong {
+  font-weight: 600;
+  color: var(--text);
+}
+

@@ -1,0 +1,334 @@
+/* ---- M5: templates and infoboxes ---- */
+/* Heading lines stop at a floating infobox (as on Wikipedia). */
+.markdown h1,
+.markdown h2 {
+  overflow: hidden;
+}
+[hidden] {
+  display: none !important;
+}
+.split-preview {
+  container-type: inline-size;
+}
+.split-source {
+  display: flex;
+  flex-direction: column;
+}
+.split-source-text {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+/* The box in the read view and preview (AWOIAF style) */
+.markdown .infobox {
+  float: right;
+  clear: right;
+  width: var(--infobox-width);
+  max-width: 100%;
+  margin: 0.3em 0 1em var(--infobox-gap);
+  padding: 3px;
+  background: var(--infobox-bg);
+  border: 1px solid var(--infobox-border);
+  font-size: var(--infobox-font-size);
+  line-height: 1.5;
+}
+.markdown .infobox table {
+  width: 100%;
+  margin: 0;
+  border: none;
+  border-collapse: collapse;
+  background: none;
+}
+.markdown .infobox th,
+.markdown .infobox td {
+  border: none;
+  background: none;
+  padding: var(--infobox-padding);
+  vertical-align: top;
+  text-align: left;
+}
+.markdown .infobox th.infobox-title {
+  background: var(--infobox-header-bg);
+  color: var(--infobox-header-text);
+  text-align: center;
+  font-size: 125%;
+  font-weight: 700;
+  padding: 0.25em 0.4em;
+}
+.markdown .infobox th.infobox-heading {
+  background: var(--infobox-header-bg);
+  color: var(--infobox-header-text);
+  text-align: center;
+  font-weight: 700;
+}
+.markdown .infobox tr + tr > th.infobox-heading {
+  border-top: 3px solid var(--infobox-bg);
+}
+.markdown .infobox th.infobox-label {
+  width: 38%;
+  font-weight: 700;
+  color: var(--infobox-label);
+}
+.markdown .infobox td.infobox-image {
+  text-align: center;
+  padding: 0.4em;
+}
+.infobox-image img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+.infobox-caption {
+  font-size: 92%;
+  padding-top: 0.2em;
+  text-align: center;
+}
+.infobox-value p,
+.infobox-value ul,
+.infobox-value ol {
+  margin: 0 0 0.3em;
+}
+.infobox-value > :last-child {
+  margin-bottom: 0;
+}
+.infobox-placeholder,
+.markdown .infobox td.infobox-empty {
+  color: var(--muted);
+  font-style: italic;
+  text-align: center;
+}
+.infobox-image-placeholder {
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--infobox-border);
+  color: var(--muted);
+}
+/* Narrow windows: the box sits above the text. */
+@container (max-width: 620px) {
+  .markdown .infobox {
+    float: none;
+    margin: 0.3em auto 1em;
+  }
+}
+
+/* Sidebar */
+.templates-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  text-align: left;
+}
+.templates-button.selected {
+  background: var(--drop);
+}
+
+/* Text | Infobox tabs */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.tab {
+  border: none;
+  background: none;
+  padding: 2px 12px;
+  border-radius: 4px;
+  font-size: var(--text-sm);
+}
+.tab.active,
+.tab.active:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Inputs on the template screen and in the Infobox tab */
+.templates-view input:not([type="checkbox"]):not([type="color"]),
+.templates-view select,
+.infobox-form input:not([type="checkbox"]):not([type="color"]),
+.infobox-form select {
+  font: inherit;
+  font-size: var(--text-md);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 7px;
+  min-width: 0;
+}
+.hint {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  margin: 6px 0;
+}
+.small {
+  font-size: var(--text-sm);
+}
+
+/* Small editor for field values and starter text */
+.mini-editor {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.mini-editor:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.mini-body {
+  display: flex;
+  align-items: flex-start;
+}
+.mini-host {
+  flex: 1;
+  min-width: 0;
+}
+/* Bold, Italic and Link buttons: shown while the field is hovered or in use. */
+.mini-actions {
+  display: flex;
+  gap: 1px;
+  padding: 2px 3px 0 0;
+  visibility: hidden;
+}
+.mini-editor:hover .mini-actions,
+.mini-editor:focus-within .mini-actions {
+  visibility: visible;
+}
+.mini-actions .tool {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 4px;
+  font-size: var(--text-sm);
+}
+.mini-editor.multi .cm-editor {
+  min-height: 4.6em;
+}
+.mini-editor.starter-text .cm-editor {
+  min-height: 9em;
+  max-height: 45vh;
+}
+.mini-editor .cm-scroller {
+  overflow-y: auto;
+}
+.mini-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--toolbar-bg);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.mini-toolbar .tool {
+  height: 24px;
+  font-size: var(--text-sm);
+}
+
+/* Colour picker */
+.color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.swatch {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+button.swatch:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+.swatch.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.swatch.theme-swatch,
+button.swatch.theme-swatch:hover:not(:disabled) {
+  background: var(--infobox-header-bg);
+  color: var(--infobox-header-text);
+  font-weight: 700;
+}
+.custom-swatch {
+  color: var(--muted);
+  background: var(--bg);
+  font-size: var(--text-md);
+}
+.custom-swatch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Chips (choice options, field names) */
+.chips {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.templates-view .chips-input,
+.infobox-form .chips-input {
+  flex: 1;
+  min-width: 150px;
+  padding: 2px 6px;
+  border-style: dashed;
+  font-size: var(--text-sm);
+}
+
+/* Drag to reorder */
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 26px;
+  color: var(--muted);
+  fill: currentColor;
+  cursor: grab;
+  flex-shrink: 0;
+  touch-action: none;
+}
+.drag-handle:hover {
+  color: var(--text);
+}
+.reorder-source {
+  opacity: 0.45;
+}
+.drop-before {
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+.drop-after {
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+body.reordering,
+body.reordering * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+

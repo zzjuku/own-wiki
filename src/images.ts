@@ -35,11 +35,11 @@ export const SIZES: { value: ImageSize; label: string }[] = [
   { value: "large", label: "Large" },
 ];
 
-/** Width on the page in CSS pixels (must match .wiki-image in styles.css). */
+/** Width on the page in CSS pixels (must match .wiki-image in styles/images.css). */
 export const SIZE_PX: Record<ImageSize, number> = { small: 160, medium: 250, large: 400 };
 /** Full-width images are shown from a copy at most this wide. */
 export const FULL_PX = 1200;
-/** Gallery cells (must match .wiki-gallery in styles.css). */
+/** Gallery cells (must match .wiki-gallery in styles/images.css). */
 export const GALLERY_PX = 170;
 
 const POS_WORDS: Record<string, ImagePos> = { right: "right", left: "left", center: "center", centre: "center", full: "full" };

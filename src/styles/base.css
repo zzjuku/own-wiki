@@ -1,0 +1,136 @@
+:root {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  overflow: hidden;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 650;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+button.primary:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.08);
+}
+button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--danger-text);
+}
+button.danger-text {
+  color: var(--danger);
+}
+button.plain {
+  border: none;
+  background: none;
+  padding: 4px 6px;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.muted {
+  color: var(--muted);
+}
+.spacer {
+  flex: 1;
+}
+.row {
+  display: flex;
+  gap: 8px;
+}
+.empty {
+  color: var(--muted);
+}
+.empty.small {
+  font-size: var(--text-sm);
+  padding: 4px 8px;
+}
+.empty.center {
+  text-align: center;
+  margin-top: 20vh;
+}
+
+/* Error banner */
+.banner {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(640px, 90vw);
+  padding: 8px 8px 8px 14px;
+  border-radius: var(--radius);
+  background: var(--danger);
+  color: var(--danger-text);
+  box-shadow: var(--shadow);
+}
+.banner button {
+  color: var(--danger-text);
+}
+
+/* Welcome */
+.welcome {
+  max-width: 460px;
+  margin: 18vh auto 0;
+  padding: 0 24px;
+  text-align: center;
+}
+.welcome h1 {
+  font-size: var(--text-display);
+  margin-bottom: 12px;
+}
+.welcome button {
+  margin-top: 12px;
+  padding: 8px 18px;
+}
+

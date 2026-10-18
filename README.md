@@ -11,6 +11,7 @@ Needs Node.js and Rust.
 ```bash
 npm install
 npm test                          # frontend + Rust tests
+npm run test:ui                   # UI tests (Playwright; once: npx playwright install chromium)
 npm run tauri dev                 # run the app with live reload
 npx tauri build --bundles app     # build the Mac app (src-tauri/target/release/bundle/macos/)
 ```

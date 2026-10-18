@@ -25,3 +25,7 @@ dist-ssr
 
 # Tauri build output
 src-tauri/target
+
+# Playwright
+test-results
+playwright-report
