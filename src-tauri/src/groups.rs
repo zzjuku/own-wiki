@@ -170,7 +170,7 @@ mod tests {
         create_group(lib.path(), &p, "", "Group A", false).unwrap();
         create_group(lib.path(), &p, "", "Group B", false).unwrap();
         create_group(lib.path(), &p, "Group A", "Sub", false).unwrap();
-        create_page(lib.path(), &p, "Group A/Sub", "Page A", false, &[]).unwrap();
+        create_page(lib.path(), &p, "Group A/Sub", "Page A", false, &[], None).unwrap();
         assert!(matches!(
             rename_group(lib.path(), &p, "Group A", "GROUP B", false),
             Err(AppError::Exists(_))
@@ -189,7 +189,7 @@ mod tests {
         let (lib, p) = setup();
         create_group(lib.path(), &p, "", "Group A", false).unwrap();
         create_group(lib.path(), &p, "", "Group B", false).unwrap();
-        create_page(lib.path(), &p, "Group A", "Page A", false, &[]).unwrap();
+        create_page(lib.path(), &p, "Group A", "Page A", false, &[], None).unwrap();
         let g = move_group(lib.path(), &p, "Group A", "Group B", false).unwrap();
         assert_eq!(g.id, "Group B/Group A");
         assert_eq!(ids(lib.path(), &p).1, ["Group B/Group A/Page A.md"]);
@@ -234,7 +234,7 @@ mod tests {
         let long = "x".repeat(100);
         create_group(lib.path(), &p, "", "Short", false).unwrap();
         create_group(lib.path(), &p, "Short", &long, false).unwrap();
-        create_page(lib.path(), &p, &format!("Short/{long}"), &"y".repeat(50), false, &[]).unwrap();
+        create_page(lib.path(), &p, &format!("Short/{long}"), &"y".repeat(50), false, &[], None).unwrap();
         // Renaming the outer group to a long name makes the page's path too long.
         assert!(matches!(
             rename_group(lib.path(), &p, "Short", &"z".repeat(40), false),
@@ -255,8 +255,8 @@ mod tests {
         let (lib, p) = setup();
         create_group(lib.path(), &p, "", "Group A", false).unwrap();
         create_group(lib.path(), &p, "Group A", "Sub", false).unwrap();
-        create_page(lib.path(), &p, "Group A/Sub", "Page A", false, &[]).unwrap();
-        create_page(lib.path(), &p, "", "Page B", false, &[]).unwrap();
+        create_page(lib.path(), &p, "Group A/Sub", "Page A", false, &[], None).unwrap();
+        create_page(lib.path(), &p, "", "Page B", false, &[], None).unwrap();
         delete_group(lib.path(), &p, "Group A").unwrap();
         let (groups, pages) = ids(lib.path(), &p);
         assert!(groups.is_empty());

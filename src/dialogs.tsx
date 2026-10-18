@@ -7,10 +7,17 @@ import { errorText, isLongPath } from "./api";
 // warning and a second click retries with true.
 
 export interface PromptExtra {
-  /** The drop-down's choice. */
-  selected: string;
+  /** Each drop-down's choice, by its key. */
+  selected: Record<string, string>;
   /** The checkbox's state. */
   checked: boolean;
+}
+
+export interface PromptSelect {
+  key: string;
+  label: string;
+  options: { id: string; label: string }[];
+  initial: string;
 }
 
 interface PromptOptions {
@@ -19,8 +26,8 @@ interface PromptOptions {
   initial?: string;
   /** Extra text under the input. */
   note?: ReactNode;
-  /** A drop-down under the input. */
-  select?: { label: string; options: { id: string; label: string }[]; initial: string };
+  /** Drop-downs under the input. */
+  selects?: PromptSelect[];
   /** A checkbox under the input. */
   checkbox?: { label: string; initial?: boolean };
   confirmLabel: string;
@@ -102,7 +109,9 @@ export function DialogProvider({ children }: { children: ReactNode }) {
 function Dialog({ open, close }: { open: Open; close: () => void }) {
   const [value, setValue] = useState(open.kind === "prompt" ? (open.initial ?? "") : "");
   const [picked, setPicked] = useState<string | null>(null);
-  const [selected, setSelected] = useState(open.kind === "prompt" ? (open.select?.initial ?? "") : "");
+  const [selected, setSelected] = useState<Record<string, string>>(() =>
+    open.kind === "prompt" ? Object.fromEntries((open.selects ?? []).map((s) => [s.key, s.initial])) : {},
+  );
   const [checked, setChecked] = useState(open.kind === "prompt" ? (open.checkbox?.initial ?? false) : false);
   const [error, setError] = useState<string | null>(null);
   const [longWarning, setLongWarning] = useState<string | null>(null);
@@ -179,24 +188,25 @@ function Dialog({ open, close }: { open: Open; close: () => void }) {
             />
           </label>
         )}
-        {open.kind === "prompt" && open.select && (
-          <label className="field">
-            <span>{open.select.label}</span>
-            <select
-              value={selected}
-              onChange={(e) => {
-                setSelected(e.target.value);
-                edited();
-              }}
-            >
-              {open.select.options.map((o) => (
-                <option key={o.id || "(top)"} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        {open.kind === "prompt" &&
+          open.selects?.map((sel) => (
+            <label className="field" key={sel.key}>
+              <span>{sel.label}</span>
+              <select
+                value={selected[sel.key] ?? ""}
+                onChange={(e) => {
+                  setSelected((prev) => ({ ...prev, [sel.key]: e.target.value }));
+                  edited();
+                }}
+              >
+                {sel.options.map((o) => (
+                  <option key={o.id || "(none)"} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
         {open.kind === "prompt" && open.checkbox && (
           <label className="check">
             <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />

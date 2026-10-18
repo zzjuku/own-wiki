@@ -2,6 +2,7 @@
 // links: resolving names, following links, and creating pages from red links.
 import { createContext, useCallback, useContext, useMemo } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import type { Template } from "./api";
 import type { LinkContext } from "./markdown";
 import { slugify } from "./markdown";
 import type { NameIndex } from "./names";
@@ -21,6 +22,8 @@ export interface Wiki {
   follow: (target: FollowTarget) => void;
   /** A red link was clicked: offer to create the page. `fromPage` decides the suggested group. */
   createFromLink: (title: string, fromPage?: string) => void;
+  /** The project's templates. */
+  templates: Template[];
 }
 
 export const WikiContext = createContext<Wiki | null>(null);

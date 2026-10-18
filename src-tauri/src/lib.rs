@@ -1,11 +1,14 @@
+mod assets;
 mod error;
 mod fsutil;
 mod groups;
 mod index;
+mod infobox;
 mod pages;
 mod projects;
 mod relink;
 mod settings;
+mod templating;
 mod tree;
 mod wikilinks;
 
@@ -16,9 +19,11 @@ use tauri::{Manager, State};
 
 use error::{AppError, AppResult};
 use index::ProjectIndex;
+use infobox::{Infobox, Template};
 use pages::Page;
 use projects::ProjectInfo;
-use relink::{Backlink, LinkCount, Preview, RenameResult};
+use relink::{Backlink, IncomingField, LinkCount, Preview, RenameResult};
+use templating::ApplyResult;
 use settings::Settings;
 use tree::{GroupInfo, PageInfo, Tree};
 use wikilinks::{Heading, norm};
@@ -123,9 +128,20 @@ fn create_page(
     group: String,
     title: String,
     allow_long: bool,
+    template: Option<String>,
 ) -> AppResult<PageInfo> {
     state.with_index(&project, true, |library, idx| {
-        let info = pages::create_page(library, &project, &group, &title, allow_long, &idx.page_infos())?;
+        let template = match template {
+            Some(id) => Some(
+                projects::templates(&idx.dir)?
+                    .into_iter()
+                    .find(|t| t.id == id)
+                    .ok_or_else(|| AppError::NotFound("That template doesn't exist any more.".into()))?,
+            ),
+            None => None,
+        };
+        let info =
+            pages::create_page(library, &project, &group, &title, allow_long, &idx.page_infos(), template.as_ref())?;
         idx.refresh(&[&info.id])?;
         Ok(info)
     })
@@ -143,6 +159,59 @@ fn save_page(state: State<'_, AppState>, project: String, id: String, body: Stri
         idx.reload_page(&id);
         Ok(())
     })
+}
+
+#[tauri::command(async)]
+fn save_infobox(
+    state: State<'_, AppState>,
+    project: String,
+    id: String,
+    infobox: Option<Infobox>,
+) -> AppResult<()> {
+    state.with_index(&project, false, |library, idx| {
+        pages::save_infobox(library, &project, &id, infobox.as_ref())?;
+        idx.reload_page(&id);
+        Ok(())
+    })
+}
+
+/// Templates of any project (also another one, for copying templates).
+#[tauri::command]
+fn get_templates(state: State<AppState>, project: String) -> AppResult<Vec<Template>> {
+    projects::templates(&projects::project_dir(&state.library()?, &project)?)
+}
+
+#[tauri::command(async)]
+fn set_templates(state: State<'_, AppState>, project: String, templates: Vec<Template>) -> AppResult<()> {
+    state.with_index(&project, false, |_, idx| projects::set_templates(&idx.dir, &templates))
+}
+
+#[tauri::command(async)]
+fn template_pages(state: State<'_, AppState>, project: String, id: String) -> AppResult<Vec<PageInfo>> {
+    state.with_index(&project, true, |_, idx| Ok(templating::template_pages(idx, &id)))
+}
+
+#[tauri::command(async)]
+fn apply_template(
+    state: State<'_, AppState>,
+    project: String,
+    id: String,
+    pages: Option<Vec<String>>,
+    dry_run: bool,
+) -> AppResult<ApplyResult> {
+    state.with_index(&project, true, |library, idx| {
+        templating::apply(library, &project, idx, &id, pages.as_deref(), dry_run)
+    })
+}
+
+#[tauri::command(async)]
+fn incoming_fields(state: State<'_, AppState>, project: String, id: String) -> AppResult<Vec<IncomingField>> {
+    state.with_index(&project, false, |_, idx| relink::incoming_fields(idx, &id))
+}
+
+#[tauri::command(async)]
+fn import_image(state: State<'_, AppState>, project: String, path: String) -> AppResult<String> {
+    assets::import_image(&state.library()?, &project, std::path::Path::new(&path))
 }
 
 #[tauri::command(async)]
@@ -299,6 +368,20 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        // Images in a project's assets/ folder: wikiasset://localhost/<project>%2F<file>
+        // (http://wikiasset.localhost/… on Windows).
+        .register_uri_scheme_protocol("wikiasset", |ctx, request| {
+            let state = ctx.app_handle().state::<AppState>();
+            let found = state.library().and_then(|lib| assets::resolve_url_path(&lib, request.uri().path()));
+            let response = match found.and_then(|path| Ok((std::fs::read(&path)?, path))) {
+                Ok((data, path)) => tauri::http::Response::builder()
+                    .header("Content-Type", assets::mime_type(&path.to_string_lossy()))
+                    .header("Cache-Control", "no-cache")
+                    .body(data),
+                Err(_) => tauri::http::Response::builder().status(404).body(Vec::new()),
+            };
+            response.unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
+        })
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
             let settings = settings::load(&config_dir);
@@ -333,6 +416,13 @@ pub fn run() {
             link_preview,
             backlinks,
             link_count,
+            save_infobox,
+            get_templates,
+            set_templates,
+            template_pages,
+            apply_template,
+            incoming_fields,
+            import_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

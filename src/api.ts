@@ -48,6 +48,8 @@ export interface Preview {
   text: string;
   /** Heading text of the section shown, if one was asked for and exists. */
   section: string | null;
+  /** The page's first infobox image (file inside assets/). */
+  image: string | null;
 }
 
 export interface Backlink {
@@ -58,6 +60,8 @@ export interface Backlink {
   via: string[];
   /** Lines containing the links (when asked for). */
   lines: string[];
+  /** Infobox fields that link here. */
+  fields: string[];
 }
 
 export interface RenameResult {
@@ -73,8 +77,88 @@ export interface LinkCount {
   pages: number;
 }
 
+export type FieldKind =
+  | "text"
+  | "longtext"
+  | "number"
+  | "yesno"
+  | "choice"
+  | "list"
+  | "link"
+  | "links"
+  | "linkedfrom"
+  | "date"
+  | "image"
+  | "heading";
+
+/** A field definition, and on pages its value. See src-tauri/src/infobox.rs. */
+export interface Field {
+  /** Template fields: stable id. Page fields: the template field they came from (absent: the page's own). */
+  key?: string;
+  label: string;
+  type: FieldKind;
+  hint?: string;
+  /** choices (choice), twoWay (link, links), from (linkedfrom), ranges (date). */
+  options?: FieldOptions;
+  value?: unknown;
+  [extra: string]: unknown;
+}
+
+export interface FieldOptions {
+  choices?: string[];
+  twoWay?: boolean;
+  from?: string[];
+  ranges?: boolean;
+  [extra: string]: unknown;
+}
+
+export interface Template {
+  id: string;
+  name: string;
+  color?: string | null;
+  starterText?: string;
+  fields: Field[];
+  [extra: string]: unknown;
+}
+
+export interface Infobox {
+  /** Id of the template the page came from. */
+  template?: string | null;
+  color?: string | null;
+  /** The page chose its own colour. */
+  ownColor?: boolean;
+  fields: Field[];
+  hidden?: Field[];
+  [extra: string]: unknown;
+}
+
+export interface IncomingField {
+  /** The field's label on the linking page. */
+  field: string;
+  id: string;
+  title: string;
+  twoWay: boolean;
+}
+
+export interface ApplySummary {
+  added: number;
+  updated: number;
+  hidden: number;
+  removed: number;
+  reordered: boolean;
+  color: boolean;
+}
+
+export interface ApplyResult {
+  changes: { page: PageInfo; summary: ApplySummary }[];
+  failed: string[];
+}
+
 export interface Page extends PageInfo {
   body: string;
+  infobox: Infobox | null;
+  /** The file has an infobox this version can't read. */
+  infoboxError: string | null;
 }
 
 export const api = {
@@ -90,8 +174,8 @@ export const api = {
   getTree: (project: string) => invoke<Tree>("get_tree", { project }),
 
   // allowLong: the user agreed to a file path that may be too long for Windows.
-  createPage: (project: string, group: string, title: string, allowLong: boolean) =>
-    invoke<PageInfo>("create_page", { project, group, title, allowLong }),
+  createPage: (project: string, group: string, title: string, allowLong: boolean, template: string | null = null) =>
+    invoke<PageInfo>("create_page", { project, group, title, allowLong, template }),
   readPage: (project: string, id: string) => invoke<Page>("read_page", { project, id }),
   savePage: (project: string, id: string, body: string) =>
     invoke<void>("save_page", { project, id, body }),
@@ -103,6 +187,17 @@ export const api = {
   setAliases: (project: string, id: string, aliases: string[]) =>
     invoke<PageInfo>("set_aliases", { project, id, aliases }),
   setMainPage: (project: string, title: string | null) => invoke<void>("set_main_page", { project, title }),
+  saveInfobox: (project: string, id: string, infobox: Infobox | null) =>
+    invoke<void>("save_infobox", { project, id, infobox }),
+  importImage: (project: string, path: string) => invoke<string>("import_image", { project, path }),
+
+  // Templates
+  getTemplates: (project: string) => invoke<Template[]>("get_templates", { project }),
+  setTemplates: (project: string, templates: Template[]) => invoke<void>("set_templates", { project, templates }),
+  templatePages: (project: string, id: string) => invoke<PageInfo[]>("template_pages", { project, id }),
+  applyTemplate: (project: string, id: string, pages: string[] | null, dryRun: boolean) =>
+    invoke<ApplyResult>("apply_template", { project, id, pages, dryRun }),
+  incomingFields: (project: string, id: string) => invoke<IncomingField[]>("incoming_fields", { project, id }),
 
   // Link index
   pageSections: (project: string, id: string) => invoke<Heading[]>("page_sections", { project, id }),

@@ -1,5 +1,6 @@
-//! The link index: titles, aliases, headings, outgoing links and opening
-//! paragraphs of every page in a project. Kept in memory while a project is
+//! The link index: titles, aliases, headings, outgoing links (in the text and
+//! in infobox fields), opening paragraphs, templates and first infobox images
+//! of every page in a project. Kept in memory while a project is
 //! open and cached in `.cache/` (never the source of truth), with each file's
 //! modification time and size, so reopening a project only re-reads files
 //! that changed.
@@ -13,13 +14,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AppResult;
 use crate::fsutil::{rel_join, rel_parent, safe_write};
-use crate::pages::{meta_aliases, meta_title, parse};
+use crate::infobox::{FieldLink, field_links, first_image};
+use crate::pages::{meta_aliases, meta_infobox, meta_title, parse};
 use crate::projects::{CACHE_DIR, PAGES_DIR};
 use crate::tree::{GroupInfo, PageInfo, is_page_file};
 use crate::wikilinks::{self, Heading};
 
 const CACHE_FILE: &str = "link-index.json";
-const CACHE_VERSION: u32 = 1;
+const CACHE_VERSION: u32 = 2;
 /// The cache is rewritten at most this often for small changes (a stale
 /// cache only costs re-reading the changed files at the next open).
 const CACHE_SAVE_INTERVAL: Duration = Duration::from_secs(10);
@@ -48,6 +50,15 @@ pub struct Entry {
     pub links: Vec<LinkRef>,
     #[serde(default)]
     pub summary: String,
+    /// Id of the template the page's infobox came from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    /// Links in infobox fields.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub field_links: Vec<FieldLink>,
+    /// The first infobox image (file inside `assets/`), for hover cards.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -81,6 +92,7 @@ pub fn read_entry(path: &Path, file_name: &str) -> Option<Entry> {
     let text = fs::read_to_string(path).ok()?;
     // A page whose front matter can't be read still gets indexed by file name.
     let (fm, body) = parse(&text).unwrap_or_else(|_| (Default::default(), text.clone()));
+    let infobox = meta_infobox(&fm).ok().flatten();
     Some(Entry {
         mtime: stamp(&meta),
         size: meta.len(),
@@ -92,6 +104,9 @@ pub fn read_entry(path: &Path, file_name: &str) -> Option<Entry> {
             .map(|l| LinkRef { target: l.page, section: l.section, line: l.line as u32 })
             .collect(),
         summary: wikilinks::summary(&body),
+        template: infobox.as_ref().and_then(|ib| ib.template.clone()),
+        field_links: infobox.as_ref().map(field_links).unwrap_or_default(),
+        image: infobox.as_ref().and_then(first_image),
     })
 }
 

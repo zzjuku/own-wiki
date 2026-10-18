@@ -4,6 +4,7 @@
 // inside a card don't open further cards.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Preview } from "./api";
+import { imageUrl } from "./infobox";
 import { renderSnippet } from "./markdown";
 import { displayGroup } from "./tree";
 import { useContentClick, useWiki } from "./wiki";
@@ -161,7 +162,7 @@ export function HoverCards() {
           <div className="hover-card-empty">{p.section ? "This section has no text yet." : "This page has no text yet."}</div>
         )}
       </div>
-      <div className="hover-card-image" />
+      <div className="hover-card-image">{p.image && <img src={imageUrl(project, p.image)} alt="" />}</div>
     </div>
   );
 }

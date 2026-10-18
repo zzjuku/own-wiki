@@ -263,6 +263,13 @@ export function renderPage(
   return { html: DOMPurify.sanitize(html, { SANITIZE_DOM: false }), toc };
 }
 
+/** One line of Markdown (bold, italic, [[links]]) -> safe inline HTML, for infobox values. */
+export function renderInline(source: string, links: LinkContext | null = null): string {
+  state = freshState(new Set(), links);
+  const html = md.parseInline(source.replace(/\[\^[^\]\s]+\]/g, "")) as string;
+  return DOMPurify.sanitize(html, { SANITIZE_DOM: false });
+}
+
 /** Markdown -> safe HTML. */
 export function renderMarkdown(source: string): string {
   return renderPage(source).html;

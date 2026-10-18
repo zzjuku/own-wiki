@@ -1,0 +1,472 @@
+// The Templates screen of a project: create, rename, copy and delete
+// templates; edit each template's fields, infobox colour and starter text,
+// with a live preview of the box. Templates are starting points: changing
+// one never changes existing pages (see SPEC.md, M5).
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api, type Field, type FieldKind, type PageInfo, type Template } from "./api";
+import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
+import { Chips, ColorPicker, DragHandle, moveItem, useReorder } from "./controls";
+import { useDialogs } from "./dialogs";
+import { infoboxHtml, instantiate, KINDS, newFieldKey, newTemplateId } from "./infobox";
+import { MiniEditor } from "./MiniEditor";
+import { useReportError } from "./notify";
+import { displayGroup } from "./tree";
+import { useLinkContext, useWiki } from "./wiki";
+import { norm } from "./wikilinks";
+
+/** Field types offered so far (the rest arrive later in M5). */
+export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "heading"];
+
+const STATUS_TEXT: Record<SaveStatus, string> = {
+  saved: "Saved",
+  unsaved: "Editing…",
+  saving: "Saving…",
+  error: "Not saved",
+};
+
+/** The project's templates, saved a moment after each change. */
+export function useTemplates(project: string) {
+  const report = useReportError();
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [status, setStatus] = useState<SaveStatus>("saved");
+  const saver = useMemo(
+    () =>
+      new Autosaver(
+        (text) => api.setTemplates(project, JSON.parse(text) as Template[]),
+        (s, e) => {
+          setStatus(s);
+          if (e) report(e);
+        },
+        500,
+      ),
+    [project, report],
+  );
+  useEffect(() => {
+    const unregister = registerFlusher(() => saver.flush());
+    return () => {
+      unregister();
+      void saver.flush();
+    };
+  }, [saver]);
+  useEffect(() => {
+    api.getTemplates(project).then(setTemplates, report);
+  }, [project, report]);
+  const update = useCallback(
+    (next: Template[]) => {
+      setTemplates(next);
+      saver.change(JSON.stringify(next));
+    },
+    [saver],
+  );
+  return { templates, update, status, flush: () => saver.flush() };
+}
+
+export type TemplatesState = ReturnType<typeof useTemplates>;
+
+interface Props {
+  project: string;
+  state: TemplatesState;
+  selected: string | null;
+  setSelected: (id: string | null) => void;
+  openPage: (id: string) => void;
+}
+
+function nameProblem(name: string, templates: Template[], exceptId?: string): string | null {
+  const n = name.trim();
+  if (!n) return "Name can't be empty.";
+  const taken = templates.find((t) => t.id !== exceptId && norm(t.name) === norm(n));
+  return taken ? `A template named “${taken.name}” already exists.` : null;
+}
+
+export function TemplatesView({ project, state, selected, setSelected, openPage }: Props) {
+  const dialogs = useDialogs();
+  const { templates, update, status } = state;
+  const current = templates.find((t) => t.id === selected) ?? null;
+
+  useEffect(() => {
+    if (!current && templates.length) setSelected(templates[0].id);
+  }, [current, templates, setSelected]);
+
+  function create() {
+    dialogs.prompt({
+      title: "New template",
+      label: "Template name",
+      confirmLabel: "Create",
+      submit: async (name) => {
+        const problem = nameProblem(name, templates);
+        if (problem) throw problem;
+        const t: Template = { id: newTemplateId(name), name: name.trim(), color: null, fields: [] };
+        update([...templates, t]);
+        setSelected(t.id);
+      },
+    });
+  }
+
+  function change(t: Template) {
+    update(templates.map((x) => (x.id === t.id ? t : x)));
+  }
+
+  function rename(t: Template) {
+    dialogs.prompt({
+      title: "Rename template",
+      label: "Template name",
+      initial: t.name,
+      note: <>Pages created from it keep their infoboxes as they are.</>,
+      confirmLabel: "Rename",
+      submit: async (name) => {
+        const problem = nameProblem(name, templates, t.id);
+        if (problem) throw problem;
+        change({ ...t, name: name.trim() });
+      },
+    });
+  }
+
+  function duplicate(t: Template) {
+    let n = 2;
+    while (templates.some((x) => norm(x.name) === norm(`${t.name} (${n})`))) n++;
+    dialogs.prompt({
+      title: "Copy template",
+      label: "Name of the copy",
+      initial: `${t.name} (${n})`,
+      confirmLabel: "Copy",
+      submit: async (name) => {
+        const problem = nameProblem(name, templates);
+        if (problem) throw problem;
+        const copy: Template = { ...structuredClone(t), id: newTemplateId(name), name: name.trim() };
+        update([...templates, copy]);
+        setSelected(copy.id);
+      },
+    });
+  }
+
+  async function remove(t: Template) {
+    const using = await api.templatePages(project, t.id).catch(() => [] as PageInfo[]);
+    dialogs.confirm({
+      title: "Delete template",
+      message: (
+        <>
+          Delete the template <strong>{t.name}</strong>?{" "}
+          {using.length
+            ? `${using.length} ${using.length === 1 ? "page was" : "pages were"} created from it; they keep their infoboxes as they are.`
+            : "No page was created from it."}
+        </>
+      ),
+      confirmLabel: "Delete",
+      danger: true,
+      submit: async () => {
+        update(templates.filter((x) => x.id !== t.id));
+        setSelected(null);
+      },
+    });
+  }
+
+  const sorted = useMemo(() => [...templates].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })), [templates]);
+
+  return (
+    <div className="templates-view">
+      <header className="page-head">
+        <div className="page-titles">
+          <h1>Templates</h1>
+        </div>
+        <div className="spacer" />
+        <span className={`save-status ${status}`} aria-live="polite">
+          {STATUS_TEXT[status]}
+        </span>
+        <button className="primary" onClick={create}>
+          New template
+        </button>
+      </header>
+      <div className="templates-body">
+        <nav className="template-list" aria-label="Templates">
+          {sorted.map((t) => (
+            <button
+              key={t.id}
+              className={`plain template-item ${t.id === current?.id ? "selected" : ""}`}
+              onClick={() => setSelected(t.id)}
+            >
+              <span className="template-dot" style={t.color ? { background: t.color } : undefined} />
+              <span className="template-name">{t.name}</span>
+              <span className="template-count">{t.fields.filter((f) => f.type !== "heading").length}</span>
+            </button>
+          ))}
+          {templates.length === 0 && (
+            <p className="empty small">
+              No templates yet. A template sets the infobox fields (and starter text) new pages begin with.
+            </p>
+          )}
+        </nav>
+        {current ? (
+          <TemplateEditor
+            key={current.id}
+            project={project}
+            template={current}
+            templates={templates}
+            onChange={change}
+            onRename={() => rename(current)}
+            onDuplicate={() => duplicate(current)}
+            onDelete={() => void remove(current)}
+            openPage={openPage}
+          />
+        ) : (
+          <p className="empty center">{templates.length ? "" : "Create a template to get started."}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface EditorProps {
+  project: string;
+  template: Template;
+  templates: Template[];
+  onChange: (t: Template) => void;
+  onRename: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  openPage: (id: string) => void;
+}
+
+function TemplateEditor({ project, template: t, templates, onChange, onRename, onDuplicate, onDelete, openPage }: EditorProps) {
+  const wiki = useWiki();
+  const links = useLinkContext();
+  const [using, setUsing] = useState<PageInfo[] | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api.templatePages(project, t.id).then((p) => live && setUsing(p), () => live && setUsing([]));
+    return () => {
+      live = false;
+    };
+  }, [project, t.id, wiki.names]);
+
+  const setFields = (fields: Field[]) => onChange({ ...t, fields });
+  // A field just added gets its label selected for typing.
+  const [justAdded, setJustAdded] = useState<number | null>(null);
+  const reorder = useReorder((from, to) => setFields(moveItem(t.fields, from, to)));
+
+  function addField(kind: FieldKind) {
+    const label = kind === "heading" ? "New section" : "New field";
+    setFields([...t.fields, { key: newFieldKey(t.fields), label, type: kind }]);
+    setJustAdded(t.fields.length);
+  }
+
+  // Link fields of every template, for "Linked from".
+  const linkLabels = useMemo(() => {
+    const set = new Map<string, string>();
+    for (const tpl of templates)
+      for (const f of tpl.fields) if (f.type === "link" || f.type === "links") set.set(norm(f.label), f.label);
+    return [...set.values()];
+  }, [templates]);
+
+  const preview = useMemo(
+    () => infoboxHtml(instantiate(t), { project, title: "Page title", links, placeholders: true }),
+    [t, project, links],
+  );
+
+  return (
+    <div className="template-editor">
+      <div className="template-main">
+        <div className="template-head">
+          <h2>{t.name}</h2>
+          <div className="spacer" />
+          <button onClick={onRename}>Rename</button>
+          <button onClick={onDuplicate}>Copy</button>
+          <button className="danger-text" onClick={onDelete}>
+            Delete
+          </button>
+        </div>
+
+        <section className="template-section">
+          <h3>Infobox colour</h3>
+          <ColorPicker value={t.color} onChange={(color) => onChange({ ...t, color })} />
+          <p className="hint">Colours the title bar and section headings. New pages start with it; each page can change its own.</p>
+        </section>
+
+        <section className="template-section">
+          <h3>Fields</h3>
+          <ul className="field-defs" ref={(el) => void (reorder.listRef.current = el)}>
+            {t.fields.map((f, i) => (
+              <li key={f.key ?? i} data-reorder className={`field-def ${f.type === "heading" ? "is-heading" : ""} ${reorder.rowClass(i, t.fields.length)}`}>
+                <FieldDef
+                  field={f}
+                  autoFocus={justAdded === i}
+                  linkLabels={linkLabels}
+                  onChange={(nf) => setFields(t.fields.map((x, j) => (j === i ? nf : x)))}
+                  onRemove={() => setFields(t.fields.filter((_, j) => j !== i))}
+                  handle={<DragHandle label={`Move ${f.label}`} onPointerDown={(e) => reorder.start(e, i)} />}
+                />
+              </li>
+            ))}
+          </ul>
+          {t.fields.length === 0 && <p className="empty small">No fields yet.</p>}
+          <div className="row">
+            <button onClick={() => addField("text")}>+ Add field</button>
+            <button onClick={() => addField("heading")}>+ Add section heading</button>
+          </div>
+        </section>
+
+        <section className="template-section">
+          <h3>Starter text</h3>
+          <p className="hint">New pages from this template begin with this text (for example the usual section headings).</p>
+          <MiniEditor
+            multiline
+            toolbar
+            className="starter-text"
+            label="Starter text"
+            placeholder="Optional"
+            value={t.starterText ?? ""}
+            onChange={(starterText) => onChange({ ...t, starterText })}
+          />
+        </section>
+
+        <section className="template-section">
+          <h3>Pages using this template{using && ` (${using.length})`}</h3>
+          {using && using.length === 0 && <p className="empty small">No page was created from this template yet.</p>}
+          {using && using.length > 0 && (
+            <ul className="using-list">
+              {using.map((p) => (
+                <li key={p.id}>
+                  <button className="plain using-page" onClick={() => openPage(p.id)}>
+                    <span>{p.title}</span>
+                    {p.group && <span className="muted">{displayGroup(p.group)}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="hint">Changes to the template don't change these pages.</p>
+        </section>
+      </div>
+
+      <aside className="template-preview" aria-label="Preview">
+        <h3>Preview</h3>
+        <div className="markdown" dangerouslySetInnerHTML={{ __html: preview }} />
+      </aside>
+    </div>
+  );
+}
+
+export function FieldDef({
+  field: f,
+  autoFocus,
+  linkLabels,
+  onChange,
+  onRemove,
+  handle,
+}: {
+  field: Field;
+  autoFocus?: boolean;
+  linkLabels: string[];
+  onChange: (f: Field) => void;
+  onRemove: () => void;
+  handle: React.ReactNode;
+}) {
+  const options = f.options ?? {};
+  const setOptions = (o: Field["options"]) => {
+    const clean = Object.fromEntries(Object.entries(o ?? {}).filter(([, v]) => v !== undefined && v !== false && !(Array.isArray(v) && !v.length)));
+    onChange({ ...f, options: Object.keys(clean).length ? clean : undefined });
+  };
+  const kinds = KINDS.filter((k) => READY_KINDS.includes(k.kind) || k.kind === f.type);
+
+  if (f.type === "heading") {
+    return (
+      <div className="field-def-row">
+        {handle}
+        <span className="field-def-kind">Section</span>
+        <input
+          className="field-label heading-label"
+          autoFocus={autoFocus}
+          onFocus={(e) => autoFocus && e.target.select()}
+          value={f.label}
+          aria-label="Section heading"
+          placeholder="Section heading"
+          onChange={(e) => onChange({ ...f, label: e.target.value })}
+        />
+        <button className="plain remove" title="Remove section heading" aria-label="Remove section heading" onClick={onRemove}>
+          ×
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="field-def-row">
+        {handle}
+        <input
+          className="field-label"
+          autoFocus={autoFocus}
+          onFocus={(e) => autoFocus && e.target.select()}
+          value={f.label}
+          aria-label="Field label"
+          placeholder="Field label"
+          onChange={(e) => onChange({ ...f, label: e.target.value })}
+        />
+        <select
+          className="field-kind"
+          aria-label="Field type"
+          value={f.type}
+          onChange={(e) => onChange({ ...f, type: e.target.value as FieldKind })}
+        >
+          {kinds.map((k) => (
+            <option key={k.kind} value={k.kind}>
+              {k.label}
+            </option>
+          ))}
+        </select>
+        <button className="plain remove" title="Remove field" aria-label={`Remove ${f.label}`} onClick={onRemove}>
+          ×
+        </button>
+      </div>
+      <div className="field-def-extra">
+        {f.type === "choice" && (
+          <label className="field-option">
+            <span>Options</span>
+            <Chips
+              label="Options"
+              values={options.choices ?? []}
+              placeholder="Add option…"
+              onChange={(choices) => setOptions({ ...options, choices })}
+            />
+          </label>
+        )}
+        {f.type === "linkedfrom" && (
+          <label className="field-option">
+            <span>Pages whose</span>
+            <Chips
+              label="Fields that point here"
+              values={options.from ?? []}
+              placeholder="Field name, e.g. a Page link field…"
+              suggestions={linkLabels}
+              onChange={(from) => setOptions({ ...options, from })}
+            />
+            <span className="muted">points to this page</span>
+          </label>
+        )}
+        {(f.type === "link" || f.type === "links") && (
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={!!options.twoWay}
+              onChange={(e) => setOptions({ ...options, twoWay: e.target.checked })}
+            />
+            <span>Two-way (the linked page shows this page in its own “{f.label || "…"}” field)</span>
+          </label>
+        )}
+        {f.type === "date" && (
+          <label className="check">
+            <input type="checkbox" checked={!!options.ranges} onChange={(e) => setOptions({ ...options, ranges: e.target.checked })} />
+            <span>Allow ranges (start and end date)</span>
+          </label>
+        )}
+        <input
+          className="field-hint"
+          value={f.hint ?? ""}
+          aria-label="Hint"
+          placeholder="Hint (optional help shown under the field)"
+          onChange={(e) => onChange({ ...f, hint: e.target.value || undefined })}
+        />
+      </div>
+    </>
+  );
+}

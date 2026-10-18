@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 use crate::fsutil::{check_id, move_to_trash, name_taken, safe_write, to_file_name};
+use crate::infobox::Template;
+use crate::wikilinks::norm;
 
 pub const PROJECT_FILE: &str = "project.json";
 pub const PAGES_DIR: &str = "pages";
@@ -76,6 +78,43 @@ pub fn set_main_page(dir: &Path, title: Option<&str>) -> AppResult<()> {
 }
 
 pub const MAIN_PAGE_TITLE: &str = "Main Page";
+
+/// The project's templates. Entries this version can't read are skipped.
+pub fn templates(dir: &Path) -> AppResult<Vec<Template>> {
+    Ok(read_project_file(dir)?
+        .templates
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect())
+}
+
+/// Replaces the project's templates. Names must be unique (ignoring case).
+/// Entries this version couldn't read are kept as they were.
+pub fn set_templates(dir: &Path, list: &[Template]) -> AppResult<()> {
+    for (i, t) in list.iter().enumerate() {
+        if t.name.trim().is_empty() {
+            return Err(AppError::Invalid("A template needs a name.".into()));
+        }
+        if t.id.trim().is_empty() {
+            return Err(AppError::Invalid("A template is missing its id.".into()));
+        }
+        if list[..i].iter().any(|o| norm(&o.name) == norm(&t.name)) {
+            return Err(AppError::Exists(format!("A template named \"{}\" already exists.", t.name.trim())));
+        }
+        if list[..i].iter().any(|o| o.id == t.id) {
+            return Err(AppError::Invalid("Two templates have the same id.".into()));
+        }
+    }
+    let mut file = read_project_file(dir)?;
+    let unreadable: Vec<serde_json::Value> = file
+        .templates
+        .drain(..)
+        .filter(|v| serde_json::from_value::<Template>(v.clone()).is_err())
+        .collect();
+    file.templates = list.iter().map(serde_json::to_value).collect::<Result<_, _>>()?;
+    file.templates.extend(unreadable);
+    write_project_file(dir, &file)
+}
 
 pub fn list_projects(library: &Path) -> AppResult<Vec<ProjectInfo>> {
     let mut out = Vec::new();
@@ -187,6 +226,32 @@ mod tests {
         set_main_page(&dir, None).unwrap();
         assert_eq!(main_page(&dir), None);
         assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("mainPage"));
+    }
+
+    #[test]
+    fn templates_round_trip_and_keep_unreadable_entries() {
+        let lib = tempfile::tempdir().unwrap();
+        create_project(lib.path(), "Project A").unwrap();
+        let dir = lib.path().join("Project A");
+        let file = dir.join(PROJECT_FILE);
+        fs::write(&file, r#"{"name":"Project A","templates":[{"broken":true}],"mainPage":"Main Page"}"#).unwrap();
+        assert!(templates(&dir).unwrap().is_empty());
+        let t: Template = serde_json::from_value(serde_json::json!({
+            "id": "t-1", "name": "Template A", "color": "#cedff2", "starterText": "## Section\n",
+            "fields": [{"key": "a", "label": "Field A", "type": "text", "hint": "Help"}]
+        }))
+        .unwrap();
+        set_templates(&dir, &[t.clone()]).unwrap();
+        assert_eq!(templates(&dir).unwrap(), [t.clone()]);
+        let json: serde_json::Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(json["templates"][1], serde_json::json!({"broken": true}));
+        assert_eq!(json["templates"][0]["starterText"], "## Section\n");
+        assert_eq!(json["mainPage"], "Main Page");
+        // Names are unique, ignoring case.
+        let mut t2 = t.clone();
+        t2.id = "t-2".into();
+        t2.name = "template a".into();
+        assert!(matches!(set_templates(&dir, &[t.clone(), t2]), Err(AppError::Exists(_))));
     }
 
     #[test]

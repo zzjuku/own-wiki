@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, errorText, type Page } from "./api";
+import { api, errorText, type IncomingField, type Infobox, type Page } from "./api";
 import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
 import { renderPage } from "./markdown";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
 import { AliasEditor } from "./AliasEditor";
+import { infoboxHtml } from "./infobox";
 import { Backlinks } from "./Backlinks";
 import { SplitEditor } from "./SplitEditor";
 import { TocPanel } from "./TocPanel";
@@ -41,6 +42,10 @@ const STATUS_TEXT: Record<SaveStatus, string> = {
   error: "Not saved",
 };
 
+const STATUS_ORDER: SaveStatus[] = ["saved", "unsaved", "saving", "error"];
+/** The save state to show when text and infobox save separately. */
+const worst = (a: SaveStatus, b: SaveStatus) => (STATUS_ORDER.indexOf(a) >= STATUS_ORDER.indexOf(b) ? a : b);
+
 export function PageView(props: Props) {
   const { project, pageId, editing, setEditing } = props;
   const report = useReportError();
@@ -48,6 +53,10 @@ export function PageView(props: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [body, setBody] = useState("");
   const [status, setStatus] = useState<SaveStatus>("saved");
+  const [boxStatus, setBoxStatus] = useState<SaveStatus>("saved");
+  const [infobox, setInfobox] = useState<Infobox | null>(null);
+  // Links from other pages' infobox fields (Linked from, two-way fields).
+  const [incoming, setIncoming] = useState<IncomingField[]>([]);
   // While editing, the latest text lives here (not in state) so typing
   // doesn't re-render the whole page.
   const latest = useRef("");
@@ -63,25 +72,44 @@ export function PageView(props: Props) {
       ),
     [project, pageId, report],
   );
+  const boxSaver = useMemo(
+    () =>
+      new Autosaver(
+        (json) => api.saveInfobox(project, pageId, JSON.parse(json) as Infobox | null),
+        (s, e) => {
+          setBoxStatus(s);
+          if (e) report(`Couldn't save the infobox: ${errorText(e)}`);
+        },
+        400,
+      ),
+    [project, pageId, report],
+  );
 
   useEffect(() => {
-    const unregister = registerFlusher(() => saver.flush());
+    const unregister = [registerFlusher(() => saver.flush()), registerFlusher(() => boxSaver.flush())];
     return () => {
-      unregister();
+      unregister.forEach((u) => u());
       void saver.flush();
+      void boxSaver.flush();
     };
-  }, [saver]);
+  }, [saver, boxSaver]);
 
   useEffect(() => {
     api.readPage(project, pageId).then(
       (p) => {
         setPage(p);
         setBody(p.body);
+        setInfobox(p.infobox);
         latest.current = p.body;
       },
       (e) => setLoadError(errorText(e)),
     );
   }, [project, pageId]);
+
+  function changeInfobox(next: Infobox | null) {
+    setInfobox(next);
+    boxSaver.change(JSON.stringify(next));
+  }
 
   const wiki = useWiki();
   const links = useLinkContext(pageId);
@@ -95,6 +123,10 @@ export function PageView(props: Props) {
       (l) => live && setLinkingPages(l.length),
       () => {},
     );
+    api.incomingFields(project, pageId).then(
+      (l) => live && setIncoming(l),
+      () => {},
+    );
     return () => {
       live = false;
     };
@@ -102,6 +134,11 @@ export function PageView(props: Props) {
   const onContentClick = useContentClick(pageId);
   // The read view shows the contents in the left panel, not in the text.
   const rendered = useMemo(() => renderPage(body, { tocBox: false, links }), [body, links]);
+  const shownTitle = props.title ?? page?.title ?? "";
+  const boxHtml = useMemo(
+    () => infoboxHtml(infobox, { project, title: shownTitle, links, incoming }),
+    [infobox, project, shownTitle, links, incoming],
+  );
   const readRef = useRef<HTMLDivElement>(null);
 
   // Arriving through a link: scroll to its section (or the top).
@@ -118,7 +155,7 @@ export function PageView(props: Props) {
   async function toggle() {
     if (editing) {
       setBody(latest.current);
-      await saver.flush();
+      await Promise.all([saver.flush(), boxSaver.flush()]);
     }
     setEditing(!editing);
   }
@@ -209,23 +246,28 @@ export function PageView(props: Props) {
       {editing ? (
         <SplitEditor
           pageId={pageId}
+          title={shownTitle}
           initial={latest.current}
           onChange={(text) => {
             latest.current = text;
             saver.change(text);
           }}
+          infobox={infobox}
+          infoboxError={page.infoboxError}
+          incoming={incoming}
+          onInfoboxChange={changeInfobox}
           status={
-            <span className={`save-status ${status}`} aria-live="polite">
-              {STATUS_TEXT[status]}
+            <span className={`save-status ${worst(status, boxStatus)}`} aria-live="polite">
+              {STATUS_TEXT[worst(status, boxStatus)]}
             </span>
           }
         />
-      ) : body.trim() ? (
+      ) : body.trim() || boxHtml ? (
         <div className="read-view" ref={readRef}>
           {rendered.toc.length > 0 && (
             <TocPanel toc={rendered.toc} scrollRef={readRef} storageKey={`ownwiki.tocFolded.${project}/${pageId}`} />
           )}
-          <div className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: rendered.html }} />
+          <div className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: boxHtml + rendered.html }} />
         </div>
       ) : (
         <p className="empty">This page is empty. Click Edit to write.</p>

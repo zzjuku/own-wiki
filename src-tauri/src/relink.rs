@@ -24,7 +24,8 @@ fn linking(idx: &ProjectIndex, name: &str) -> (Vec<String>, usize) {
     let mut ids = Vec::new();
     let mut count = 0;
     for (id, e) in &idx.pages {
-        let here = e.links.iter().filter(|l| !l.target.is_empty() && norm(&l.target) == n).count();
+        let here = e.links.iter().filter(|l| !l.target.is_empty() && norm(&l.target) == n).count()
+            + e.field_links.iter().filter(|l| norm(&l.target) == n).count();
         if here > 0 {
             ids.push(id.clone());
             count += here;
@@ -56,7 +57,7 @@ pub struct RenameResult {
 }
 
 /// Runs `f` on every id, using a few threads when there are many.
-fn parallel<T: Send>(ids: &[String], f: impl Fn(&str) -> T + Sync) -> Vec<T> {
+pub fn parallel<T: Send>(ids: &[String], f: impl Fn(&str) -> T + Sync) -> Vec<T> {
     if ids.len() < 16 {
         return ids.iter().map(|id| f(id)).collect();
     }
@@ -127,6 +128,8 @@ pub struct Backlink {
     pub via: Vec<String>,
     /// The lines that contain the links (only when asked for).
     pub lines: Vec<String>,
+    /// Infobox fields that link here.
+    pub fields: Vec<String>,
 }
 
 /// Pages that link to page `id`, by its title or one of its aliases.
@@ -148,18 +151,29 @@ pub fn backlinks(
     for (pid, e) in idx.pages.iter().filter(|(pid, _)| pid.as_str() != id) {
         let mut via: Vec<String> = Vec::new();
         let mut lines: Vec<usize> = Vec::new();
-        for l in e.links.iter().filter(|l| !l.target.is_empty()) {
-            let Some(alias) = names.get(&norm(&l.target)) else { continue };
+        let mut fields: Vec<String> = Vec::new();
+        let mut note_alias = |alias: &Option<&str>| {
             if let Some(a) = alias {
                 if !via.iter().any(|v| v == a) {
                     via.push(a.to_string());
                 }
             }
+        };
+        for l in e.links.iter().filter(|l| !l.target.is_empty()) {
+            let Some(alias) = names.get(&norm(&l.target)) else { continue };
+            note_alias(alias);
             if !lines.contains(&(l.line as usize)) {
                 lines.push(l.line as usize);
             }
         }
-        if lines.is_empty() {
+        for l in &e.field_links {
+            let Some(alias) = names.get(&norm(&l.target)) else { continue };
+            note_alias(alias);
+            if !fields.contains(&l.field) {
+                fields.push(l.field.clone());
+            }
+        }
+        if lines.is_empty() && fields.is_empty() {
             continue;
         }
         let lines = match &pages_dir {
@@ -172,6 +186,7 @@ pub fn backlinks(
             group: rel_parent(pid).to_string(),
             via,
             lines,
+            fields,
         });
     }
     out.sort_by_key(|b| b.title.to_lowercase());
@@ -187,6 +202,8 @@ pub struct Preview {
     pub text: String,
     /// The section that was asked for, if the page has it.
     pub section: Option<String>,
+    /// The page's first infobox image (file inside `assets/`).
+    pub image: Option<String>,
 }
 
 /// What a hover card shows for a link to page `id` (and `section`).
@@ -198,7 +215,13 @@ pub fn preview(
     section: Option<&str>,
 ) -> AppResult<Preview> {
     let e = entry(idx, id)?;
-    let mut p = Preview { title: e.title.clone(), group: rel_parent(id).to_string(), text: e.summary.clone(), section: None };
+    let mut p = Preview {
+        title: e.title.clone(),
+        group: rel_parent(id).to_string(),
+        text: e.summary.clone(),
+        section: None,
+        image: e.image.clone(),
+    };
     if let Some(s) = section.filter(|s| !s.trim().is_empty()) {
         let anchor = slugify(s);
         if let Some(h) = e.headings.iter().find(|h| h.anchor == anchor) {
@@ -208,6 +231,36 @@ pub fn preview(
         }
     }
     Ok(p)
+}
+
+/// A link from another page's infobox field to this page.
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct IncomingField {
+    /// The field's label on the linking page.
+    pub field: String,
+    pub id: String,
+    pub title: String,
+    pub two_way: bool,
+}
+
+/// Every infobox field link that points at page `id` (by title or alias),
+/// for "Linked from" and two-way fields. Sorted by title.
+pub fn incoming_fields(idx: &ProjectIndex, id: &str) -> AppResult<Vec<IncomingField>> {
+    let target = entry(idx, id)?;
+    let names: Vec<String> = std::iter::once(&target.title).chain(&target.aliases).map(|n| norm(n)).collect();
+    let mut out = Vec::new();
+    for (pid, e) in idx.pages.iter().filter(|(pid, _)| pid.as_str() != id) {
+        for l in &e.field_links {
+            if names.contains(&norm(&l.target))
+                && !out.iter().any(|o: &IncomingField| &o.id == pid && norm(&o.field) == norm(&l.field))
+            {
+                out.push(IncomingField { field: l.field.clone(), id: pid.clone(), title: e.title.clone(), two_way: l.two_way });
+            }
+        }
+    }
+    out.sort_by_key(|o| o.title.to_lowercase());
+    Ok(out)
 }
 
 pub fn sections(idx: &ProjectIndex, id: &str) -> AppResult<Vec<Heading>> {
@@ -298,11 +351,46 @@ mod tests {
                     group: "G".into(),
                     via: vec!["Alias".into()],
                     lines: vec!["one [[Target]]".into(), "two [[alias|x]] and [[Target#S]]".into()],
+                    fields: vec![],
                 },
-                Backlink { id: "C.md".into(), title: "c page".into(), group: "".into(), via: vec!["Alias".into()], lines: vec!["[[Alias]]".into()] },
+                Backlink {
+                    id: "C.md".into(),
+                    title: "c page".into(),
+                    group: "".into(),
+                    via: vec!["Alias".into()],
+                    lines: vec!["[[Alias]]".into()],
+                    fields: vec![],
+                },
             ]
         );
         assert!(backlinks(lib.path(), &p, &idx, "T.md", false).unwrap()[0].lines.is_empty());
+    }
+
+    #[test]
+    fn infobox_links_count_rename_and_list() {
+        let (lib, p, mut idx) = setup(&[
+            ("Old.md", "---\ntitle: Old\naliases: [Nick]\n---\n"),
+            (
+                "A.md",
+                "---\ninfobox:\n  fields:\n  - label: Father\n    type: link\n    value: Old\n  - label: Spouse\n    type: links\n    options: { twoWay: true }\n    value: [Nick, Other]\n  - label: Note\n    type: text\n    value: '[[old|x]]'\n---\nText [[Old]]\n",
+            ),
+            ("B.md", "---\ninfobox:\n  fields:\n  - label: Father\n    type: link\n    value: Old\n---\n"),
+        ]);
+        let bl = backlinks(lib.path(), &p, &idx, "Old.md", true).unwrap();
+        assert_eq!(bl.len(), 2);
+        assert_eq!((bl[0].fields.clone(), bl[0].via.clone()), (vec!["Father".into(), "Spouse".into(), "Note".into()], vec!["Nick".into()]));
+        assert_eq!(bl[0].lines, ["Text [[Old]]"]);
+        assert_eq!((bl[1].fields.clone(), bl[1].lines.len()), (vec!["Father".into()], 0));
+        let inc = incoming_fields(&idx, "Old.md").unwrap();
+        let got: Vec<_> = inc.iter().map(|i| (i.field.as_str(), i.id.as_str(), i.two_way)).collect();
+        assert_eq!(got, [("Father", "A.md", false), ("Spouse", "A.md", true), ("Note", "A.md", false), ("Father", "B.md", false)]);
+        assert_eq!(link_count(&idx, "Old"), LinkCount { links: 4, pages: 2 });
+        let r = rename_with_links(lib.path(), &p, &mut idx, "Old.md", "New", false, false).unwrap();
+        assert_eq!((r.links, r.pages), (4, 2));
+        let a = read(lib.path(), &p, "A.md");
+        assert!(a.contains("value: New\n") && a.contains("- Nick\n") && a.contains("[[New|x]]") && a.ends_with("Text [[New]]\n"), "{a}");
+        assert_eq!(link_count(&idx, "Old").links, 0);
+        assert_eq!(incoming_fields(&idx, "New.md").unwrap().len(), 4);
     }
 
     #[test]

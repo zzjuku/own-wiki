@@ -70,6 +70,9 @@ export function Backlinks({ pageId, title, close }: Props) {
                   {b.via.length > 0 && (
                     <span className="backlink-via">via alias {b.via.map((v) => `“${v}”`).join(", ")}</span>
                   )}
+                  {b.fields.length > 0 && (
+                    <span className="backlink-via">via infobox: {b.fields.map((f) => `“${f}”`).join(", ")}</span>
+                  )}
                   {b.lines.map((line, i) => (
                     <span
                       key={i}

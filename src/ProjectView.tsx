@@ -9,6 +9,7 @@ import { PageView } from "./PageView";
 import { IS_MAC, isQuickOpenKey, QuickOpen, QUICK_OPEN_KEYS } from "./QuickOpen";
 import { WikiContext, type FollowTarget, type Wiki } from "./wiki";
 import { Sidebar, type MenuItem } from "./Sidebar";
+import { TemplatesView, useTemplates } from "./TemplatesView";
 import {
   allGroupsInOrder,
   buildIndex,
@@ -89,6 +90,10 @@ export function ProjectView({ project, onBack }: Props) {
   // the open page: new pages then go into that page's group.
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const templates = useTemplates(project.id);
+  // The Templates screen is shown instead of a page.
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [templateSelected, setTemplateSelected] = useState<string | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [revealRow, setRevealRow] = useState<{ id: string } | null>(null);
   const [history, setHistory] = useState<History>({ back: [], forward: [] });
@@ -162,7 +167,8 @@ export function ProjectView({ project, onBack }: Props) {
     edit = false,
     { section = null, via = null, record = true }: { section?: string | null; via?: string | null; record?: boolean } = {},
   ) {
-    if (id !== selected) await flushAll();
+    if (id !== selected || templatesOpen) await flushAll();
+    setTemplatesOpen(false);
     if (record && selected && selected !== id) {
       const from = selected;
       setHistory((h) => ({ back: [...h.back, from].slice(-HISTORY_LIMIT), forward: [] }));
@@ -267,14 +273,29 @@ export function ProjectView({ project, onBack }: Props) {
 
   // ---- actions ----
 
+  /** The template drop-down of the New page and Create page dialogs (none without templates). */
+  function templateSelect() {
+    if (!templates.templates.length) return [];
+    const sorted = [...templates.templates].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    return [
+      {
+        key: "template",
+        label: "Template",
+        options: [{ id: "", label: "No template" }, ...sorted.map((t) => ({ id: t.id, label: t.name }))],
+        initial: "",
+      },
+    ];
+  }
+
   function newPage(group: string) {
     dialogs.prompt({
       title: group ? `New page in ${displayGroup(group)}` : "New page",
       label: "Page title",
+      selects: templateSelect(),
       confirmLabel: "Create",
-      submit: async (title, allowLong) => {
+      submit: async (title, allowLong, { selected: sel }) => {
         await flushAll();
-        const page = await api.createPage(project.id, group, title, allowLong);
+        const page = await api.createPage(project.id, group, title, allowLong, sel.template || null);
         await reload();
         await openPage(page.id, true);
       },
@@ -292,11 +313,11 @@ export function ProjectView({ project, onBack }: Props) {
       label: "Page title",
       initial: title,
       note: <>This page doesn't exist yet.</>,
-      select: { label: "Group", options: groups, initial: fromPage ? parentOf(fromPage) : ROOT },
+      selects: [{ key: "group", label: "Group", options: groups, initial: fromPage ? parentOf(fromPage) : ROOT }, ...templateSelect()],
       confirmLabel: "Create",
-      submit: async (t, allowLong, { selected: group }) => {
+      submit: async (t, allowLong, { selected: sel }) => {
         await flushAll();
-        const page = await api.createPage(project.id, group, t, allowLong);
+        const page = await api.createPage(project.id, sel.group ?? ROOT, t, allowLong, sel.template || null);
         await reload();
         await openPage(page.id, true);
       },
@@ -565,9 +586,16 @@ export function ProjectView({ project, onBack }: Props) {
       names,
       follow: (t) => actions.current.follow(t),
       createFromLink: (title, from) => actions.current.createFromLink(title, from),
+      templates: templates.templates,
     }),
-    [project.id, names],
+    [project.id, names, templates.templates],
   );
+
+  async function openTemplates() {
+    await flushAll();
+    setEditing(false);
+    setTemplatesOpen(true);
+  }
 
   return (
     <WikiContext.Provider value={wiki}>
@@ -638,9 +666,13 @@ export function ProjectView({ project, onBack }: Props) {
           <span>Find page…</span>
           <kbd>{QUICK_OPEN_KEYS}</kbd>
         </button>
+        <button className={`plain templates-button ${templatesOpen ? "selected" : ""}`} onClick={() => void openTemplates()}>
+          Templates
+          {templates.templates.length > 0 && <span className="count">{templates.templates.length}</span>}
+        </button>
         <Sidebar
           rows={rows}
-          selected={selected}
+          selected={templatesOpen ? null : selected}
           selectedGroup={selectedGroup}
           onSelectGroup={setSelectedGroup}
           onSelectTop={() => setSelectedGroup(ROOT)}
@@ -655,7 +687,15 @@ export function ProjectView({ project, onBack }: Props) {
       </aside>
 
       <main className="content">
-        {selected && selectedExists ? (
+        {templatesOpen ? (
+          <TemplatesView
+            project={project.id}
+            state={templates}
+            selected={templateSelected}
+            setSelected={setTemplateSelected}
+            openPage={(id) => void openPage(id)}
+          />
+        ) : selected && selectedExists ? (
           <PageView
             key={`${selected}\n${pageVersion}`}
             project={project.id}

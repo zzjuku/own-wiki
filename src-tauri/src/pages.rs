@@ -1,6 +1,6 @@
 //! Pages: one Markdown file per page somewhere under a project's `pages/`
-//! folder, with structured fields in YAML front matter. `title` and `aliases`
-//! are used so far; any other fields are preserved untouched.
+//! folder, with structured fields in YAML front matter: `title`, `aliases`
+//! and `infobox` (see infobox.rs). Any other fields are preserved untouched.
 //!
 //! Titles and aliases share one name space: each is unique across the whole
 //! project (ignoring case), whatever group a page is in. The file name follows
@@ -17,6 +17,7 @@ use serde::Serialize;
 use serde_yaml_ng::{Mapping, Value};
 
 use crate::error::{AppError, AppResult};
+use crate::infobox::{Infobox, Template, instantiate, rewrite_infobox_links};
 use crate::fsutil::{
     check_path_len, check_rel, move_to_trash, name_taken, rel_join, rel_name, rel_parent,
     safe_write, to_file_name, windows_len,
@@ -26,11 +27,35 @@ use crate::tree::{EXT, PageInfo, group_dir, is_page_file, location, pages_dir, t
 use crate::wikilinks::{has_link_chars, norm, rewrite_links};
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Page {
     pub id: String,
     pub title: String,
     pub group: String,
     pub body: String,
+    pub infobox: Option<Infobox>,
+    /// Set when the file has an infobox this version can't read.
+    pub infobox_error: Option<String>,
+}
+
+/// The `infobox:` field. Err: it exists but can't be read.
+pub fn meta_infobox(meta: &Mapping) -> Result<Option<Infobox>, String> {
+    match meta.get("infobox") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => serde_yaml_ng::from_value::<Infobox>(v.clone()).map(Some).map_err(|e| e.to_string()),
+    }
+}
+
+fn set_infobox_meta(meta: &mut Mapping, infobox: Option<&Infobox>) -> AppResult<()> {
+    match infobox {
+        Some(ib) => {
+            meta.insert("infobox".into(), serde_yaml_ng::to_value(ib)?);
+        }
+        None => {
+            meta.remove("infobox");
+        }
+    }
+    Ok(())
 }
 
 /// Splits a page file into its front matter and Markdown body.
@@ -167,6 +192,9 @@ fn info(id: String, title: String, aliases: Vec<String>) -> PageInfo {
     PageInfo { id, title, group, aliases }
 }
 
+/// Creates a page; with `template`, it starts with a copy of the template's
+/// infobox fields and its starter text.
+#[allow(clippy::too_many_arguments)]
 pub fn create_page(
     library: &Path,
     project: &str,
@@ -174,6 +202,7 @@ pub fn create_page(
     title: &str,
     allow_long: bool,
     others: &[PageInfo],
+    template: Option<&Template>,
 ) -> AppResult<PageInfo> {
     let title = title.trim();
     let stem = to_file_name(title)?;
@@ -185,19 +214,42 @@ pub fn create_page(
     check_page_path(project, &id, allow_long)?;
     let mut meta = Mapping::new();
     meta.insert("title".into(), title.into());
-    safe_write(&dir.join(rel_name(&id)), serialize(&meta, "")?.as_bytes())?;
+    let mut body = String::new();
+    if let Some(t) = template {
+        set_infobox_meta(&mut meta, Some(&instantiate(t)))?;
+        body = t.starter_text.clone();
+    }
+    safe_write(&dir.join(rel_name(&id)), serialize(&meta, &body)?.as_bytes())?;
     Ok(info(id, title.to_string(), Vec::new()))
 }
 
 pub fn read_page(library: &Path, project: &str, id: &str) -> AppResult<Page> {
     let text = fs::read_to_string(page_path(&pages_dir(library, project)?, id)?)?;
     let (meta, body) = parse(&text)?;
+    let (infobox, infobox_error) = match meta_infobox(&meta) {
+        Ok(ib) => (ib, None),
+        Err(e) => (None, Some(e)),
+    };
     Ok(Page {
         id: id.to_string(),
         title: title_of(&meta, rel_name(id)),
         group: rel_parent(id).to_string(),
         body,
+        infobox,
+        infobox_error,
     })
+}
+
+/// Replaces (or with `None` removes) the page's infobox, keeping everything else.
+pub fn save_infobox(library: &Path, project: &str, id: &str, infobox: Option<&Infobox>) -> AppResult<()> {
+    let path = page_path(&pages_dir(library, project)?, id)?;
+    let (mut meta, body) = parse(&fs::read_to_string(&path)?)?;
+    if infobox.is_none() && !meta.contains_key("infobox") {
+        return Ok(());
+    }
+    set_infobox_meta(&mut meta, infobox)?;
+    safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+    Ok(())
 }
 
 /// Replaces the page's Markdown body, keeping its front matter.
@@ -320,16 +372,39 @@ pub fn set_aliases(
     Ok(info(id.to_string(), title, clean))
 }
 
-/// Rewrites links to `old` so they point at `new` in the page `id`, keeping
-/// its front matter. Returns how many links changed (0 = file untouched).
+/// Rewrites links to `old` so they point at `new` in the page `id`: in its
+/// text and its infobox fields. Returns how many links changed (0 = file
+/// untouched).
 pub fn rewrite_page_links(pages: &Path, id: &str, old: &str, new: &str) -> AppResult<usize> {
     let path = page_path(pages, id)?;
-    let (meta, body) = parse(&fs::read_to_string(&path)?)?;
-    let (body, n) = rewrite_links(&body, old, new);
+    let (mut meta, body) = parse(&fs::read_to_string(&path)?)?;
+    let (body, mut n) = rewrite_links(&body, old, new);
+    if let Ok(Some(mut ib)) = meta_infobox(&meta) {
+        let m = rewrite_infobox_links(&mut ib, old, new);
+        if m > 0 {
+            set_infobox_meta(&mut meta, Some(&ib))?;
+            n += m;
+        }
+    }
     if n > 0 {
         safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
     }
     Ok(n)
+}
+
+/// The infobox of the page file at `pages`/`id`.
+pub fn read_infobox(pages: &Path, id: &str) -> AppResult<Option<Infobox>> {
+    let (meta, _) = parse(&fs::read_to_string(page_path(pages, id)?)?)?;
+    meta_infobox(&meta).map_err(AppError::Invalid)
+}
+
+/// Writes a changed infobox into the page file at `pages`/`id`.
+pub fn write_infobox(pages: &Path, id: &str, infobox: &Infobox) -> AppResult<()> {
+    let path = page_path(pages, id)?;
+    let (mut meta, body) = parse(&fs::read_to_string(&path)?)?;
+    set_infobox_meta(&mut meta, Some(infobox))?;
+    safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+    Ok(())
 }
 
 /// Reads lines of a page body (0-based numbers), for "What links here".
@@ -375,7 +450,7 @@ mod tests {
     }
 
     fn create(lib: &Path, p: &str, group: &str, title: &str) -> AppResult<PageInfo> {
-        create_page(lib, p, group, title, false, &others(lib, p))
+        create_page(lib, p, group, title, false, &others(lib, p), None)
     }
 
     fn titles(lib: &Path, p: &str) -> Vec<(String, String)> {
@@ -551,7 +626,7 @@ mod tests {
         let err = create(lib.path(), &p, &group, "Page A").unwrap_err();
         assert!(matches!(err, AppError::LongPath(_)));
         assert!(titles(lib.path(), &p).is_empty());
-        create_page(lib.path(), &p, &group, "Page A", true, &[]).unwrap();
+        create_page(lib.path(), &p, &group, "Page A", true, &[], None).unwrap();
 
         create(lib.path(), &p, "", "Page B").unwrap();
         assert!(matches!(
@@ -630,6 +705,45 @@ mod tests {
         let o = others(lib.path(), &p);
         assert_eq!((o[0].title.as_str(), o[0].aliases.clone()), ("1984", vec!["Single".to_string()]));
         assert_eq!(o[1].aliases, ["x", "7"]);
+    }
+
+    #[test]
+    fn create_from_template_and_save_infobox() {
+        let (lib, p) = setup();
+        let t: Template = serde_json::from_value(serde_json::json!({
+            "id": "t-1", "name": "Template A", "color": "#cedff2", "starterText": "## Section A\n",
+            "fields": [{"key": "a", "label": "Field A", "type": "text"}]
+        }))
+        .unwrap();
+        create_page(lib.path(), &p, "", "Page A", false, &[], Some(&t)).unwrap();
+        let text = raw(lib.path(), &p, "Page A.md");
+        assert_eq!(
+            text,
+            "---\ntitle: Page A\ninfobox:\n  template: t-1\n  color: '#cedff2'\n  fields:\n  - key: a\n    label: Field A\n    type: text\n---\n## Section A\n"
+        );
+        let page = read_page(lib.path(), &p, "Page A.md").unwrap();
+        let mut ib = page.infobox.unwrap();
+        assert_eq!(page.body, "## Section A\n");
+        ib.fields[0].value = Some(serde_json::json!("Example value"));
+        save_infobox(lib.path(), &p, "Page A.md", Some(&ib)).unwrap();
+        save_page(lib.path(), &p, "Page A.md", "Text\n").unwrap();
+        let page = read_page(lib.path(), &p, "Page A.md").unwrap();
+        assert_eq!(page.infobox.unwrap().fields[0].value, Some(serde_json::json!("Example value")));
+        assert_eq!(page.body, "Text\n");
+        save_infobox(lib.path(), &p, "Page A.md", None).unwrap();
+        assert_eq!(raw(lib.path(), &p, "Page A.md"), "---\ntitle: Page A\n---\nText\n");
+    }
+
+    #[test]
+    fn unreadable_infobox_is_reported_and_kept() {
+        let (lib, p) = setup();
+        let path = pages(lib.path(), &p).join("Page A.md");
+        fs::write(&path, "---\ntitle: Page A\ninfobox: [1, 2]\n---\nx\n").unwrap();
+        let page = read_page(lib.path(), &p, "Page A.md").unwrap();
+        assert!(page.infobox.is_none());
+        assert!(page.infobox_error.is_some());
+        save_page(lib.path(), &p, "Page A.md", "y\n").unwrap();
+        assert!(raw(lib.path(), &p, "Page A.md").contains("infobox:\n- 1\n- 2\n"));
     }
 
     #[test]

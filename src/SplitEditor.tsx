@@ -23,7 +23,9 @@ import {
   toggleQuote,
   type ActiveFormats,
 } from "./formatting";
-import { api } from "./api";
+import { api, type IncomingField, type Infobox } from "./api";
+import { infoboxHtml } from "./infobox";
+import { InfoboxForm } from "./InfoboxForm";
 import { editorLinks, insertLink, linkCompletions, linkRangeAt, setLinkEnv, wikiLinkSyntax, type LinkEnv } from "./editorLinks";
 import { LinkPopup } from "./LinkPopup";
 import { editedLink, shownText, type WikiLink } from "./wikilinks";
@@ -36,11 +38,19 @@ import { scrollToSection, useContentClick, useLinkContext, useWiki } from "./wik
 interface Props {
   /** The page being edited. */
   pageId: string;
+  /** Its title (the infobox's title bar). */
+  title: string;
   initial: string;
   onChange: (text: string) => void;
+  infobox: Infobox | null;
+  infoboxError: string | null;
+  incoming: IncomingField[];
+  onInfoboxChange: (ib: Infobox | null) => void;
   /** Shown at the right of the status line (save state). */
   status?: ReactNode;
 }
+
+type Tab = "text" | "infobox";
 
 const MOD = IS_MAC ? "⌘" : "Ctrl+";
 const ALT = IS_MAC ? "⌥" : "Alt+";
@@ -126,7 +136,7 @@ const formatKeymap = [
   { key: "Tab", run: () => true, shift: () => true },
 ];
 
-const highlight = HighlightStyle.define([
+export const highlight = HighlightStyle.define([
   { tag: t.heading1, fontSize: "1.55em", fontWeight: "700" },
   { tag: t.heading2, fontSize: "1.4em", fontWeight: "700" },
   { tag: t.heading3, fontSize: "1.22em", fontWeight: "700" },
@@ -141,7 +151,7 @@ const highlight = HighlightStyle.define([
   { tag: t.monospace, fontFamily: "var(--font-mono)" },
 ]);
 
-const theme = EditorView.theme({
+export const theme = EditorView.theme({
   "&": { height: "100%", fontSize: "var(--editor-font-size)", color: "var(--text)", backgroundColor: "var(--bg)" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "var(--font-body)", lineHeight: "1.6" },
@@ -152,6 +162,10 @@ const theme = EditorView.theme({
     backgroundColor: "var(--selection) !important",
   },
   ".cm-placeholder": { color: "var(--muted)" },
+});
+
+/** Link suggestions (also used by the small field editors). */
+export const popupTheme = EditorView.theme({
   // Link suggestions
   ".cm-tooltip": {
     backgroundColor: "var(--bg)",
@@ -211,8 +225,9 @@ const NO_FORMATS: ActiveFormats = {
   quote: false,
 };
 
-export function SplitEditor({ pageId, initial, onChange, status }: Props) {
+export function SplitEditor({ pageId, title, initial, onChange, infobox, infoboxError, incoming, onInfoboxChange, status }: Props) {
   const wiki = useWiki();
+  const [tab, setTab] = useState<Tab>("text");
   const links = useLinkContext(pageId);
   const onContentClick = useContentClick(pageId);
   const [linkPicker, setLinkPicker] = useState<{ query: string } | null>(null);
@@ -276,6 +291,7 @@ export function SplitEditor({ pageId, initial, onChange, status }: Props) {
         "replace all": "Replace all",
       }),
       theme,
+      popupTheme,
       pasteFormatted,
       Prec.high(
         keymap.of([
@@ -368,7 +384,12 @@ export function SplitEditor({ pageId, initial, onChange, status }: Props) {
     viewRef.current?.dispatch({ effects: setLinkEnv.of(env) });
   }, [env]);
 
-  const html = useMemo(() => renderPage(text, { lineAnchors: true, links }).html, [text, links]);
+  const textHtml = useMemo(() => renderPage(text, { lineAnchors: true, links }).html, [text, links]);
+  const boxHtml = useMemo(
+    () => infoboxHtml(infobox, { project: wiki.project, title, links, incoming, showEmpty: true }),
+    [infobox, wiki.project, title, links, incoming],
+  );
+  const html = boxHtml + textHtml;
   const counts = useMemo(() => {
     const plain = plainText(text);
     return { words: countWords(plain), chars: plain.length };
@@ -439,10 +460,29 @@ export function SplitEditor({ pageId, initial, onChange, status }: Props) {
     });
   }
 
+  function showTab(t: Tab) {
+    setTab(t);
+    if (t === "text") requestAnimationFrame(() => viewRef.current?.focus());
+  }
+
   return (
     <div className="split-editor">
       <div className="toolbar" role="toolbar" aria-label="Formatting" onMouseDown={(e) => e.preventDefault()}>
-        {TOOLS.map((tool, i) =>
+        <div className="tabs" role="tablist" aria-label="Edit">
+          <button role="tab" aria-selected={tab === "text"} className={`tab ${tab === "text" ? "active" : ""}`} onClick={() => showTab("text")}>
+            Text
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === "infobox"}
+            className={`tab ${tab === "infobox" ? "active" : ""}`}
+            onClick={() => showTab("infobox")}
+          >
+            Infobox
+          </button>
+        </div>
+        <span className="toolbar-sep" />
+        {tab === "text" && TOOLS.map((tool, i) =>
           tool === "|" ? (
             <span key={i} className="toolbar-sep" />
           ) : (
@@ -460,19 +500,23 @@ export function SplitEditor({ pageId, initial, onChange, status }: Props) {
             </button>
           ),
         )}
-        <span className="toolbar-sep" />
-        <button className="tool" title={`Undo (${MOD}Z)`} aria-label="Undo" disabled={!canUndo} onClick={() => run(undo)}>
-          <Icon name="undo" />
-        </button>
-        <button
-          className="tool"
-          title={`Redo (${MOD}${SHIFT}Z${IS_MAC ? "" : " or Ctrl+Y"})`}
-          aria-label="Redo"
-          disabled={!canRedo}
-          onClick={() => run(redo)}
-        >
-          <Icon name="redo" />
-        </button>
+        {tab === "text" && (
+          <>
+            <span className="toolbar-sep" />
+            <button className="tool" title={`Undo (${MOD}Z)`} aria-label="Undo" disabled={!canUndo} onClick={() => run(undo)}>
+              <Icon name="undo" />
+            </button>
+            <button
+              className="tool"
+              title={`Redo (${MOD}${SHIFT}Z${IS_MAC ? "" : " or Ctrl+Y"})`}
+              aria-label="Redo"
+              disabled={!canRedo}
+              onClick={() => run(redo)}
+            >
+              <Icon name="redo" />
+            </button>
+          </>
+        )}
         <div className="spacer" />
         <button className={`tool wide ${previewHidden ? "" : "active"}`} title="Show or hide the preview" onClick={togglePreview}>
           Preview
@@ -480,7 +524,19 @@ export function SplitEditor({ pageId, initial, onChange, status }: Props) {
       </div>
 
       <div className="split" ref={splitRef}>
-        <div className="split-source" style={{ flexBasis: previewHidden ? "100%" : `${split * 100}%` }} ref={hostRef} />
+        <div className="split-source" style={{ flexBasis: previewHidden ? "100%" : `${split * 100}%` }}>
+          {/* The text editor stays mounted while the Infobox tab is open, so its undo history survives. */}
+          <div className="split-source-text" ref={hostRef} hidden={tab !== "text"} />
+          {tab === "infobox" && (
+            <InfoboxForm
+              pageId={pageId}
+              infobox={infobox}
+              error={infoboxError}
+              templates={wiki.templates}
+              onChange={onInfoboxChange}
+            />
+          )}
+        </div>
         {!previewHidden && (
           <>
             <div className="split-divider" onPointerDown={startDrag} title="Drag to resize" />
