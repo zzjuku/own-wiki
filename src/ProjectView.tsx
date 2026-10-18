@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, errorText, isLongPath, type CategoryInfo, type Frame, type ProjectInfo, type Tree } from "./api";
+import { api, errorText, isLongPath, type CategoryInfo, type Frame, type ProjectInfo, type ProjectSettings, type Tree } from "./api";
 import { CategoryIndex } from "./categories";
 import { CategoriesList, CategoryView } from "./CategoryView";
 import { flushAll } from "./autosave";
@@ -105,9 +105,17 @@ export function ProjectView({ project, onBack }: Props) {
   const [category, setCategory] = useState<string | null>(null);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [imageFrame, setImageFrameState] = useState<Frame>(DEFAULT_FRAME);
+  const [settings, setSettings] = useState<ProjectSettings>({ hideCategoryBox: false });
+  const [settingsOpen, setSettingsOpen] = useState(false);
   useEffect(() => {
     api.getImageFrame(project.id).then(setImageFrameState, () => {});
+    api.getProjectSettings(project.id).then(setSettings, () => {});
   }, [project.id]);
+
+  function changeSettings(next: ProjectSettings) {
+    setSettings(next);
+    api.setProjectSettings(project.id, next).catch(report);
+  }
   // The Templates screen is shown instead of a page.
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templateSelected, setTemplateSelected] = useState<string | null>(null);
@@ -662,8 +670,9 @@ export function ProjectView({ project, onBack }: Props) {
       openCategory: (name) => void actions.current.openCategory(name),
       createCategory: (name) => void actions.current.createCategory(name),
       reloadCategories,
+      settings,
     }),
-    [project.id, names, templates.templates, imageFrame, report, categories, reloadCategories],
+    [project.id, names, templates.templates, imageFrame, report, categories, reloadCategories, settings],
   );
 
   async function openTemplates() {
@@ -712,14 +721,25 @@ export function ProjectView({ project, onBack }: Props) {
             </button>
           </div>
         </div>
-        <h1
-          className={`project-name ${selectedGroup === ROOT ? "selected" : ""}`}
-          title={`${project.name} — click to add new pages at the top level`}
-          data-drop={ROOT}
-          onClick={() => setSelectedGroup(ROOT)}
-        >
-          {project.name}
-        </h1>
+        <div className="project-name-row">
+          <h1
+            className={`project-name ${selectedGroup === ROOT ? "selected" : ""}`}
+            title={`${project.name} — click to add new pages at the top level`}
+            data-drop={ROOT}
+            onClick={() => setSelectedGroup(ROOT)}
+          >
+            {project.name}
+          </h1>
+          <button className="plain nav" title="Project settings" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
+            <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <circle cx="8" cy="8" r="2.2" className="stroke" />
+              <path
+                d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"
+                className="stroke"
+              />
+            </svg>
+          </button>
+        </div>
         <div className="row">
           <button
             className="primary grow"
@@ -829,6 +849,32 @@ export function ProjectView({ project, onBack }: Props) {
 
       <HoverCards />
       <ImageViewer />
+
+      {settingsOpen && (
+        <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && setSettingsOpen(false)}>
+          <div className="dialog" role="dialog" aria-label="Project settings" onKeyDown={(e) => e.key === "Escape" && setSettingsOpen(false)}>
+            <h2>Project settings</h2>
+            <p className="muted small-note">These settings are stored in the project, so they're the same on every computer.</p>
+            <label className="check settings-check">
+              <input
+                type="checkbox"
+                checked={!settings.hideCategoryBox}
+                onChange={(e) => changeSettings({ ...settings, hideCategoryBox: !e.target.checked })}
+              />
+              <span>Show the categories box at the bottom of pages</span>
+            </label>
+            <p className="hint">
+              When it's off, categories still work: add them in edit mode (the Categories line under the title), and category pages
+              and the Categories list stay as they are.
+            </p>
+            <div className="dialog-actions">
+              <button type="button" className="primary" autoFocus onClick={() => setSettingsOpen(false)}>
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {quickOpen && (
         <QuickOpen

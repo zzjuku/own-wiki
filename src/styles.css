@@ -3027,3 +3027,16 @@ button.add-entry {
 .sort-line .sort-input:not(:focus) {
   border-color: var(--border);
 }
+/* Project name with the Project settings button */
+.project-name-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.project-name-row .project-name {
+  flex: 1;
+  min-width: 0;
+}
+.settings-check {
+  margin: 8px 0 4px;
+}

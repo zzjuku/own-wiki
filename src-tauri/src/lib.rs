@@ -230,6 +230,16 @@ fn import_image_data(state: State<'_, AppState>, request: tauri::ipc::Request<'_
 }
 
 #[tauri::command]
+fn get_project_settings(state: State<AppState>, project: String) -> AppResult<projects::ProjectSettings> {
+    projects::settings(&projects::project_dir(&state.library()?, &project)?)
+}
+
+#[tauri::command]
+fn set_project_settings(state: State<AppState>, project: String, settings: projects::ProjectSettings) -> AppResult<()> {
+    projects::set_settings(&projects::project_dir(&state.library()?, &project)?, &settings)
+}
+
+#[tauri::command]
 fn get_image_frame(state: State<AppState>, project: String) -> AppResult<projects::Frame> {
     projects::image_frame(&projects::project_dir(&state.library()?, &project)?)
 }
@@ -523,6 +533,8 @@ pub fn run() {
             import_image,
             import_image_data,
             get_image_frame,
+            get_project_settings,
+            set_project_settings,
             set_image_frame,
             list_categories,
             category_page,

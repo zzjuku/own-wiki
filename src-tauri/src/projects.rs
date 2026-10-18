@@ -33,6 +33,9 @@ struct ProjectFile {
     /// Size of the frame every infobox image sits in.
     #[serde(rename = "infoboxImage", default, skip_serializing_if = "Option::is_none")]
     infobox_image: Option<Frame>,
+    /// Pages don't show the categories box at the bottom.
+    #[serde(rename = "hideCategoryBox", default, skip_serializing_if = "std::ops::Not::not")]
+    hide_category_box: bool,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -106,6 +109,23 @@ pub fn set_image_frame(dir: &Path, frame: Frame) -> AppResult<()> {
     }
     let mut file = read_project_file(dir)?;
     file.infobox_image = Some(frame);
+    write_project_file(dir, &file)
+}
+
+/// Project-wide options that live in `project.json` (so they sync).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettings {
+    pub hide_category_box: bool,
+}
+
+pub fn settings(dir: &Path) -> AppResult<ProjectSettings> {
+    Ok(ProjectSettings { hide_category_box: read_project_file(dir)?.hide_category_box })
+}
+
+pub fn set_settings(dir: &Path, s: &ProjectSettings) -> AppResult<()> {
+    let mut file = read_project_file(dir)?;
+    file.hide_category_box = s.hide_category_box;
     write_project_file(dir, &file)
 }
 
@@ -192,6 +212,7 @@ pub fn create_project(library: &Path, name: &str) -> AppResult<ProjectInfo> {
             templates: Vec::new(),
             main_page: Some(MAIN_PAGE_TITLE.into()),
             infobox_image: None,
+            hide_category_box: false,
             extra: Default::default(),
         },
     )?;
@@ -238,6 +259,18 @@ pub fn delete_project(library: &Path, id: &str) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_settings_round_trip() {
+        let lib = tempfile::tempdir().unwrap();
+        create_project(lib.path(), "Project A").unwrap();
+        let dir = lib.path().join("Project A");
+        assert!(!settings(&dir).unwrap().hide_category_box);
+        set_settings(&dir, &ProjectSettings { hide_category_box: true }).unwrap();
+        assert!(settings(&dir).unwrap().hide_category_box);
+        assert!(fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("\"hideCategoryBox\": true"));
+        assert_eq!(main_page(&dir).as_deref(), Some(MAIN_PAGE_TITLE));
+    }
 
     #[test]
     fn create_makes_spec_layout() {

@@ -112,6 +112,12 @@ export interface FieldOptions {
   [extra: string]: unknown;
 }
 
+/** Project-wide options stored in project.json (they sync with the project). */
+export interface ProjectSettings {
+  /** Pages don't show the categories box at the bottom. */
+  hideCategoryBox: boolean;
+}
+
 /** Width and height of the frame infobox images sit in (CSS pixels). */
 export interface Frame {
   width: number;
@@ -249,6 +255,9 @@ export const api = {
     invoke<string>("import_image_data", data, {
       headers: { project: encodeURIComponent(project), name: encodeURIComponent(name) },
     }),
+  getProjectSettings: (project: string) => invoke<ProjectSettings>("get_project_settings", { project }),
+  setProjectSettings: (project: string, settings: ProjectSettings) =>
+    invoke<void>("set_project_settings", { project, settings }),
   getImageFrame: (project: string) => invoke<Frame>("get_image_frame", { project }),
   setImageFrame: (project: string, frame: Frame) => invoke<void>("set_image_frame", { project, frame }),
 

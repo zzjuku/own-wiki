@@ -331,7 +331,7 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted }
                 </div>
               </section>
             </div>
-            <CategoryChips variant="box" values={data.parents} save={saveParents} exclude={shown} />
+            {!wiki.settings.hideCategoryBox && <CategoryChips variant="box" values={data.parents} save={saveParents} exclude={shown} />}
           </div>
         </div>
       )}

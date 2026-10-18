@@ -290,14 +290,14 @@ export function PageView(props: Props) {
           )}
           <div className="read-column">
             <div className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: boxHtml + rendered.html }} />
-            <CategoryChips variant="box" values={categories} save={saveCategories} />
+            {!wiki.settings.hideCategoryBox && <CategoryChips variant="box" values={categories} save={saveCategories} />}
           </div>
         </div>
       ) : (
         <div className="read-view empty-page">
           <div className="read-column">
             <p className="empty">This page is empty. Click Edit to write.</p>
-            <CategoryChips variant="box" values={categories} save={saveCategories} />
+            {!wiki.settings.hideCategoryBox && <CategoryChips variant="box" values={categories} save={saveCategories} />}
           </div>
         </div>
       )}

@@ -2,7 +2,7 @@
 // links: resolving names, following links, and creating pages from red links.
 import { createContext, useCallback, useContext, useMemo } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { Frame, Template } from "./api";
+import type { Frame, ProjectSettings, Template } from "./api";
 import type { CategoryIndex } from "./categories";
 import { imageUrl } from "./infobox";
 import type { LinkContext } from "./markdown";
@@ -37,6 +37,8 @@ export interface Wiki {
   createCategory: (name: string) => void;
   /** Re-reads the category list (after adding or removing categories). */
   reloadCategories: () => void;
+  /** Project-wide options (Project settings). */
+  settings: ProjectSettings;
 }
 
 export const DEFAULT_FRAME: Frame = { width: 250, height: 300 };
