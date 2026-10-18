@@ -2,7 +2,7 @@
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: M1, M2 and M3 done; M4 built, waiting for Juku's review; roadmap M5–M16 drafted.
+Status: M1–M4 done; M5 next (to be defined); roadmap M6–M16 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -171,7 +171,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - Checkpoint for Juku partway: split editor + toolbar + shortcuts, before tables, footnotes, paste, table of contents and styling.
 - Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen, a ~20,000-word placeholder page types and previews without noticeable lag, undo works after every toolbar action, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it. Windows shortcuts can't be clicked through by Claude; Juku checks them on the PC if he wants them verified.
 
-**M4 — Links (defined 2026-10-17)**
+**M4 — Links (done 2026-10-18)**
 - Link syntax: `[[Page]]`, `[[Page|shown text]]`, `[[Page#Section]]`, `[[Page#Section|text]]`, and `[[#Section]]` for a section of the same page. Section links use M3's heading anchors.
   - Matching ignores upper/lower case (like titles).
   - Links work in text, lists, tables, quotes and footnotes. Text inside code (backticks) is never a link and never rewritten.
@@ -254,3 +254,4 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-18: M4 built (Claude's choices, open to Juku's review): a section link without its own text shows "Page § Section" (same-page: "§ Section"); back/forward and the main page button sit at the top of the sidebar; "Set as main page" is in the page's ⋯ menu and the sidebar menu; "Links here (N)" button in the page header; hover cards also show for red links ("Page doesn't exist"); the Link picker (Cmd+K) can also link to a page that doesn't exist yet (red link); quick-open lists aliases with "→ Title"; the mouse's back/forward buttons also work.
 - 2026-10-18: M4 technical: the link index (`.cache/link-index.json`) also serves the page list (`get_tree`), so titles and aliases are read once; cache written at most every 10 s for small changes (a stale cache only costs re-reading changed files). Files without front matter stay without it when saved. Rename rewrites linking files in parallel. Measured (release build, 5,000 pages × 20 links): first index build 68 ms, reopen 16 ms, rename of a page with 519 links in 518 pages 1.4 s. The CodeMirror keys Cmd+[ / Cmd+] (indent) and, on Windows, Alt+Left/Right are given to back/forward.
 - 2026-10-18: M4 review: Edit link popup added, so the shown text of a link (and where it points) can be changed without typing `[[Page|text]]` (Juku chose it over a second box in the Link dialog or a prompt after autocomplete).
+- 2026-10-18: M4 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer.
