@@ -1642,6 +1642,31 @@ button.backlink:hover {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
 }
+.mini-body {
+  display: flex;
+  align-items: flex-start;
+}
+.mini-host {
+  flex: 1;
+  min-width: 0;
+}
+/* Bold, Italic and Link buttons: shown while the field is hovered or in use. */
+.mini-actions {
+  display: flex;
+  gap: 1px;
+  padding: 2px 3px 0 0;
+  visibility: hidden;
+}
+.mini-editor:hover .mini-actions,
+.mini-editor:focus-within .mini-actions {
+  visibility: visible;
+}
+.mini-actions .tool {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 4px;
+  font-size: var(--text-sm);
+}
 .mini-editor.multi .cm-editor {
   min-height: 4.6em;
 }

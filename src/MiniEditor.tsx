@@ -1,6 +1,8 @@
 // A small text editor for infobox fields and template starter text: bold,
 // italic and [[links]] work as in the page editor (Cmd+B, Cmd+I, Cmd+K, `[[`
-// autocomplete). One line for Text fields, several for Long text.
+// autocomplete, Edit link popup when clicking a link). Field editors show
+// Bold, Italic and Link buttons while in use. One line for Text fields,
+// several for Long text.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { autocompletion } from "@codemirror/autocomplete";
 import { EditorState, Prec, type Extension, type StateCommand } from "@codemirror/state";
@@ -9,10 +11,13 @@ import { defaultKeymap, history, historyKeymap, redo } from "@codemirror/command
 import { syntaxHighlighting } from "@codemirror/language";
 import { insertNewlineContinueMarkupCommand, markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { api } from "./api";
-import { editorLinks, insertLink, linkCompletions, setLinkEnv, wikiLinkSyntax, type LinkEnv } from "./editorLinks";
+import { editorLinks, insertLink, linkCompletions, linkRangeAt, setLinkEnv, wikiLinkSyntax, type LinkEnv } from "./editorLinks";
+import { LinkPopup } from "./LinkPopup";
+import { IS_MAC } from "./QuickOpen";
+import { editedLink, shownText, type WikiLink } from "./wikilinks";
 import { toggleHeading, toggleInline, toggleList } from "./formatting";
 import { PagePicker } from "./QuickOpen";
-import { highlight, popupTheme } from "./SplitEditor";
+import { highlight, Icon, popupTheme } from "./SplitEditor";
 import { useWiki } from "./wiki";
 
 interface Props {
@@ -64,6 +69,10 @@ export function MiniEditor({ value, onChange, multiline, placeholder, pageId, to
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const [picker, setPicker] = useState<{ query: string } | null>(null);
+  // The Edit link popup, after clicking into a link.
+  const [popup, setPopup] = useState<{ from: number; to: number; link: WikiLink; at: { left: number; top: number } } | null>(null);
+  const popupRef = useRef(popup);
+  popupRef.current = popup;
   const openPickerRef = useRef(() => {});
   openPickerRef.current = () => {
     const view = viewRef.current;
@@ -116,6 +125,21 @@ export function MiniEditor({ value, onChange, multiline, placeholder, pageId, to
       keymap.of([...defaultKeymap.filter((b) => !["Mod-[", "Mod-]"].includes(b.key ?? "")), ...historyKeymap]),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) onChangeRef.current(u.state.doc.toString());
+        // Clicking into a link opens the Edit link popup; moving away or typing closes it.
+        if (u.docChanged && popupRef.current) setPopup(null);
+        if (u.selectionSet && !u.docChanged) {
+          const sel = u.state.selection.main;
+          const clicked = u.transactions.some((t) => t.isUserEvent("select.pointer"));
+          const r = sel.empty ? linkRangeAt(u.state, sel.head) : null;
+          if (clicked && r && r.from < sel.head && sel.head < r.to) {
+            requestAnimationFrame(() => {
+              const c = u.view.coordsAtPos(r.from);
+              if (c) setPopup({ ...r, at: { left: c.left, top: c.bottom + 6 } });
+            });
+          } else if (popupRef.current && (sel.head < popupRef.current.from || sel.head > popupRef.current.to)) {
+            setPopup(null);
+          }
+        }
       }),
     ];
     const view = new EditorView({ parent: hostRef.current!, state: EditorState.create({ doc: value, extensions }) });
@@ -161,6 +185,22 @@ export function MiniEditor({ value, onChange, multiline, placeholder, pageId, to
     view.focus();
   }
 
+  /** Replaces the popup's link with `insert`. */
+  function replaceLink(insert: string) {
+    const view = viewRef.current;
+    const p = popup;
+    setPopup(null);
+    if (!view || !p) return;
+    view.dispatch({
+      changes: { from: p.from, to: p.to, insert },
+      selection: { anchor: p.from + insert.length },
+      userEvent: "input.link",
+    });
+    view.focus();
+  }
+
+  const MOD = IS_MAC ? "⌘" : "Ctrl+";
+
   return (
     <div className={`mini-editor ${multiline ? "multi" : ""} ${className ?? ""}`}>
       {toolbar && (
@@ -189,8 +229,53 @@ export function MiniEditor({ value, onChange, multiline, placeholder, pageId, to
           </button>
         </div>
       )}
-      <div className="mini-host" ref={hostRef} />
+      <div className="mini-body">
+        <div className="mini-host" ref={hostRef} />
+        {!toolbar && (
+          <div className="mini-actions" onMouseDown={(e) => e.preventDefault()}>
+            <button type="button" className="tool" title={`Bold (${MOD}B)`} aria-label="Bold" onClick={() => run(toggleInline("bold"))}>
+              <b>B</b>
+            </button>
+            <button type="button" className="tool" title={`Italic (${MOD}I)`} aria-label="Italic" onClick={() => run(toggleInline("italic"))}>
+              <i>I</i>
+            </button>
+            <button
+              type="button"
+              className="tool"
+              title={`Link to a page (${MOD}K) — select words first to link them`}
+              aria-label="Link to a page"
+              onClick={() => openPickerRef.current()}
+            >
+              <Icon name="link" />
+            </button>
+          </div>
+        )}
+      </div>
       {children}
+      {popup && (
+        <LinkPopup
+          key={`${popup.from}-${popup.to}`}
+          link={popup.link}
+          names={wiki.names}
+          at={popup.at}
+          close={() => {
+            setPopup(null);
+            viewRef.current?.focus();
+          }}
+          apply={(target, shown) => replaceLink(editedLink(popup.link, target, shown, false))}
+          unlink={() => replaceLink(shownText(popup.link))}
+          open={(target) => {
+            setPopup(null);
+            const hash = target.indexOf("#");
+            env.open({
+              page: (hash < 0 ? target : target.slice(0, hash)).trim(),
+              section: hash < 0 ? null : target.slice(hash + 1).trim() || null,
+              label: null,
+              suffix: "",
+            });
+          }}
+        />
+      )}
       {picker && (
         <PagePicker
           names={wiki.names}
