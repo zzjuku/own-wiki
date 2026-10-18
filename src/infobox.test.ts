@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { minZoom, pictureStyle, placement } from "./infobox";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -103,6 +104,20 @@ describe("infoboxHtml", () => {
     const html = infoboxHtml(ib, ctx);
     expect(html).toContain('data-full="wikiasset://localhost/Project%20A%2FImage%20A.png"');
     expect(html).toContain("<em>caption</em>");
+  });
+
+  it("places zoomed pictures in the frame", () => {
+    const frame = { width: 200, height: 200 };
+    // A 2:1 picture filling a square frame is twice as wide as the frame.
+    expect(placement({ x: 0, y: 50, zoom: 1, aspect: 2 }, frame)).toEqual({ width: 200, height: 100, left: 0, top: 0 });
+    expect(placement({ x: 100, y: 50, zoom: 1, aspect: 2 }, frame)).toEqual({ width: 200, height: 100, left: -100, top: 0 });
+    // Zoomed out to the whole picture: half as high as the frame, centred.
+    expect(minZoom(2, frame)).toBe(0.5);
+    expect(placement({ x: 50, y: 50, zoom: 0.1, aspect: 2 }, frame)).toEqual({ width: 100, height: 50, left: 0, top: 25 });
+    // Without a zoom it simply fills the frame.
+    expect(placement({ x: 10, y: 20 }, frame)).toBeNull();
+    expect(pictureStyle({ x: 10, y: 20 }, frame)).toBe("object-position:10% 20%");
+    expect(pictureStyle({ x: 50, y: 50, zoom: 2, aspect: 1 }, frame)).toBe("position:absolute;max-width:none;max-height:none;width:200%;height:200%;left:-50%;top:-50%");
   });
 
   it("puts images in the frame, cropped where chosen, and widens the box for it", () => {

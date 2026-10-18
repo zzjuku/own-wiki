@@ -2792,3 +2792,73 @@ button.add-entry {
 .frame-choice > .check {
   flex: 0 0 210px;
 }
+
+/* Infobox pictures with their own size sit freely in the frame. */
+.markdown .infobox .infobox-frame,
+.crop-frame {
+  position: relative;
+}
+.crop-frame {
+  display: block;
+  padding: 0;
+}
+.crop-frame:hover {
+  border-color: var(--accent);
+}
+
+/* Adjust picture */
+.adjust-dialog {
+  width: auto;
+  max-width: calc(100vw - 32px);
+}
+.adjust-stage {
+  position: relative;
+  overflow: hidden;
+  margin: 8px auto 12px;
+  background: var(--bg-soft);
+  border-radius: var(--radius);
+  max-width: 100%;
+}
+.adjust-ghost,
+.adjust-frame {
+  position: absolute;
+}
+.adjust-ghost {
+  opacity: 0.3;
+  pointer-events: none;
+}
+.adjust-frame {
+  overflow: hidden;
+  outline: 2px solid var(--accent);
+  background: var(--infobox-bg);
+}
+.adjust-frame.movable {
+  cursor: move;
+}
+.adjust-ghost img,
+.adjust-frame img {
+  max-height: none;
+  border: none;
+  border-radius: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+}
+.adjust-zoom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.adjust-zoom input {
+  flex: 1;
+}
+.adjust-presets {
+  margin-top: 8px;
+}
+.crop-frame.plain {
+  border: 1px solid var(--border);
+  background: var(--infobox-bg);
+  overflow: hidden;
+}

@@ -5,7 +5,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText, type Frame } from "./api";
 import { useFileDrop } from "./dropFiles";
 import { FIELD_IMAGE_EXTENSIONS, hasExtension } from "./images";
-import { cleanValue, imageUrl, isRange, type DatePoint, type DateRange, type ImageValue, type Qualifier } from "./infobox";
+import { AdjustPicture, styleObject } from "./AdjustPicture";
+import { cleanValue, imageUrl, isRange, pictureStyle, type Crop, type DatePoint, type DateRange, type ImageValue, type Qualifier } from "./infobox";
 import { MiniEditor } from "./MiniEditor";
 import { displayGroup } from "./tree";
 import { DEFAULT_FRAME, useWiki } from "./wiki";
@@ -269,62 +270,41 @@ export const ImageFrameContext = createContext<Frame>(DEFAULT_FRAME);
 
 const PREVIEW_MAX = 200;
 
-/** The image in its infobox frame, small; dragging it chooses which part shows. */
-function CropFrame({ project, value, onChange }: { project: string; value: ImageValue; onChange: (crop: { x: number; y: number }) => void }) {
+/** The image in its infobox frame, small; clicking it opens Adjust picture. */
+function CropFrame({ project, value, onChange }: { project: string; value: ImageValue; onChange: (crop: Crop) => void }) {
   const frame = useContext(ImageFrameContext);
   const k = Math.min(1, PREVIEW_MAX / frame.width, PREVIEW_MAX / frame.height);
   const pw = Math.round(frame.width * k);
   const ph = Math.round(frame.height * k);
-  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
-  const [live, setLive] = useState<{ x: number; y: number } | null>(null);
-  const crop = live ?? { x: value.crop?.x ?? 50, y: value.crop?.y ?? 50 };
-  // How far the (cover-scaled) image sticks out of the frame.
-  const s = natural ? Math.max(pw / natural.w, ph / natural.h) : 1;
-  const over = natural ? { x: natural.w * s - pw, y: natural.h * s - ph } : { x: 0, y: 0 };
-  const movable = over.x > 1 || over.y > 1;
-
-  function drag(e: React.PointerEvent) {
-    if (!movable || e.button !== 0) return;
-    e.preventDefault();
-    const start = { x: e.clientX, y: e.clientY, cx: crop.x, cy: crop.y };
-    let last = crop;
-    const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
-    const move = (ev: PointerEvent) => {
-      last = {
-        x: over.x > 1 ? clamp(start.cx - ((ev.clientX - start.x) / over.x) * 100) : start.cx,
-        y: over.y > 1 ? clamp(start.cy - ((ev.clientY - start.y) / over.y) * 100) : start.cy,
-      };
-      setLive(last);
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      document.body.classList.remove("reordering");
-      setLive(null);
-      if (last.x !== crop.x || last.y !== crop.y) onChange(last);
-    };
-    document.body.classList.add("reordering");
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  }
+  const [adjusting, setAdjusting] = useState(false);
 
   return (
     <div className="crop-wrap">
-      <div
-        className={`crop-frame ${movable ? "movable" : ""}`}
+      <button
+        type="button"
+        className="plain crop-frame"
         style={{ width: pw, height: ph }}
-        title={movable ? "Drag to choose which part of the image shows" : undefined}
-        onPointerDown={drag}
+        title="Adjust which part of the picture shows, and how large"
+        onClick={() => setAdjusting(true)}
       >
-        <img
-          src={imageUrl(project, value.file!, frame.width)}
-          alt=""
-          draggable={false}
-          style={{ objectPosition: `${crop.x}% ${crop.y}%` }}
-          onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+        <img src={imageUrl(project, value.file!, frame.width)} alt="" draggable={false} style={styleObject(pictureStyle(value.crop, frame))} />
+      </button>
+      <button type="button" onClick={() => setAdjusting(true)}>
+        Adjust picture…
+      </button>
+      {adjusting && (
+        <AdjustPicture
+          project={project}
+          file={value.file!}
+          crop={value.crop}
+          frame={frame}
+          close={() => setAdjusting(false)}
+          save={(crop) => {
+            setAdjusting(false);
+            onChange(crop);
+          }}
         />
-      </div>
-      {movable && <span className="muted small">Drag the picture to choose what the frame shows.</span>}
+      )}
     </div>
   );
 }
@@ -400,9 +380,9 @@ export function ImageInput({
                 Remove
               </button>
             </div>
-            {img.crop && (img.crop.x !== 50 || img.crop.y !== 50) && (
-              <button type="button" className="plain small" onClick={() => onChange({ ...img, crop: undefined })}>
-                Centre the picture again
+            {img.crop && (
+              <button type="button" className="plain small" title="Fill the frame, centred" onClick={() => onChange({ ...img, crop: undefined })}>
+                Reset picture
               </button>
             )}
           </div>

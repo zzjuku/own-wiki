@@ -293,19 +293,57 @@ export interface BoxContext {
   frame?: Frame;
 }
 
-/** An Image field's value. `crop`: which part shows when the frame cuts the
- * image (percent from left and top; 50/50 = the middle). */
+/** An Image field's value. `crop`: how the picture sits in the frame.
+ * `x`, `y`: percent from left / top (50/50 = the middle). `zoom`: 1 = the
+ * picture just fills the frame, smaller shows more of it (down to the whole
+ * picture), larger shows less; `aspect` is the picture's width / height,
+ * stored with the zoom so the page can place it without loading it first. */
 export interface ImageValue {
   file?: string;
   caption?: string;
-  crop?: { x: number; y: number };
+  crop?: Crop;
 }
+
+export interface Crop {
+  x: number;
+  y: number;
+  zoom?: number;
+  aspect?: number;
+}
+
+export const MAX_ZOOM = 4;
 
 const clampPct = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 50);
 
-/** CSS object-position for an image value's crop. */
+/** CSS object-position for an image value's crop (pictures without a zoom). */
 export function cropPosition(v: ImageValue | undefined): string {
   return `${clampPct(v?.crop?.x)}% ${clampPct(v?.crop?.y)}%`;
+}
+
+/** The smallest zoom: the whole picture fits in the frame. */
+export function minZoom(aspect: number, frame: Frame): number {
+  const f = frame.width / frame.height;
+  return Math.min(aspect / f, f / aspect);
+}
+
+/** Where a zoomed picture sits in the frame, in percent of the frame: size and
+ * top-left corner. Null for pictures without a zoom (they simply fill it). */
+export function placement(crop: Crop | undefined, frame: Frame): { width: number; height: number; left: number; top: number } | null {
+  const aspect = crop?.aspect;
+  if (!crop || typeof crop.zoom !== "number" || typeof aspect !== "number" || !(aspect > 0)) return null;
+  const f = frame.width / frame.height;
+  const zoom = Math.min(MAX_ZOOM, Math.max(minZoom(aspect, frame), crop.zoom));
+  const width = Math.max(1, aspect / f) * 100 * zoom;
+  const height = Math.max(1, f / aspect) * 100 * zoom;
+  return { width, height, left: ((100 - width) * clampPct(crop.x)) / 100 + 0, top: ((100 - height) * clampPct(crop.y)) / 100 + 0 };
+}
+
+/** Inline style for the picture in its frame. */
+export function pictureStyle(crop: Crop | undefined, frame: Frame): string {
+  const p = placement(crop, frame);
+  if (!p) return `object-position:${clampPct(crop?.x)}% ${clampPct(crop?.y)}%`;
+  const r = (n: number) => Math.round(n * 100) / 100;
+  return `position:absolute;max-width:none;max-height:none;width:${r(p.width)}%;height:${r(p.height)}%;left:${r(p.left)}%;top:${r(p.top)}%`;
 }
 
 const frameStyle = (f: Frame) => `width:${f.width}px;aspect-ratio:${f.width} / ${f.height}`;
@@ -389,7 +427,7 @@ export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): st
         const full = escapeHtml(imageUrl(ctx.project, img.file));
         const alt = escapeHtml(img.caption ?? "");
         const picture = frame
-          ? `<span class="infobox-frame" style="${frameStyle(frame)}"><img src="${src}" data-full="${full}" alt="${alt}" style="object-position:${cropPosition(img)}"></span>`
+          ? `<span class="infobox-frame" style="${frameStyle(frame)}"><img src="${src}" data-full="${full}" alt="${alt}" style="${pictureStyle(img.crop, frame)}"></span>`
           : `<img src="${src}" data-full="${full}" alt="${alt}">`;
         rows.push({
           html: `<tr><td colspan="2" class="infobox-image" data-file="${escapeHtml(img.file)}">${picture}${caption}</td></tr>`,
