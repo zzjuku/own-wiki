@@ -2862,3 +2862,11 @@ button.add-entry {
   background: var(--infobox-bg);
   overflow: hidden;
 }
+/* Pictures fill their infobox frame exactly (sized against the frame itself,
+   which Safari's engine needs; adjusted pictures override size and place). */
+.markdown .infobox .infobox-frame img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-height: none;
+}
