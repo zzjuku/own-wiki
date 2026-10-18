@@ -14,6 +14,8 @@ pub const PROJECT_FILE: &str = "project.json";
 pub const PAGES_DIR: &str = "pages";
 pub const ASSETS_DIR: &str = "assets";
 pub const CACHE_DIR: &str = ".cache";
+/// One file per category that has its own text or parent categories.
+pub const CATEGORIES_DIR: &str = "categories";
 const FORMAT_VERSION: u32 = 1;
 
 /// Contents of `project.json`. Unknown keys are kept, so files written by a
@@ -133,6 +135,9 @@ pub fn set_templates(dir: &Path, list: &[Template]) -> AppResult<()> {
         }
         if list[..i].iter().any(|o| o.id == t.id) {
             return Err(AppError::Invalid("Two templates have the same id.".into()));
+        }
+        for c in &t.categories {
+            crate::categories::clean_name(c)?;
         }
     }
     let mut file = read_project_file(dir)?;

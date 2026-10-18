@@ -225,6 +225,33 @@ pub fn rewrite_links(body: &str, old: &str, new: &str) -> (String, usize) {
     (out, count)
 }
 
+/// The category a link target names (`Category:Name` -> "name", compared
+/// with [`norm`]), or `None` for an ordinary page link.
+pub fn category_of(target: &str) -> Option<String> {
+    let t = target.trim_start();
+    t.get(..9).filter(|p| p.eq_ignore_ascii_case("category:")).map(|_| norm(&t[9..]))
+}
+
+/// Points every `[[Category:…]]` link to category `old` (normalized) at `new`
+/// (a category name). Returns the new body and how many links changed.
+pub fn rewrite_category_links(body: &str, old: &str, new: &str) -> (String, usize) {
+    let mut out = String::with_capacity(body.len() + 64);
+    let mut last = 0;
+    let mut count = 0;
+    for link in parse_links(body) {
+        if category_of(&link.page).as_deref() != Some(old) {
+            continue;
+        }
+        out.push_str(&body[last..link.page_start]);
+        out.push_str("Category:");
+        out.push_str(new);
+        last = link.page_end;
+        count += 1;
+    }
+    out.push_str(&body[last..]);
+    (out, count)
+}
+
 // ---- images: [[File:Name.png|right|medium|Caption]] and <gallery> blocks ----
 
 /// An image starting at `line[i..]`: the end (exclusive) and the inside of
@@ -698,6 +725,16 @@ mod tests {
         assert_eq!(summary("[[File:A.png|right|Cap]]\nFirst text."), "First text.");
         assert_eq!(summary("Some [[File:A.png|x [[B]]]] text."), "Some  text.");
         assert_eq!(summary("<gallery>\nA.png|Cap\n</gallery>\n\nAfter."), "After.");
+    }
+
+    #[test]
+    fn category_links() {
+        assert_eq!(category_of("Category: Cat  A"), Some("cat a".into()));
+        assert_eq!(category_of("category:x"), Some("x".into()));
+        assert_eq!(category_of("Page"), None);
+        let (out, n) = rewrite_category_links("[[Category:Old]] [[category: old|x]] [[Old]] [[Category:Older]]", "old", "New A");
+        assert_eq!(n, 2);
+        assert_eq!(out, "[[Category:New A]] [[Category:New A|x]] [[Old]] [[Category:Older]]");
     }
 
     #[test]

@@ -350,6 +350,18 @@ function TemplateEditor({ project, template: t, templates, onChange, onRename, o
         </section>
 
         <section className="template-section">
+          <h3>Default categories</h3>
+          <p className="hint">New pages from this template start in these categories (each page can change its own).</p>
+          <Chips
+            values={t.categories ?? []}
+            onChange={(categories) => onChange({ ...t, categories: categories.length ? categories : undefined })}
+            placeholder="Add a category"
+            suggestions={wiki.categories.list.map((c) => c.name)}
+            label="Default categories"
+          />
+        </section>
+
+        <section className="template-section">
           <h3>Starter text</h3>
           <p className="hint">New pages from this template begin with this text (for example the usual section headings).</p>
           <MiniEditor

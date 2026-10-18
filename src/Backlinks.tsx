@@ -7,7 +7,10 @@ import { compareNames, displayGroup } from "./tree";
 import { useWiki } from "./wiki";
 
 interface Props {
-  pageId: string;
+  /** The page whose links are listed… */
+  pageId?: string;
+  /** …or the category (links written [[Category:Name]]). */
+  category?: string;
   title: string;
   close: () => void;
 }
@@ -27,20 +30,29 @@ function cleanLine(line: string): string {
   return t.replace(/^\[\^[^\]\s]+\]:\s*/, "");
 }
 
-export function Backlinks({ pageId, title, close }: Props) {
+export function Backlinks({ pageId, category, title, close }: Props) {
   const wiki = useWiki();
   const [list, setList] = useState<Backlink[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.backlinks(wiki.project, pageId, true).then(
+    const load = category !== undefined ? api.categoryBacklinks(wiki.project, category, true) : api.backlinks(wiki.project, pageId ?? "", true);
+    load.then(
       (l) => setList([...l].sort((a, b) => compareNames(a.title, b.title))),
       (e) => setError(errorText(e)),
     );
-  }, [wiki.project, pageId]);
+  }, [wiki.project, pageId, category]);
 
   // Links to this page show in bold in the lines.
-  const links = useMemo(() => ({ resolve: (n: string) => wiki.names.resolve(n), currentId: pageId }), [wiki.names, pageId]);
+  const links = useMemo(
+    () => ({
+      resolve: (n: string) => wiki.names.resolve(n),
+      currentId: pageId,
+      currentCategory: category,
+      category: (n: string) => wiki.categories.resolve(n) !== null,
+    }),
+    [wiki.names, wiki.categories, pageId, category],
+  );
 
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>

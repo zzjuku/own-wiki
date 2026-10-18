@@ -1,6 +1,8 @@
 // Finding a page by name (title or alias): Cmd+O / Ctrl+O to open one, and
 // the Link button / Cmd+K in the editor to link to one.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { categoryOf, type CategoryIndex } from "./categories";
+import type { CategoryInfo } from "./api";
 import type { NameEntry, NameIndex } from "./names";
 import { displayGroup } from "./tree";
 import { LINK_CHARS, norm } from "./wikilinks";
@@ -25,18 +27,27 @@ interface PickerProps {
   allowNew?: boolean;
   onPick: (picked: Picked) => void;
   close: () => void;
+  /** Also find categories (quick-open). */
+  categories?: CategoryIndex;
+  onPickCategory?: (name: string) => void;
 }
 
-export function PagePicker({ names, label, placeholder, initialQuery = "", allowNew, onPick, close }: PickerProps) {
+export function PagePicker({ names, label, placeholder, initialQuery = "", allowNew, onPick, close, categories, onPickCategory }: PickerProps) {
   const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const results = useMemo(() => names.search(query), [names, query]);
+  // "Category:…" typed: only categories.
+  const catQuery = categoryOf(query);
+  const results = useMemo(() => (catQuery !== null ? [] : names.search(query)), [names, query, catQuery]);
+  const cats: CategoryInfo[] = useMemo(
+    () => (categories && query.trim() ? categories.search(catQuery ?? query, catQuery !== null ? 50 : 10) : []),
+    [categories, query, catQuery],
+  );
   const typed = query.trim();
   const offerNew =
     allowNew && typed !== "" && !LINK_CHARS.test(typed) && !results.some((e) => norm(e.name) === norm(typed));
-  const count = results.length + (offerNew ? 1 : 0);
+  const count = results.length + cats.length + (offerNew ? 1 : 0);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -51,6 +62,9 @@ export function PagePicker({ names, label, placeholder, initialQuery = "", allow
     if (i < results.length) {
       close();
       onPick({ entry: results[i] });
+    } else if (i < results.length + cats.length) {
+      close();
+      onPickCategory?.(cats[i - results.length].name);
     } else if (offerNew) {
       close();
       onPick({ newTitle: typed });
@@ -102,15 +116,34 @@ export function PagePicker({ names, label, placeholder, initialQuery = "", allow
                 {e.page.group && <span className="quick-group">{displayGroup(e.page.group)}</span>}
               </li>
             ))}
+            {cats.map((c, j) => {
+              const i = results.length + j;
+              return (
+                <li
+                  key={`cat\n${c.name}`}
+                  role="option"
+                  aria-selected={i === active}
+                  className={i === active ? "active" : ""}
+                  onMouseMove={() => setActive(i)}
+                  onMouseDown={(ev) => {
+                    ev.preventDefault();
+                    choose(i);
+                  }}
+                >
+                  <span className="quick-title">Category: {c.name}</span>
+                  <span className="quick-group">{c.pages === 1 ? "1 page" : `${c.pages} pages`}</span>
+                </li>
+              );
+            })}
             {offerNew && (
               <li
                 role="option"
-                aria-selected={active === results.length}
-                className={`quick-new ${active === results.length ? "active" : ""}`}
-                onMouseMove={() => setActive(results.length)}
+                aria-selected={active === results.length + cats.length}
+                className={`quick-new ${active === results.length + cats.length ? "active" : ""}`}
+                onMouseMove={() => setActive(results.length + cats.length)}
                 onMouseDown={(ev) => {
                   ev.preventDefault();
-                  choose(results.length);
+                  choose(results.length + cats.length);
                 }}
               >
                 <span className="quick-title">{typed}</span>
@@ -125,12 +158,26 @@ export function PagePicker({ names, label, placeholder, initialQuery = "", allow
   );
 }
 
-export function QuickOpen({ names, onOpen, close }: { names: NameIndex; onOpen: (e: NameEntry) => void; close: () => void }) {
+export function QuickOpen({
+  names,
+  categories,
+  onOpen,
+  onOpenCategory,
+  close,
+}: {
+  names: NameIndex;
+  categories: CategoryIndex;
+  onOpen: (e: NameEntry) => void;
+  onOpenCategory: (name: string) => void;
+  close: () => void;
+}) {
   return (
     <PagePicker
       names={names}
+      categories={categories}
+      onPickCategory={onOpenCategory}
       label="Open page"
-      placeholder="Type a page title or alias…"
+      placeholder="Type a page title, alias or category…"
       onPick={(p) => "entry" in p && onOpen(p.entry)}
       close={close}
     />

@@ -1,6 +1,7 @@
 //! Pages: one Markdown file per page somewhere under a project's `pages/`
-//! folder, with structured fields in YAML front matter: `title`, `aliases`
-//! and `infobox` (see infobox.rs). Any other fields are preserved untouched.
+//! folder, with structured fields in YAML front matter: `title`, `aliases`,
+//! `categories`, `sort` and `infobox` (see infobox.rs). Any other fields are
+//! preserved untouched.
 //!
 //! Titles and aliases share one name space: each is unique across the whole
 //! project (ignoring case), whatever group a page is in. The file name follows
@@ -36,6 +37,8 @@ pub struct Page {
     pub infobox: Option<Infobox>,
     /// Set when the file has an infobox this version can't read.
     pub infobox_error: Option<String>,
+    pub categories: Vec<String>,
+    pub sort: Option<String>,
 }
 
 /// The `infobox:` field. Err: it exists but can't be read.
@@ -119,6 +122,33 @@ pub fn meta_aliases(meta: &Mapping) -> Vec<String> {
     }
 }
 
+/// The `categories:` field: a list, or a single name.
+pub fn meta_categories(meta: &Mapping) -> Vec<String> {
+    meta_list(meta, "categories")
+}
+
+/// The `sort:` field (how category pages sort the page), if set.
+pub fn meta_sort(meta: &Mapping) -> Option<String> {
+    meta.get("sort").and_then(scalar_text).map(|s| s.trim().to_string())
+}
+
+fn meta_list(meta: &Mapping, key: &str) -> Vec<String> {
+    match meta.get(key) {
+        Some(Value::Sequence(items)) => items.iter().filter_map(scalar_text).map(|s| s.trim().to_string()).collect(),
+        Some(v) => scalar_text(v).map(|s| vec![s.trim().to_string()]).unwrap_or_default(),
+        None => Vec::new(),
+    }
+}
+
+/// Sets (or with an empty list removes) a list field.
+pub fn set_list_meta(meta: &mut Mapping, key: &str, list: &[String]) {
+    if list.is_empty() {
+        meta.remove(key);
+    } else {
+        meta.insert(key.into(), Value::Sequence(list.iter().map(|a| Value::String(a.clone())).collect()));
+    }
+}
+
 fn title_of(meta: &Mapping, file_name: &str) -> String {
     meta_title(meta, file_name)
 }
@@ -131,6 +161,23 @@ pub fn check_link_chars(name: &str, what: &str) -> AppResult<()> {
         )));
     }
     Ok(())
+}
+
+/// Titles and aliases: no link characters, and not starting with "Category:"
+/// or "File:" (links starting so go to categories and images).
+pub fn check_page_name(name: &str, what: &str) -> AppResult<()> {
+    check_link_chars(name, what)?;
+    if is_reserved_name(name) {
+        return Err(AppError::Invalid(format!(
+            "{what} can't start with \"Category:\" or \"File:\" — links starting so go to categories and images."
+        )));
+    }
+    Ok(())
+}
+
+pub fn is_reserved_name(name: &str) -> bool {
+    let n = norm(name);
+    n.starts_with("category:") || n.starts_with("file:")
 }
 
 fn page_path(pages: &Path, id: &str) -> AppResult<PathBuf> {
@@ -206,7 +253,7 @@ pub fn create_page(
 ) -> AppResult<PageInfo> {
     let title = title.trim();
     let stem = to_file_name(title)?;
-    check_link_chars(title, "Titles")?;
+    check_page_name(title, "Titles")?;
     let pages = pages_dir(library, project)?;
     let dir = group_dir(&pages, group)?;
     ensure_name_free(others, title, None)?;
@@ -217,6 +264,7 @@ pub fn create_page(
     let mut body = String::new();
     if let Some(t) = template {
         set_infobox_meta(&mut meta, Some(&instantiate(t)))?;
+        set_list_meta(&mut meta, "categories", &t.categories);
         body = t.starter_text.clone();
     }
     safe_write(&dir.join(rel_name(&id)), serialize(&meta, &body)?.as_bytes())?;
@@ -237,6 +285,8 @@ pub fn read_page(library: &Path, project: &str, id: &str) -> AppResult<Page> {
         body,
         infobox,
         infobox_error,
+        categories: meta_categories(&meta),
+        sort: meta_sort(&meta),
     })
 }
 
@@ -271,7 +321,7 @@ pub fn rename_page(
 ) -> AppResult<PageInfo> {
     let new_title = new_title.trim();
     let stem = to_file_name(new_title)?;
-    check_link_chars(new_title, "Titles")?;
+    check_page_name(new_title, "Titles")?;
     let pages = pages_dir(library, project)?;
     let path = page_path(&pages, id)?;
     ensure_name_free(others, new_title, Some(id))?;
@@ -357,7 +407,7 @@ pub fn set_aliases(
         if a.is_empty() {
             continue;
         }
-        check_link_chars(a, "Aliases")?;
+        check_page_name(a, "Aliases")?;
         if norm(a) == norm(&title) {
             return Err(AppError::Exists(format!("\"{a}\" is already this page's title.")));
         }
@@ -390,6 +440,38 @@ pub fn rewrite_page_links(pages: &Path, id: &str, old: &str, new: &str) -> AppRe
         safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
     }
     Ok(n)
+}
+
+/// Changes the page's categories with `f` (which returns whether it changed
+/// anything); the file is only written then. Returns that.
+pub fn update_categories(pages: &Path, id: &str, f: impl FnOnce(&mut Vec<String>) -> bool) -> AppResult<bool> {
+    let path = page_path(pages, id)?;
+    let (mut meta, body) = parse(&fs::read_to_string(&path)?)?;
+    let mut cats = meta_categories(&meta);
+    if !f(&mut cats) {
+        return Ok(false);
+    }
+    set_list_meta(&mut meta, "categories", &cats);
+    safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+    Ok(true)
+}
+
+/// Sets (or with `None` removes) the page's sort key.
+pub fn set_sort(pages: &Path, id: &str, sort: Option<&str>) -> AppResult<()> {
+    let path = page_path(pages, id)?;
+    let (mut meta, body) = parse(&fs::read_to_string(&path)?)?;
+    match sort.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) => {
+            meta.insert("sort".into(), s.into());
+        }
+        None => {
+            if meta.remove("sort").is_none() {
+                return Ok(());
+            }
+        }
+    }
+    safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+    Ok(())
 }
 
 /// The infobox of the page file at `pages`/`id`.

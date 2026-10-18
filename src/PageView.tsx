@@ -12,6 +12,8 @@ import { TocPanel } from "./TocPanel";
 import { groupChain } from "./tree";
 import { frameFor, scrollToSection, useContentClick, useLinkContext, useWiki } from "./wiki";
 import { LINK_CHARS } from "./wikilinks";
+import { isReservedName } from "./categories";
+import { CategoryChips } from "./CategoryChips";
 
 interface Props {
   project: string;
@@ -55,6 +57,7 @@ export function PageView(props: Props) {
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [boxStatus, setBoxStatus] = useState<SaveStatus>("saved");
   const [infobox, setInfobox] = useState<Infobox | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
   // Links from other pages' infobox fields (Linked from, two-way fields).
   const [incoming, setIncoming] = useState<IncomingField[]>([]);
   // While editing, the latest text lives here (not in state) so typing
@@ -100,6 +103,7 @@ export function PageView(props: Props) {
         setPage(p);
         setBody(p.body);
         setInfobox(p.infobox);
+        setCategories(p.categories ?? []);
         latest.current = p.body;
       },
       (e) => setLoadError(errorText(e)),
@@ -174,8 +178,15 @@ export function PageView(props: Props) {
     return () => window.removeEventListener("keydown", key);
   }, []);
 
+  async function saveCategories(next: string[]) {
+    const saved = await api.setPageCategories(project, pageId, next);
+    setCategories(saved);
+    wiki.reloadCategories();
+  }
+
   if (loadError) return <p className="empty center">{loadError}</p>;
   if (!page) return null;
+  const shownName = props.title ?? page.title;
 
   return (
     <article className="page">
@@ -193,7 +204,11 @@ export function PageView(props: Props) {
           <h1 title={props.title ?? page.title}>{props.title ?? page.title}</h1>
           {arrival.via && <p className="redirect-note">(Redirected from {arrival.via})</p>}
           {editing && (
-            <AliasEditor project={project} pageId={pageId} aliases={props.aliases} onChanged={props.onNamesChanged} />
+            <>
+              <AliasEditor project={project} pageId={pageId} aliases={props.aliases} onChanged={props.onNamesChanged} />
+              <CategoryChips variant="line" values={categories} save={saveCategories} />
+              <SortEditor project={project} pageId={pageId} initial={page.sort} />
+            </>
           )}
         </div>
         <div className="spacer" />
@@ -236,9 +251,15 @@ export function PageView(props: Props) {
         <Backlinks pageId={pageId} title={props.title ?? page.title} close={() => setBacklinksOpen(false)} />
       )}
 
-      {LINK_CHARS.test(props.title ?? page.title) && (
+      {LINK_CHARS.test(shownName) && (
         <p className="notice title-notice">
           This title contains <code>[</code> <code>]</code> <code>|</code> or <code>#</code>, which links can't use.
+          Rename the page so other pages can link to it.
+        </p>
+      )}
+      {isReservedName(shownName) && (
+        <p className="notice title-notice">
+          This title starts with <code>Category:</code> or <code>File:</code>; links starting so go to categories and images.
           Rename the page so other pages can link to it.
         </p>
       )}
@@ -267,11 +288,54 @@ export function PageView(props: Props) {
           {rendered.toc.length > 0 && (
             <TocPanel toc={rendered.toc} scrollRef={readRef} storageKey={`ownwiki.tocFolded.${project}/${pageId}`} />
           )}
-          <div className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: boxHtml + rendered.html }} />
+          <div className="read-column">
+            <div className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: boxHtml + rendered.html }} />
+            <CategoryChips variant="box" values={categories} save={saveCategories} />
+          </div>
         </div>
       ) : (
-        <p className="empty">This page is empty. Click Edit to write.</p>
+        <div className="read-view empty-page">
+          <div className="read-column">
+            <p className="empty">This page is empty. Click Edit to write.</p>
+            <CategoryChips variant="box" values={categories} save={saveCategories} />
+          </div>
+        </div>
       )}
     </article>
+  );
+}
+
+/** "Sort as" under the title in edit mode: how category pages sort and file the page. */
+function SortEditor({ project, pageId, initial }: { project: string; pageId: string; initial: string | null }) {
+  const report = useReportError();
+  const [value, setValue] = useState(initial ?? "");
+  const [saved, setSaved] = useState(initial ?? "");
+  function commit() {
+    const v = value.trim();
+    if (v === saved.trim()) return;
+    api.setPageSort(project, pageId, v || null).then(() => setSaved(v), report);
+  }
+  return (
+    <div className="aliases sort-line">
+      <span className="aliases-label" title="How category pages sort this page (the sidebar keeps sorting by title)">
+        Sort as:
+      </span>
+      <input
+        className="alias-input sort-input"
+        value={value}
+        placeholder="Title"
+        spellCheck={false}
+        aria-label="Sort as"
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+    </div>
   );
 }

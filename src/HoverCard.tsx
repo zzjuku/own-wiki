@@ -3,7 +3,7 @@
 // opening paragraph (for section links: the start of that section). Links
 // inside a card don't open further cards.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type Preview } from "./api";
+import { api, type CategoryPreview, type Preview } from "./api";
 import { imageUrl } from "./infobox";
 import { renderSnippet } from "./markdown";
 import { displayGroup } from "./tree";
@@ -20,6 +20,8 @@ interface Card {
   preview: Preview | null;
   missingTitle?: string;
   pageId?: string;
+  /** A [[Category:…]] link. */
+  category?: CategoryPreview;
 }
 
 const LINK_SELECTOR = ".read-view .markdown a.wikilink, .split-preview .markdown a.wikilink";
@@ -56,6 +58,13 @@ export function HoverCards() {
       clearTimeout(showTimer.current);
       showTimer.current = setTimeout(() => {
         const rect = a.getBoundingClientRect();
+        if (a.dataset.category !== undefined) {
+          api.categoryPreview(project, a.dataset.category).then(
+            (category) => current.current === a && setCard({ rect, preview: null, category }),
+            () => {},
+          );
+          return;
+        }
         if (a.classList.contains("new")) {
           setCard({ rect, preview: null, missingTitle: a.dataset.target ?? "" });
           return;
@@ -105,10 +114,18 @@ export function HoverCards() {
 
   // Links in the card show their targets but don't open further cards.
   const links = useMemo(
-    () => ({ resolve: (n: string) => wiki.names.resolve(n), currentId: card?.pageId, image: (f: string, w?: number) => imageUrl(project, f, w) }),
-    [wiki.names, card?.pageId, project],
+    () => ({
+      resolve: (n: string) => wiki.names.resolve(n),
+      currentId: card?.pageId,
+      image: (f: string, w?: number) => imageUrl(project, f, w),
+      category: (n: string) => wiki.categories.resolve(n) !== null,
+    }),
+    [wiki.names, wiki.categories, card?.pageId, project],
   );
-  const html = useMemo(() => (card?.preview?.text ? renderSnippet(card.preview.text, links) : ""), [card, links]);
+  const html = useMemo(() => {
+    const text = card?.preview?.text ?? card?.category?.text;
+    return text ? renderSnippet(text, links) : "";
+  }, [card, links]);
 
   // Place the card under the link, or above it when there's no room below.
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
@@ -126,6 +143,28 @@ export function HoverCards() {
 
   if (!card) return null;
   const style = pos ? { left: pos.left, top: pos.top } : { left: -9999, top: 0 };
+
+  if (card.category) {
+    const c = card.category;
+    return (
+      <div ref={cardRef} className={`hover-card ${c.exists ? "" : "missing"}`} style={style} role="tooltip">
+        <div className="hover-card-body">
+          <div className="hover-card-title">Category: {c.name}</div>
+          {c.exists ? (
+            <>
+              <div className="hover-card-group">
+                {c.pages === 1 ? "1 page" : `${c.pages.toLocaleString("en")} pages`}
+                {c.subcategories > 0 && ` · ${c.subcategories === 1 ? "1 subcategory" : `${c.subcategories} subcategories`}`}
+              </div>
+              {html && <div className="markdown" dangerouslySetInnerHTML={{ __html: html }} />}
+            </>
+          ) : (
+            <div>Category doesn't exist. Click the link to create it.</div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (!card.preview) {
     return (

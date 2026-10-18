@@ -125,6 +125,8 @@ export interface Template {
   starterText?: string;
   /** Own infobox image frame (else the project's). */
   imageFrame?: Frame | null;
+  /** Default categories for new pages. */
+  categories?: string[];
   fields: Field[];
   [extra: string]: unknown;
 }
@@ -155,6 +157,8 @@ export interface ApplySummary {
   removed: number;
   reordered: boolean;
   color: boolean;
+  /** Default categories added. */
+  categories: number;
 }
 
 export interface ApplyResult {
@@ -167,6 +171,47 @@ export interface Page extends PageInfo {
   infobox: Infobox | null;
   /** The file has an infobox this version can't read. */
   infoboxError: string | null;
+  categories: string[];
+  /** "Sort as" on category pages. */
+  sort: string | null;
+}
+
+export interface CategoryInfo {
+  name: string;
+  /** Pages directly in it. */
+  pages: number;
+  subcategories: number;
+  parents: string[];
+  /** It has its own file (text or parents). */
+  hasFile: boolean;
+}
+
+export interface CategoryPage {
+  name: string;
+  /** False: nothing uses it yet. */
+  exists: boolean;
+  /** Its own text (Markdown). */
+  text: string;
+  parents: string[];
+  subcategories: CategoryInfo[];
+  pages: { id: string; title: string; group: string; sort: string | null }[];
+}
+
+export interface CategoryChange {
+  pages: number;
+  subcategories: number;
+  links: number;
+  linkingPages: number;
+  templates: number;
+  failed: string[];
+}
+
+export interface CategoryPreview {
+  name: string;
+  exists: boolean;
+  text: string;
+  pages: number;
+  subcategories: number;
 }
 
 export const api = {
@@ -214,6 +259,25 @@ export const api = {
   applyTemplate: (project: string, id: string, pages: string[] | null, dryRun: boolean) =>
     invoke<ApplyResult>("apply_template", { project, id, pages, dryRun }),
   incomingFields: (project: string, id: string) => invoke<IncomingField[]>("incoming_fields", { project, id }),
+
+  // Categories
+  listCategories: (project: string) => invoke<CategoryInfo[]>("list_categories", { project }),
+  categoryPage: (project: string, name: string, includeSub: boolean) =>
+    invoke<CategoryPage>("category_page", { project, name, includeSub }),
+  setPageCategories: (project: string, id: string, categories: string[]) =>
+    invoke<string[]>("set_page_categories", { project, id, categories }),
+  setPageSort: (project: string, id: string, sort: string | null) => invoke<void>("set_page_sort", { project, id, sort }),
+  createCategory: (project: string, name: string) => invoke<string>("create_category", { project, name }),
+  saveCategoryText: (project: string, name: string, text: string) =>
+    invoke<void>("save_category_text", { project, name, text }),
+  setCategoryParents: (project: string, name: string, parents: string[]) =>
+    invoke<string[]>("set_category_parents", { project, name, parents }),
+  /** Renames (newName) or deletes (null) a category; dryRun only counts. */
+  changeCategory: (project: string, name: string, newName: string | null, dryRun: boolean) =>
+    invoke<CategoryChange>("change_category", { project, name, newName, dryRun }),
+  categoryBacklinks: (project: string, name: string, context: boolean) =>
+    invoke<Backlink[]>("category_backlinks", { project, name, context }),
+  categoryPreview: (project: string, name: string) => invoke<CategoryPreview>("category_preview", { project, name }),
 
   // Link index
   pageSections: (project: string, id: string) => invoke<Heading[]>("page_sections", { project, id }),

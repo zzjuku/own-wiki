@@ -15,13 +15,13 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppResult;
 use crate::fsutil::{rel_join, rel_parent, safe_write};
 use crate::infobox::{FieldLink, field_links, first_image};
-use crate::pages::{meta_aliases, meta_infobox, meta_title, parse};
-use crate::projects::{CACHE_DIR, PAGES_DIR};
+use crate::pages::{meta_aliases, meta_categories, meta_infobox, meta_sort, meta_title, parse};
+use crate::projects::{CACHE_DIR, CATEGORIES_DIR, PAGES_DIR};
 use crate::tree::{GroupInfo, PageInfo, is_page_file};
 use crate::wikilinks::{self, Heading};
 
 const CACHE_FILE: &str = "link-index.json";
-const CACHE_VERSION: u32 = 3;
+const CACHE_VERSION: u32 = 4;
 /// The cache is rewritten at most this often for small changes (a stale
 /// cache only costs re-reading the changed files at the next open).
 const CACHE_SAVE_INTERVAL: Duration = Duration::from_secs(10);
@@ -60,12 +60,20 @@ pub struct Entry {
     /// inside `assets/`), for hover cards.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
+    /// Categories the page is in (for a category file: its parent categories).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub categories: Vec<String>,
+    /// How category pages sort the page ("Sort as").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct CacheFile {
     version: u32,
     pages: BTreeMap<String, Entry>,
+    #[serde(default)]
+    cats: BTreeMap<String, Entry>,
 }
 
 pub struct ProjectIndex {
@@ -74,6 +82,9 @@ pub struct ProjectIndex {
     pub groups: Vec<GroupInfo>,
     /// Page id -> entry.
     pub pages: BTreeMap<String, Entry>,
+    /// Files in `categories/` (categories with own text or parents):
+    /// file name -> entry (title = category name, categories = parents).
+    pub cats: BTreeMap<String, Entry>,
     /// Entries changed since the cache was last written.
     unsaved: usize,
     saved_at: Instant,
@@ -108,6 +119,8 @@ pub fn read_entry(path: &Path, file_name: &str) -> Option<Entry> {
         template: infobox.as_ref().and_then(|ib| ib.template.clone()),
         field_links: infobox.as_ref().map(field_links).unwrap_or_default(),
         image: infobox.as_ref().and_then(first_image).or_else(|| wikilinks::images(&body).into_iter().next()),
+        categories: meta_categories(&fm),
+        sort: meta_sort(&fm),
     })
 }
 
@@ -182,16 +195,17 @@ impl ProjectIndex {
     /// Loads the cached index of the project in `dir` (or starts empty) and
     /// brings it up to date with the files.
     pub fn open(dir: &Path) -> AppResult<Self> {
-        let pages = fs::read_to_string(dir.join(CACHE_DIR).join(CACHE_FILE))
+        let (pages, cats) = fs::read_to_string(dir.join(CACHE_DIR).join(CACHE_FILE))
             .ok()
             .and_then(|t| serde_json::from_str::<CacheFile>(&t).ok())
             .filter(|c| c.version == CACHE_VERSION)
-            .map(|c| c.pages)
+            .map(|c| (c.pages, c.cats))
             .unwrap_or_default();
         let mut index = ProjectIndex {
             dir: dir.to_path_buf(),
             groups: Vec::new(),
             pages,
+            cats,
             unsaved: 0,
             saved_at: Instant::now(),
         };
@@ -223,9 +237,45 @@ impl ProjectIndex {
                 None => self.pages.remove(&id),
             };
         }
-        self.unsaved += changed;
+        self.unsaved += changed + self.refresh_cats();
         self.save_cache(false);
         Ok(())
+    }
+
+    /// Re-reads changed category files; returns how many changed.
+    fn refresh_cats(&mut self) -> usize {
+        let mut found = Vec::new();
+        if let Ok(list) = fs::read_dir(self.dir.join(CATEGORIES_DIR)) {
+            for entry in list.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with('.') || !is_page_file(&name) {
+                    continue;
+                }
+                if let Some(meta) = entry.metadata().ok().filter(|m| m.is_file()) {
+                    found.push(Found { id: name, path: entry.path(), mtime: stamp(&meta), size: meta.len() });
+                }
+            }
+        }
+        let before = self.cats.len();
+        self.cats.retain(|id, _| found.iter().any(|f| &f.id == id));
+        let mut changed = before - self.cats.len();
+        for f in found {
+            if self.cats.get(&f.id).is_some_and(|e| e.mtime == f.mtime && e.size == f.size) {
+                continue;
+            }
+            changed += 1;
+            match read_entry(&f.path, &f.id) {
+                Some(e) => self.cats.insert(f.id, e),
+                None => self.cats.remove(&f.id),
+            };
+        }
+        changed
+    }
+
+    /// Re-reads the category files after the app changed one.
+    pub fn reload_cats(&mut self) {
+        self.unsaved += self.refresh_cats();
+        self.save_cache(false);
     }
 
     /// Writes the cache file if it's worth it now (or always with `now`).
@@ -233,7 +283,7 @@ impl ProjectIndex {
         if self.unsaved == 0 || (!now && self.unsaved < 50 && self.saved_at.elapsed() < CACHE_SAVE_INTERVAL) {
             return;
         }
-        let file = CacheFile { version: CACHE_VERSION, pages: self.pages.clone() };
+        let file = CacheFile { version: CACHE_VERSION, pages: self.pages.clone(), cats: self.cats.clone() };
         let dir = self.dir.join(CACHE_DIR);
         // The cache is optional: failing to write it only slows the next open.
         let _ = fs::create_dir_all(&dir);

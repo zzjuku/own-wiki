@@ -13,6 +13,7 @@ use crate::pages;
 use crate::projects;
 use crate::relink::parallel;
 use crate::tree::{PageInfo, pages_dir};
+use crate::wikilinks::norm;
 
 /// Pages whose infobox came from template `id`, by title.
 pub fn template_pages(idx: &ProjectIndex, id: &str) -> Vec<PageInfo> {
@@ -70,12 +71,37 @@ pub fn apply(
         .filter(|p| only.is_none_or(|o| o.contains(&p.id)))
         .collect();
     let ids: Vec<String> = candidates.iter().map(|p| p.id.clone()).collect();
+    // Default categories the page doesn't have yet (never removes any).
+    let missing = |pid: &str| -> Vec<String> {
+        let have: Vec<String> = idx.pages.get(pid).map(|e| e.categories.iter().map(|c| norm(c)).collect()).unwrap_or_default();
+        let mut out: Vec<String> = Vec::new();
+        for c in &t.categories {
+            if !have.contains(&norm(c)) && !out.iter().any(|o| norm(o) == norm(c)) {
+                out.push(c.clone());
+            }
+        }
+        out
+    };
     let results = parallel(&ids, |pid| -> AppResult<Option<ApplySummary>> {
         let Some(ib) = pages::read_infobox(&pages_dir, pid)? else { return Ok(None) };
-        let Some((next, summary)) = apply_template(&ib, &t) else { return Ok(None) };
-        if !dry_run {
-            pages::write_infobox(&pages_dir, pid, &next)?;
+        let change = apply_template(&ib, &t);
+        let add = missing(pid);
+        if change.is_none() && add.is_empty() {
+            return Ok(None);
         }
+        if !dry_run {
+            if let Some((next, _)) = &change {
+                pages::write_infobox(&pages_dir, pid, next)?;
+            }
+            if !add.is_empty() {
+                pages::update_categories(&pages_dir, pid, |cats| {
+                    cats.extend(add.iter().cloned());
+                    true
+                })?;
+            }
+        }
+        let mut summary = change.map(|(_, s)| s).unwrap_or_default();
+        summary.categories = add.len();
         Ok(Some(summary))
     });
     let mut out = ApplyResult::default();
@@ -141,6 +167,29 @@ mod tests {
 
     /// Speed check from the M5 spec. Run with
     /// `cargo test --release -- --ignored --nocapture big_infobox_project`.
+    #[test]
+    fn default_categories_on_new_pages_and_apply() {
+        let lib = tempfile::tempdir().unwrap();
+        let p = create_project(lib.path(), "Project A").unwrap().id;
+        let dir = lib.path().join(&p);
+        let mut t = tpl(serde_json::json!([{ "key": "a", "label": "Field A", "type": "text" }]));
+        t.categories = vec!["Cat A".into()];
+        set_templates(&dir, &[t.clone()]).unwrap();
+        let mut idx = ProjectIndex::open(&dir).unwrap();
+        let a = pages::create_page(lib.path(), &p, "", "Page A", false, &idx.page_infos(), Some(&t)).unwrap();
+        idx.refresh(&[]).unwrap();
+        assert_eq!(idx.pages[&a.id].categories, ["Cat A"]);
+        // The page's own choice stays; Apply only adds what's missing.
+        crate::categories::set_page_categories(lib.path(), &p, &mut idx, &a.id, &["Cat Z".into()]).unwrap();
+        t.categories = vec!["Cat A".into(), "Cat Z".into()];
+        set_templates(&dir, &[t.clone()]).unwrap();
+        let dry = apply(lib.path(), &p, &mut idx, "t-1", None, true).unwrap();
+        assert_eq!(dry.changes[0].summary.categories, 1);
+        apply(lib.path(), &p, &mut idx, "t-1", None, false).unwrap();
+        assert_eq!(idx.pages[&a.id].categories, ["Cat Z", "Cat A"]);
+        assert!(apply(lib.path(), &p, &mut idx, "t-1", None, true).unwrap().changes.is_empty());
+    }
+
     #[test]
     #[ignore]
     fn big_infobox_project_speed() {

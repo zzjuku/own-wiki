@@ -114,6 +114,9 @@ pub struct Template {
     pub starter_text: String,
     #[serde(default)]
     pub fields: Vec<Field>,
+    /// Default categories: new pages get a copy; Apply adds missing ones.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub categories: Vec<String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -322,6 +325,9 @@ pub struct ApplySummary {
     pub removed: usize,
     pub reordered: bool,
     pub color: bool,
+    /// Default categories the page gets.
+    #[serde(default)]
+    pub categories: usize,
 }
 
 /// Brings a page's infobox in line with template `t`: adds new fields,
@@ -432,7 +438,7 @@ mod tests {
     }
 
     fn template(fields: Vec<Field>) -> Template {
-        Template { id: "t1".into(), name: "Template A".into(), color: Some("#123456".into()), starter_text: String::new(), fields, extra: Map::new() }
+        Template { id: "t1".into(), name: "Template A".into(), color: Some("#123456".into()), starter_text: String::new(), fields, categories: Vec::new(), extra: Map::new() }
     }
 
     #[test]
@@ -550,7 +556,7 @@ mod tests {
         assert_eq!((next.hidden[0].label.as_str(), next.hidden[0].value.clone()), ("Gone", Some(json!("kept"))));
         assert_eq!(next.hidden[0].key, None);
         assert_eq!(next.color.as_deref(), Some("#654321"));
-        assert_eq!(sum, ApplySummary { added: 1, updated: 1, hidden: 1, removed: 1, reordered: true, color: true });
+        assert_eq!(sum, ApplySummary { added: 1, updated: 1, hidden: 1, removed: 1, reordered: true, color: true, categories: 0 });
         // Applying again changes nothing.
         assert!(apply_template(&next, &t).is_none());
     }

@@ -34,6 +34,7 @@ import { GalleryDialog } from "./GalleryDialog";
 import { useFileDrop } from "./dropFiles";
 import { galleryAround, gallerySource, hasExtension, imageSource, newImage, parseGallery, TEXT_IMAGE_EXTENSIONS, type GalleryItem, type TextImage } from "./images";
 import { useReportError } from "./notify";
+import { categoryOf } from "./categories";
 import { editedLink, shownText, type WikiLink } from "./wikilinks";
 import { countWords, plainText, renderPage } from "./markdown";
 import { htmlToMarkdown } from "./paste";
@@ -54,6 +55,10 @@ interface Props {
   onInfoboxChange: (ib: Infobox | null) => void;
   /** Shown at the right of the status line (save state). */
   status?: ReactNode;
+  /** No Infobox tab (category pages). */
+  noInfobox?: boolean;
+  /** Editing a category page's text: links to it show bold. */
+  currentCategory?: string;
 }
 
 type Tab = "text" | "infobox";
@@ -247,11 +252,11 @@ const NO_FORMATS: ActiveFormats = {
   quote: false,
 };
 
-export function SplitEditor({ pageId, title, initial, onChange, infobox, infoboxError, incoming, onInfoboxChange, status }: Props) {
+export function SplitEditor({ pageId, title, initial, onChange, infobox, infoboxError, incoming, onInfoboxChange, status, noInfobox, currentCategory }: Props) {
   const wiki = useWiki();
   const report = useReportError();
   const [tab, setTab] = useState<Tab>("text");
-  const links = useLinkContext(pageId);
+  const links = useLinkContext(pageId, currentCategory);
   const onContentClick = useContentClick(pageId);
   const [linkPicker, setLinkPicker] = useState<{ query: string } | null>(null);
   // The Edit link popup, shown after clicking a link in the source.
@@ -419,8 +424,11 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
   const env = useMemo<LinkEnv>(
     () => ({
       names: wiki.names,
+      categories: wiki.categories,
       sections: (id) => api.pageSections(wiki.project, id),
       open: (link) => {
+        const cat = categoryOf(link.page);
+        if (cat !== null) return wiki.categories.resolve(cat) ? wiki.openCategory(cat) : wiki.createCategory(cat);
         const target = link.page ? wiki.names.resolve(link.page) : null;
         if (!link.page || target?.page.id === pageId) {
           if (previewRef.current) scrollToSection(previewRef.current, link.section);
@@ -622,14 +630,16 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
           <button role="tab" aria-selected={tab === "text"} className={`tab ${tab === "text" ? "active" : ""}`} onClick={() => showTab("text")}>
             Text
           </button>
-          <button
-            role="tab"
-            aria-selected={tab === "infobox"}
-            className={`tab ${tab === "infobox" ? "active" : ""}`}
-            onClick={() => showTab("infobox")}
-          >
-            Infobox
-          </button>
+          {!noInfobox && (
+            <button
+              role="tab"
+              aria-selected={tab === "infobox"}
+              className={`tab ${tab === "infobox" ? "active" : ""}`}
+              onClick={() => showTab("infobox")}
+            >
+              Infobox
+            </button>
+          )}
         </div>
         <span className="toolbar-sep" />
         {tab === "text" && TOOLS.map((tool, i) =>

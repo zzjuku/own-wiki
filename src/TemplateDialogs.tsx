@@ -18,6 +18,7 @@ export function summaryText(s: ApplySummary): string {
   if (s.removed) parts.push(`removes ${plural(s.removed, "empty field")}`);
   if (s.reordered) parts.push("new order");
   if (s.color) parts.push("new colour");
+  if (s.categories) parts.push(`adds ${plural(s.categories, "category", "categories")}`);
   return parts.join(" · ");
 }
 

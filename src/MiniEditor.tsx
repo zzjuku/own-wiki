@@ -19,6 +19,7 @@ import { toggleHeading, toggleInline, toggleList } from "./formatting";
 import { PagePicker } from "./QuickOpen";
 import { highlight, Icon, popupTheme } from "./SplitEditor";
 import { useWiki } from "./wiki";
+import { categoryOf } from "./categories";
 
 interface Props {
   value: string;
@@ -164,8 +165,11 @@ export function MiniEditor({ value, onChange, multiline, placeholder, pageId, to
   const env = useMemo<LinkEnv>(
     () => ({
       names: wiki.names,
+      categories: wiki.categories,
       sections: (id) => api.pageSections(wiki.project, id),
       open: (link) => {
+        const cat = categoryOf(link.page);
+        if (cat !== null) return wiki.categories.resolve(cat) ? wiki.openCategory(cat) : wiki.createCategory(cat);
         const target = link.page ? wiki.names.resolve(link.page) : null;
         if (!link.page || target?.page.id === pageId) return;
         if (target) wiki.follow({ pageId: target.page.id, section: link.section, via: target.via ?? null });

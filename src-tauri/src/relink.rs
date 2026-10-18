@@ -109,6 +109,9 @@ pub fn rename_with_links(
         }
     }
 
+    result.links += crate::categories::rewrite_page_links_in_cats(idx, &old, &result.page.title);
+    idx.reload_cats();
+
     let dir = idx.dir.clone();
     if projects::main_page(&dir).is_some_and(|m| norm(&m) == norm(&old)) {
         projects::set_main_page(&dir, Some(&result.page.title))?;

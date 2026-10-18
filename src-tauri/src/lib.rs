@@ -1,4 +1,5 @@
 mod assets;
+mod categories;
 mod error;
 mod fsutil;
 mod groups;
@@ -386,6 +387,67 @@ fn delete_group(state: State<'_, AppState>, project: String, id: String) -> AppR
     })
 }
 
+// ---- categories ----
+
+#[tauri::command(async)]
+fn list_categories(state: State<'_, AppState>, project: String) -> AppResult<Vec<categories::CategoryInfo>> {
+    state.with_index(&project, true, |_, idx| categories::list(idx))
+}
+
+#[tauri::command(async)]
+fn category_page(state: State<'_, AppState>, project: String, name: String, include_sub: bool) -> AppResult<categories::CategoryPage> {
+    state.with_index(&project, true, |_, idx| categories::page(idx, &name, include_sub))
+}
+
+#[tauri::command(async)]
+fn set_page_categories(state: State<'_, AppState>, project: String, id: String, categories: Vec<String>) -> AppResult<Vec<String>> {
+    state.with_index(&project, false, |library, idx| categories::set_page_categories(library, &project, idx, &id, &categories))
+}
+
+#[tauri::command(async)]
+fn set_page_sort(state: State<'_, AppState>, project: String, id: String, sort: Option<String>) -> AppResult<()> {
+    state.with_index(&project, false, |library, idx| categories::set_page_sort(library, &project, idx, &id, sort.as_deref()))
+}
+
+#[tauri::command(async)]
+fn create_category(state: State<'_, AppState>, project: String, name: String) -> AppResult<String> {
+    state.with_index(&project, true, |_, idx| categories::create(idx, &name))
+}
+
+#[tauri::command(async)]
+fn save_category_text(state: State<'_, AppState>, project: String, name: String, text: String) -> AppResult<()> {
+    state.with_index(&project, false, |_, idx| categories::save_text(idx, &name, &text))
+}
+
+#[tauri::command(async)]
+fn set_category_parents(state: State<'_, AppState>, project: String, name: String, parents: Vec<String>) -> AppResult<Vec<String>> {
+    state.with_index(&project, true, |_, idx| categories::set_parents(idx, &name, &parents))
+}
+
+/// Renames (`new_name`) or deletes (none) a category; `dry_run` only counts.
+#[tauri::command(async)]
+fn change_category(
+    state: State<'_, AppState>,
+    project: String,
+    name: String,
+    new_name: Option<String>,
+    dry_run: bool,
+) -> AppResult<categories::CategoryChange> {
+    state.with_index(&project, true, |library, idx| {
+        categories::rename_or_delete(library, &project, idx, &name, new_name.as_deref(), dry_run)
+    })
+}
+
+#[tauri::command(async)]
+fn category_backlinks(state: State<'_, AppState>, project: String, name: String, context: bool) -> AppResult<Vec<Backlink>> {
+    state.with_index(&project, false, |library, idx| categories::backlinks(library, &project, idx, &name, context))
+}
+
+#[tauri::command(async)]
+fn category_preview(state: State<'_, AppState>, project: String, name: String) -> AppResult<categories::CategoryPreview> {
+    state.with_index(&project, false, |_, idx| categories::preview(idx, &name))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -462,6 +524,16 @@ pub fn run() {
             import_image_data,
             get_image_frame,
             set_image_frame,
+            list_categories,
+            category_page,
+            set_page_categories,
+            set_page_sort,
+            create_category,
+            save_category_text,
+            set_category_parents,
+            change_category,
+            category_backlinks,
+            category_preview,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

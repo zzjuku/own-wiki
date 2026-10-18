@@ -9,6 +9,7 @@ import type { SyntaxNode } from "@lezer/common";
 import type { MarkdownConfig } from "@lezer/markdown";
 import { tags } from "@lezer/highlight";
 import type { Heading } from "./api";
+import { CATEGORY_PREFIX, categoryOf, type CategoryIndex } from "./categories";
 import type { NameIndex } from "./names";
 import { IS_MAC } from "./QuickOpen";
 import { imageAtStart, parseImage, type TextImage } from "./images";
@@ -74,6 +75,7 @@ export const wikiLinkSyntax: MarkdownConfig = {
 /** What the editor needs from the project; replaced when pages change. */
 export interface LinkEnv {
   names: NameIndex;
+  categories: CategoryIndex;
   /** Follow a link (Cmd/Ctrl+click). */
   open: (link: WikiLink) => void;
   /** Headings of a page, for `[[Page#` suggestions. */
@@ -135,12 +137,18 @@ function decorate(view: EditorView): DecorationSet {
         if (node.name !== "WikiLink") return;
         const link = linkAtStart(view.state.sliceDoc(node.from, node.to))?.link;
         if (!link) return;
-        const missing = env && link.page && !env.names.resolve(link.page);
+        const cat = categoryOf(link.page);
+        const missing = env && link.page && (cat !== null ? !env.categories.resolve(cat) : !env.names.resolve(link.page));
         marks.push(
           (missing
             ? Decoration.mark({
                 class: "cm-wikilink cm-wikilink-new",
-                attributes: { title: `“${link.page}” doesn't exist yet — ${IS_MOD}click to create it` },
+                attributes: {
+                  title:
+                    cat !== null
+                      ? `Category “${cat}” doesn't exist yet — ${IS_MOD}click to create it`
+                      : `“${link.page}” doesn't exist yet — ${IS_MOD}click to create it`,
+                },
               })
             : plainLink
           ).range(node.from, node.to),
@@ -245,6 +253,17 @@ export async function linkCompletions(ctx: CompletionContext): Promise<Completio
   const m = ctx.matchBefore(/\[\[[^[\]|#\n]*$/);
   if (!m) return null;
   const query = m.text.slice(2);
+  // [[Category: → category names.
+  const catQuery = categoryOf(query);
+  if (catQuery !== null) {
+    const options: Completion[] = env.categories.search(catQuery, 50).map((c, i) => ({
+      label: c.name,
+      detail: c.pages === 1 ? "1 page" : `${c.pages} pages`,
+      apply: closeLink(`${CATEGORY_PREFIX}${c.name}`),
+      boost: -i,
+    }));
+    return { from: m.from + 2, options, filter: false };
+  }
   const options: Completion[] = env.names.search(query, 50).map((e, i) => ({
     label: e.name,
     detail: [e.alias ? `→ ${e.page.title}` : "", displayGroup(e.page.group)].filter(Boolean).join("  ·  "),

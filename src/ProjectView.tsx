@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, errorText, isLongPath, type Frame, type ProjectInfo, type Tree } from "./api";
+import { api, errorText, isLongPath, type CategoryInfo, type Frame, type ProjectInfo, type Tree } from "./api";
+import { CategoryIndex } from "./categories";
+import { CategoriesList, CategoryView } from "./CategoryView";
 import { flushAll } from "./autosave";
 import { useDialogs, type PickOption } from "./dialogs";
 import { HoverCards } from "./HoverCard";
@@ -59,6 +61,11 @@ function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
+/** History entries for category pages ("category:Name"; page ids end in ".md"). */
+const CAT_KEY = "category:";
+const catKey = (name: string) => CAT_KEY + name;
+const keyCategory = (key: string) => (key.startsWith(CAT_KEY) ? key.slice(CAT_KEY.length) : null);
+
 /** Pages visited in this project since it was opened (back/forward). */
 interface History {
   back: string[];
@@ -92,6 +99,11 @@ export function ProjectView({ project, onBack }: Props) {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const templates = useTemplates(project.id);
+  const [categoryList, setCategoryList] = useState<CategoryInfo[]>([]);
+  const categories = useMemo(() => new CategoryIndex(categoryList), [categoryList]);
+  // A category page, or the list of all categories, shown instead of a page.
+  const [category, setCategory] = useState<string | null>(null);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [imageFrame, setImageFrameState] = useState<Frame>(DEFAULT_FRAME);
   useEffect(() => {
     api.getImageFrame(project.id).then(setImageFrameState, () => {});
@@ -131,8 +143,9 @@ export function ProjectView({ project, onBack }: Props) {
   const reload = useCallback(
     async (after?: () => void) => {
       try {
-        const t = await api.getTree(project.id);
+        const [t, cats] = await Promise.all([api.getTree(project.id), api.listCategories(project.id)]);
         setTree(t);
+        setCategoryList(cats);
         after?.();
       } catch (e) {
         report(e);
@@ -140,6 +153,10 @@ export function ProjectView({ project, onBack }: Props) {
     },
     [project.id, report],
   );
+
+  const reloadCategories = useCallback(() => {
+    api.listCategories(project.id).then(setCategoryList, report);
+  }, [project.id, report]);
 
   useEffect(() => void reload(), [reload]);
 
@@ -172,12 +189,11 @@ export function ProjectView({ project, onBack }: Props) {
     edit = false,
     { section = null, via = null, record = true }: { section?: string | null; via?: string | null; record?: boolean } = {},
   ) {
-    if (id !== selected || templatesOpen) await flushAll();
+    if (id !== selected || templatesOpen || category || categoriesOpen) await flushAll();
     setTemplatesOpen(false);
-    if (record && selected && selected !== id) {
-      const from = selected;
-      setHistory((h) => ({ back: [...h.back, from].slice(-HISTORY_LIMIT), forward: [] }));
-    }
+    setCategoriesOpen(false);
+    setCategory(null);
+    record && remember(id);
     reveal(parentOf(id));
     setSelected(id);
     setSelectedGroup(null);
@@ -186,20 +202,65 @@ export function ProjectView({ project, onBack }: Props) {
     setArrival({ section, via, key: Date.now() });
   }
 
+  /** Where the user is now, as a history entry. */
+  function place(): string | null {
+    if (category) return catKey(category);
+    return selected && !templatesOpen && !categoriesOpen ? selected : null;
+  }
+
+  /** Records the current place before going to `next`. */
+  function remember(next: string) {
+    const from = place();
+    if (from && from !== next) setHistory((h) => ({ back: [...h.back, from].slice(-HISTORY_LIMIT), forward: [] }));
+  }
+
+  /** Opens a category page. */
+  async function openCategory(name: string, { record = true }: { record?: boolean } = {}) {
+    await flushAll();
+    if (record) remember(catKey(name));
+    setTemplatesOpen(false);
+    setCategoriesOpen(false);
+    setEditing(false);
+    setCategory(name);
+  }
+
+  async function createCategory(name: string) {
+    try {
+      const made = await api.createCategory(project.id, name);
+      reloadCategories();
+      await openCategory(made);
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  async function openCategories() {
+    await flushAll();
+    remember("");
+    setTemplatesOpen(false);
+    setCategory(null);
+    setEditing(false);
+    setCategoriesOpen(true);
+  }
+
   /** Back (-1) or forward (1) through visited pages, skipping deleted ones. */
   async function go(step: -1 | 1) {
     const from = step < 0 ? [...history.back] : [...history.forward];
     const skipped: string[] = [];
     let target: string | undefined;
-    while ((target = step < 0 ? from.pop() : from.shift()) !== undefined && !index.pages.has(target)) skipped.push(target);
+    const gone = (t: string) => keyCategory(t) === null && !index.pages.has(t);
+    while ((target = step < 0 ? from.pop() : from.shift()) !== undefined && gone(target)) skipped.push(target);
     if (target === undefined) return;
-    const here = selected && index.pages.has(selected) ? [selected] : [];
+    const now = place();
+    const here = now && !gone(now) ? [now] : [];
     setHistory((h) =>
       step < 0
         ? { back: from, forward: [...here, ...h.forward] }
         : { back: [...h.back, ...here], forward: from },
     );
-    await openPage(target, false, { record: false });
+    const cat = keyCategory(target);
+    if (cat !== null) await openCategory(cat, { record: false });
+    else await openPage(target, false, { record: false });
   }
 
   function goHome() {
@@ -583,8 +644,8 @@ export function ProjectView({ project, onBack }: Props) {
   const targetHint = targetGroup ? `in ${displayGroup(targetGroup)}` : "at the top level";
 
   // Stable functions for the context, always calling the latest versions.
-  const actions = useRef({ follow, createFromLink });
-  actions.current = { follow, createFromLink };
+  const actions = useRef({ follow, createFromLink, openCategory, createCategory });
+  actions.current = { follow, createFromLink, openCategory, createCategory };
   const wiki = useMemo<Wiki>(
     () => ({
       project: project.id,
@@ -597,13 +658,19 @@ export function ProjectView({ project, onBack }: Props) {
         setImageFrameState(f);
         api.setImageFrame(project.id, f).catch(report);
       },
+      categories,
+      openCategory: (name) => void actions.current.openCategory(name),
+      createCategory: (name) => void actions.current.createCategory(name),
+      reloadCategories,
     }),
-    [project.id, names, templates.templates, imageFrame, report],
+    [project.id, names, templates.templates, imageFrame, report, categories, reloadCategories],
   );
 
   async function openTemplates() {
     await flushAll();
     setEditing(false);
+    setCategory(null);
+    setCategoriesOpen(false);
     setTemplatesOpen(true);
   }
 
@@ -680,9 +747,16 @@ export function ProjectView({ project, onBack }: Props) {
           Templates
           {templates.templates.length > 0 && <span className="count">{templates.templates.length}</span>}
         </button>
+        <button
+          className={`plain templates-button ${categoriesOpen || category ? "selected" : ""}`}
+          onClick={() => void openCategories()}
+        >
+          Categories
+          {categories.list.length > 0 && <span className="count">{categories.list.length}</span>}
+        </button>
         <Sidebar
           rows={rows}
-          selected={templatesOpen ? null : selected}
+          selected={templatesOpen || category || categoriesOpen ? null : selected}
           selectedGroup={selectedGroup}
           onSelectGroup={setSelectedGroup}
           onSelectTop={() => setSelectedGroup(ROOT)}
@@ -697,7 +771,27 @@ export function ProjectView({ project, onBack }: Props) {
       </aside>
 
       <main className="content">
-        {templatesOpen ? (
+        {categoriesOpen ? (
+          <CategoriesList onOpen={(name) => void openCategory(name)} onCreate={(name) => void createCategory(name)} />
+        ) : category ? (
+          <CategoryView
+            key={category}
+            name={category}
+            editing={editing}
+            setEditing={setEditing}
+            onRenamed={(name) => {
+              const map = (ids: string[]) => ids.map((x) => (x.toLowerCase() === catKey(category).toLowerCase() ? catKey(name) : x));
+              setHistory((h) => ({ back: map(h.back), forward: map(h.forward) }));
+              setCategory(name);
+              void reload();
+            }}
+            onDeleted={() => {
+              setCategory(null);
+              setCategoriesOpen(true);
+              void reload();
+            }}
+          />
+        ) : templatesOpen ? (
           <TemplatesView
             project={project.id}
             state={templates}
@@ -737,7 +831,13 @@ export function ProjectView({ project, onBack }: Props) {
       <ImageViewer />
 
       {quickOpen && (
-        <QuickOpen names={names} onOpen={(e) => void openPage(e.page.id)} close={() => setQuickOpen(false)} />
+        <QuickOpen
+          names={names}
+          categories={categories}
+          onOpen={(e) => void openPage(e.page.id)}
+          onOpenCategory={(name) => void openCategory(name)}
+          close={() => setQuickOpen(false)}
+        />
       )}
     </div>
     </WikiContext.Provider>

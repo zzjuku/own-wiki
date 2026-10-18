@@ -1,6 +1,7 @@
 import DOMPurify from "dompurify";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
 import type { LinkTarget } from "./names";
+import { categoryOf } from "./categories";
 import { FULL_PX, GALLERY_PX, imageAtStart, parseGallery, parseImage, SIZE_PX, type TextImage } from "./images";
 import { linkAtStart, shownText, type WikiLink } from "./wikilinks";
 
@@ -39,6 +40,10 @@ export interface LinkContext {
   currentId?: string;
   /** URL of an image in assets/; with `width` (CSS pixels) a copy about that wide. */
   image?: (file: string, width?: number) => string;
+  /** Does this category exist? (`[[Category:Name]]` links.) Absent: none do. */
+  category?: (name: string) => boolean;
+  /** The category page being rendered: links to it show as bold text. */
+  currentCategory?: string;
 }
 
 /** Lets image URLs of the app's own `wikiasset:` scheme through, and lazy loading. */
@@ -113,6 +118,13 @@ function renderWikiLink(link: WikiLink, text: string): string {
   const attrs = [`data-target="${escapeHtml(link.page)}"`];
   if (link.section !== null) attrs.push(`data-section="${escapeHtml(link.section)}"`);
   const label = escapeHtml(text);
+  const cat = categoryOf(link.page);
+  if (cat !== null) {
+    // [[Category:Name]]: a link to the category page.
+    if (ctx?.currentCategory && cat.toLowerCase() === ctx.currentCategory.toLowerCase()) return `<strong class="selflink">${label}</strong>`;
+    const missing = !ctx?.category?.(cat);
+    return `<a class="wikilink catlink${missing ? " new" : ""}" href="#" data-category="${escapeHtml(cat)}" ${attrs.join(" ")}>${label}</a>`;
+  }
   if (!link.page) {
     // [[#Section]]: a section of this page.
     if (ctx?.currentId) attrs.push(`data-page="${escapeHtml(ctx.currentId)}"`);

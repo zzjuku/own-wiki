@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Frame, Template } from "./api";
+import type { CategoryIndex } from "./categories";
 import { imageUrl } from "./infobox";
 import type { LinkContext } from "./markdown";
 import { slugify } from "./markdown";
@@ -28,6 +29,14 @@ export interface Wiki {
   /** The project's infobox image frame. */
   imageFrame: Frame;
   setImageFrame: (f: Frame) => void;
+  /** The project's categories. */
+  categories: CategoryIndex;
+  /** Opens a category page (recorded for back/forward). */
+  openCategory: (name: string) => void;
+  /** A red category link was clicked: make the category and open it. */
+  createCategory: (name: string) => void;
+  /** Re-reads the category list (after adding or removing categories). */
+  reloadCategories: () => void;
 }
 
 export const DEFAULT_FRAME: Frame = { width: 250, height: 300 };
@@ -47,16 +56,18 @@ export function useWiki(): Wiki {
   return w;
 }
 
-/** Link resolving for rendering the page `currentId`. */
-export function useLinkContext(currentId?: string): LinkContext {
-  const { names, project } = useWiki();
+/** Link resolving for rendering the page `currentId` (or the category page `currentCategory`). */
+export function useLinkContext(currentId?: string, currentCategory?: string): LinkContext {
+  const { names, project, categories } = useWiki();
   return useMemo(
     () => ({
       resolve: (n: string) => names.resolve(n),
       currentId,
+      currentCategory,
       image: (file: string, width?: number) => imageUrl(project, file, width),
+      category: (name: string) => categories.resolve(name) !== null,
     }),
-    [names, currentId, project],
+    [names, currentId, currentCategory, project, categories],
   );
 }
 
@@ -77,6 +88,10 @@ export function useContentClick(currentId?: string) {
       const a = (e.target as HTMLElement).closest("a");
       if (!a) return;
       e.preventDefault();
+      if (a.classList.contains("catlink")) {
+        const name = a.dataset.category ?? "";
+        return a.classList.contains("new") ? wiki.createCategory(name) : wiki.openCategory(name);
+      }
       if (a.classList.contains("wikilink")) {
         const section = a.dataset.section ?? null;
         if (a.classList.contains("new")) return wiki.createFromLink(a.dataset.target ?? "", currentId);
