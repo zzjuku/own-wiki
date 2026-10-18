@@ -2196,3 +2196,172 @@ button.add-entry {
   object-fit: cover;
   border-radius: 3px;
 }
+
+/* Page link fields */
+.page-name-input {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.infobox-form .page-name-input input {
+  width: 100%;
+}
+.infobox-form .page-name-input input.missing {
+  color: var(--link-new);
+}
+.link-suggest.name-suggest {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.ib-note {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.missing-note {
+  color: var(--link-new);
+}
+
+/* Date fields */
+.date-point {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.infobox-form .date-point .date-day,
+.infobox-form .date-point .date-month {
+  width: 4.2em;
+}
+.infobox-form .date-point .date-year {
+  width: 5.5em;
+}
+.infobox-form .date-point .date-era {
+  width: 6em;
+}
+.infobox-form .date-point .invalid {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.date-range {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.date-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.date-label {
+  width: 2.6em;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.check.date-present {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+/* Image fields */
+.image-input {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.image-input .mini-editor {
+  align-self: stretch;
+}
+.image-chosen {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.image-chosen img {
+  width: 96px;
+  max-height: 120px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-soft);
+}
+.image-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.image-file {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* Apply to existing pages, Copy templates */
+.apply-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-md);
+}
+.apply-list,
+.copy-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.apply-list li,
+.copy-list li {
+  padding: 4px 10px;
+}
+.apply-list li + li,
+.copy-list li + li {
+  border-top: 1px solid var(--border);
+}
+.apply-list .check,
+.copy-list .check {
+  margin: 0;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 0;
+}
+.apply-title {
+  font-weight: 600;
+}
+.apply-summary {
+  flex-basis: 100%;
+  padding-left: 22px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.copy-rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 2px 22px;
+  font-size: var(--text-sm);
+}
+.copy-rename input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px 6px;
+}
+.copy-rename .dialog-error {
+  flex-basis: 100%;
+  margin: 0;
+}

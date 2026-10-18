@@ -9,13 +9,14 @@ import { Chips, ColorPicker, DragHandle, moveItem, useReorder } from "./controls
 import { useDialogs } from "./dialogs";
 import { infoboxHtml, instantiate, KINDS, newFieldKey, newTemplateId } from "./infobox";
 import { MiniEditor } from "./MiniEditor";
+import { ApplyDialog, CopyTemplatesDialog } from "./TemplateDialogs";
 import { useReportError } from "./notify";
 import { displayGroup } from "./tree";
 import { useLinkContext, useWiki } from "./wiki";
 import { norm } from "./wikilinks";
 
-/** Field types offered so far (the rest arrive later in M5). */
-export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "heading"];
+/** Field types offered (Linked from is postponed; see SPEC.md, Open items). */
+export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "link", "links", "date", "image", "heading"];
 
 const STATUS_TEXT: Record<SaveStatus, string> = {
   saved: "Saved",
@@ -58,7 +59,8 @@ export function useTemplates(project: string) {
     },
     [saver],
   );
-  return { templates, update, status, flush: () => saver.flush() };
+  const flush = useCallback(() => saver.flush(), [saver]);
+  return { templates, update, status, flush };
 }
 
 export type TemplatesState = ReturnType<typeof useTemplates>;
@@ -82,6 +84,7 @@ export function TemplatesView({ project, state, selected, setSelected, openPage 
   const dialogs = useDialogs();
   const { templates, update, status } = state;
   const current = templates.find((t) => t.id === selected) ?? null;
+  const [copyOpen, setCopyOpen] = useState(false);
 
   useEffect(() => {
     if (!current && templates.length) setSelected(templates[0].id);
@@ -172,10 +175,23 @@ export function TemplatesView({ project, state, selected, setSelected, openPage 
         <span className={`save-status ${status}`} aria-live="polite">
           {STATUS_TEXT[status]}
         </span>
+        <button onClick={() => setCopyOpen(true)}>Copy from another project…</button>
         <button className="primary" onClick={create}>
           New template
         </button>
       </header>
+      {copyOpen && (
+        <CopyTemplatesDialog
+          project={project}
+          templates={templates}
+          close={() => setCopyOpen(false)}
+          onCopy={(copies) => {
+            if (!copies.length) return;
+            update([...templates, ...copies]);
+            setSelected(copies[0].id);
+          }}
+        />
+      )}
       <div className="templates-body">
         <nav className="template-list" aria-label="Templates">
           {sorted.map((t) => (
@@ -206,6 +222,7 @@ export function TemplatesView({ project, state, selected, setSelected, openPage 
             onDuplicate={() => duplicate(current)}
             onDelete={() => void remove(current)}
             openPage={openPage}
+            flush={state.flush}
           />
         ) : (
           <p className="empty center">{templates.length ? "" : "Create a template to get started."}</p>
@@ -224,12 +241,16 @@ interface EditorProps {
   onDuplicate: () => void;
   onDelete: () => void;
   openPage: (id: string) => void;
+  flush: () => Promise<void>;
 }
 
-function TemplateEditor({ project, template: t, templates, onChange, onRename, onDuplicate, onDelete, openPage }: EditorProps) {
+function TemplateEditor({ project, template: t, templates, onChange, onRename, onDuplicate, onDelete, openPage, flush }: EditorProps) {
   const wiki = useWiki();
   const links = useLinkContext();
   const [using, setUsing] = useState<PageInfo[] | null>(null);
+  const [applyOpen, setApplyOpen] = useState(false);
+  // Bumped after Apply, to re-read the pages using the template.
+  const [applied, setApplied] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -237,7 +258,7 @@ function TemplateEditor({ project, template: t, templates, onChange, onRename, o
     return () => {
       live = false;
     };
-  }, [project, t.id, wiki.names]);
+  }, [project, t.id, wiki.names, applied]);
 
   const setFields = (fields: Field[]) => onChange({ ...t, fields });
   // A field just added gets its label selected for typing.
@@ -334,8 +355,20 @@ function TemplateEditor({ project, template: t, templates, onChange, onRename, o
               ))}
             </ul>
           )}
-          <p className="hint">Changes to the template don't change these pages.</p>
+          <p className="hint">Changes to the template don't change these pages by themselves.</p>
+          <button disabled={!using?.length} onClick={() => setApplyOpen(true)}>
+            Apply to existing pages…
+          </button>
         </section>
+        {applyOpen && (
+          <ApplyDialog
+            project={project}
+            template={t}
+            flush={flush}
+            close={() => setApplyOpen(false)}
+            onApplied={() => setApplied((n) => n + 1)}
+          />
+        )}
       </div>
 
       <aside className="template-preview" aria-label="Preview">
@@ -441,16 +474,6 @@ export function FieldDef({
               onChange={(from) => setOptions({ ...options, from })}
             />
             <span className="muted">points to this page</span>
-          </label>
-        )}
-        {(f.type === "link" || f.type === "links") && (
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={!!options.twoWay}
-              onChange={(e) => setOptions({ ...options, twoWay: e.target.checked })}
-            />
-            <span>Two-way (the linked page shows this page in its own “{f.label || "…"}” field)</span>
           </label>
         )}
         {f.type === "date" && (

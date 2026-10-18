@@ -17,6 +17,7 @@ import {
   valueProblem,
   valueText,
 } from "./infobox";
+import { DateInput, ImageInput, PageLinksInput, PageNameInput } from "./FieldInputs";
 import { MiniEditor } from "./MiniEditor";
 import { FieldDef } from "./TemplatesView";
 
@@ -403,8 +404,16 @@ function ValueInput({ pageId, field: f, onChange }: { pageId: string; field: Fie
       );
     case "list":
       return <ListInput pageId={pageId} label={f.label} value={Array.isArray(v) ? (v as string[]) : []} onChange={onChange} />;
+    case "link":
+      return <PageNameInput label={f.label} value={typeof v === "string" ? v : ""} onChange={onChange} />;
+    case "links":
+      return <PageLinksInput label={f.label} value={Array.isArray(v) ? (v as string[]) : []} onChange={onChange} />;
+    case "date":
+      return <DateInput label={f.label} value={v} ranges={!!f.options?.ranges} onChange={onChange} />;
+    case "image":
+      return <ImageInput pageId={pageId} label={f.label} value={v as { file?: string; caption?: string } | undefined} onChange={onChange} />;
     default:
-      return <span className="muted small">{kindLabel(f.type)} fields arrive later in this milestone.</span>;
+      return <span className="muted small">{kindLabel(f.type)} fields can't be edited yet.</span>;
   }
 }
 

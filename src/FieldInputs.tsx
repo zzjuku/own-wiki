@@ -1,0 +1,344 @@
+// Inputs for the infobox field types that aren't plain text: page links,
+// dates and images.
+import { useEffect, useMemo, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { api, errorText } from "./api";
+import { cleanValue, imageUrl, isRange, type DatePoint, type DateRange, type Qualifier } from "./infobox";
+import { MiniEditor } from "./MiniEditor";
+import { displayGroup } from "./tree";
+import { useWiki } from "./wiki";
+
+// ---- page links ----
+
+/** A page name with suggestions; names of missing pages show red. */
+export function PageNameInput({
+  value,
+  onChange,
+  label,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+  label: string;
+  autoFocus?: boolean;
+}) {
+  const wiki = useWiki();
+  const [text, setText] = useState(value);
+  const [suggest, setSuggest] = useState(false);
+  const [active, setActive] = useState(0);
+  useEffect(() => setText(value), [value]);
+  const suggestions = useMemo(() => (suggest && text.trim() ? wiki.names.search(text, 8) : []), [suggest, text, wiki.names]);
+  const missing = text.trim() !== "" && !wiki.names.resolve(text);
+
+  function set(name: string) {
+    // Link characters can't be part of a page name.
+    const clean = name.replace(/[[\]|\n]/g, "");
+    setText(clean);
+    onChange(clean);
+  }
+
+  return (
+    <div className="page-name-input">
+      <input
+        className={missing ? "missing" : ""}
+        value={text}
+        aria-label={label}
+        placeholder="Page name"
+        spellCheck={false}
+        autoFocus={autoFocus}
+        onChange={(e) => {
+          set(e.target.value);
+          setSuggest(true);
+          setActive(0);
+        }}
+        onBlur={() => setTimeout(() => setSuggest(false), 150)}
+        onKeyDown={(e) => {
+          if (!suggestions.length) return;
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            setActive((a) => (a + (e.key === "ArrowDown" ? 1 : -1) + suggestions.length) % suggestions.length);
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            set(suggestions[active].name);
+            setSuggest(false);
+          } else if (e.key === "Escape") {
+            setSuggest(false);
+          }
+        }}
+      />
+      {suggestions.length > 0 && (
+        <ul className="link-suggest name-suggest" role="listbox">
+          {suggestions.map((s, i) => (
+            <li
+              key={`${s.page.id}\n${s.name}`}
+              role="option"
+              aria-selected={i === active}
+              className={i === active ? "active" : ""}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                set(s.name);
+                setSuggest(false);
+              }}
+            >
+              <span>{s.name}</span>
+              <span className="muted">{s.alias ? `→ ${s.page.title}` : displayGroup(s.page.group)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {missing && !suggestions.length && <span className="ib-note missing-note">Page doesn't exist yet (red link)</span>}
+    </div>
+  );
+}
+
+/** Several page names (Page links fields). */
+export function PageLinksInput({ value, onChange, label }: { value: string[]; onChange: (v: unknown) => void; label: string }) {
+  const [items, setItems] = useState<string[]>(value.length ? value : [""]);
+  const [focusLast, setFocusLast] = useState(false);
+  const update = (next: string[]) => {
+    setItems(next);
+    onChange(next);
+  };
+  return (
+    <div className="ib-list">
+      {items.map((item, i) => (
+        <div key={i} className="ib-list-item">
+          <PageNameInput
+            label={`${label} ${i + 1}`}
+            value={item}
+            autoFocus={focusLast && i === items.length - 1}
+            onChange={(t) => update(items.map((x, j) => (j === i ? t : x)))}
+          />
+          <button
+            type="button"
+            className="plain remove"
+            title="Remove page"
+            aria-label="Remove page"
+            onClick={() => update(items.length > 1 ? items.filter((_, j) => j !== i) : [""])}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="plain add-entry"
+        onClick={() => {
+          setItems([...items, ""]);
+          setFocusLast(true);
+        }}
+      >
+        + Add page
+      </button>
+    </div>
+  );
+}
+
+// ---- dates ----
+
+/** A whole-number box; text that isn't a whole number stays local and shows red. */
+function IntInput({
+  value,
+  onChange,
+  placeholder,
+  className,
+  label,
+}: {
+  value: number | undefined;
+  onChange: (n: number | undefined) => void;
+  placeholder: string;
+  className: string;
+  label: string;
+}) {
+  const [text, setText] = useState(value === undefined ? "" : String(value));
+  useEffect(() => {
+    setText((t) => (Number(t.trim().replace("−", "-")) === value ? t : value === undefined ? (t.trim() ? t : "") : String(value)));
+  }, [value]);
+  const t = text.trim().replace("−", "-");
+  const bad = t !== "" && !/^-?\d+$/.test(t);
+  return (
+    <input
+      className={`${className} ${bad ? "invalid" : ""}`}
+      inputMode="numeric"
+      placeholder={placeholder}
+      aria-label={label}
+      title={bad ? "Whole numbers only" : label}
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        const v = e.target.value.trim().replace("−", "-");
+        if (v === "") onChange(undefined);
+        else if (/^-?\d+$/.test(v)) onChange(Number(v));
+      }}
+    />
+  );
+}
+
+function DatePointInput({ value, onChange, label }: { value: DatePoint; onChange: (p: DatePoint) => void; label: string }) {
+  const set = (patch: Partial<DatePoint>) => onChange({ ...value, ...patch });
+  return (
+    <div className="date-point">
+      <select
+        aria-label={`${label}: exact or approximate`}
+        value={value.qualifier ?? ""}
+        onChange={(e) => set({ qualifier: (e.target.value || undefined) as Qualifier | undefined })}
+      >
+        <option value="">exact</option>
+        <option value="c">c.</option>
+        <option value="before">before</option>
+        <option value="after">after</option>
+      </select>
+      <IntInput className="date-day" placeholder="Day" label={`${label}: day`} value={value.day} onChange={(day) => set({ day })} />
+      <IntInput className="date-month" placeholder="Month" label={`${label}: month`} value={value.month} onChange={(month) => set({ month })} />
+      <IntInput className="date-year" placeholder="Year" label={`${label}: year`} value={value.year} onChange={(year) => set({ year })} />
+      <input
+        className="date-era"
+        placeholder="Era"
+        aria-label={`${label}: era`}
+        value={value.era ?? ""}
+        onChange={(e) => set({ era: e.target.value || undefined })}
+      />
+    </div>
+  );
+}
+
+/** Drops empty parts, so an untouched date is stored as nothing. */
+function cleanPoint(p: DatePoint | undefined): DatePoint | undefined {
+  if (!p) return undefined;
+  const out = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined && v !== "")) as DatePoint;
+  // A qualifier alone is no date.
+  return Object.keys(out).some((k) => k !== "qualifier") ? out : undefined;
+}
+
+export function DateInput({
+  value,
+  ranges,
+  onChange,
+  label,
+}: {
+  value: unknown;
+  ranges: boolean;
+  onChange: (v: unknown) => void;
+  label: string;
+}) {
+  const asRange = ranges || isRange(value);
+  const range: DateRange = isRange(value) ? value : { start: (value as DatePoint) ?? undefined };
+  const [draft, setDraft] = useState<DateRange>(range);
+  const point: DatePoint = draft.start ?? {};
+
+  function emit(next: DateRange) {
+    setDraft(next);
+    if (!asRange) return onChange(cleanValue(cleanPoint(next.start)));
+    const start = cleanPoint(next.start);
+    const end = next.end === "present" ? "present" : cleanPoint(next.end);
+    onChange(start || end ? { ...(start ? { start } : {}), ...(end ? { end } : {}) } : undefined);
+  }
+
+  if (!asRange) return <DatePointInput label={label} value={point} onChange={(start) => emit({ start })} />;
+  const present = draft.end === "present";
+  return (
+    <div className="date-range">
+      <div className="date-row">
+        <span className="date-label">From</span>
+        <DatePointInput label={`${label} from`} value={point} onChange={(start) => emit({ ...draft, start })} />
+      </div>
+      <div className="date-row">
+        <span className="date-label">To</span>
+        {!present && (
+          <DatePointInput
+            label={`${label} to`}
+            value={draft.end && draft.end !== "present" ? draft.end : {}}
+            onChange={(end) => emit({ ...draft, end })}
+          />
+        )}
+        <label className="check date-present">
+          <input type="checkbox" checked={present} onChange={(e) => emit({ ...draft, end: e.target.checked ? "present" : undefined })} />
+          <span>present</span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+// ---- images ----
+
+interface ImageValue {
+  file?: string;
+  caption?: string;
+}
+
+export function ImageInput({
+  pageId,
+  value,
+  onChange,
+  label,
+}: {
+  pageId: string;
+  value: ImageValue | undefined;
+  onChange: (v: unknown) => void;
+  label: string;
+}) {
+  const wiki = useWiki();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const img = value ?? {};
+
+  async function choose() {
+    setError(null);
+    try {
+      const path = await open({
+        multiple: false,
+        directory: false,
+        title: "Choose an image",
+        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
+      });
+      if (typeof path !== "string") return;
+      setBusy(true);
+      const file = await api.importImage(wiki.project, path);
+      onChange({ ...img, file });
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="image-input">
+      {img.file ? (
+        <div className="image-chosen">
+          <img src={imageUrl(wiki.project, img.file)} alt="" />
+          <div className="image-meta">
+            <span className="image-file" title={`assets/${img.file}`}>
+              {img.file}
+            </span>
+            <div className="row">
+              <button type="button" onClick={() => void choose()} disabled={busy}>
+                Replace…
+              </button>
+              <button
+                type="button"
+                title="Takes the image out of this field. The file stays in the project's assets folder."
+                onClick={() => onChange(cleanValue({ ...img, file: undefined }) as ImageValue | undefined)}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => void choose()} disabled={busy}>
+          {busy ? "Copying…" : "Choose image…"}
+        </button>
+      )}
+      {error && <span className="ib-invalid">{error}</span>}
+      <MiniEditor
+        pageId={pageId}
+        label={`${label} caption`}
+        placeholder="Caption (optional)"
+        value={img.caption ?? ""}
+        onChange={(caption) => onChange(cleanValue({ ...img, caption: caption || undefined }))}
+      />
+    </div>
+  );
+}

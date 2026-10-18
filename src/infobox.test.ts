@@ -113,6 +113,9 @@ describe("values", () => {
     expect(valueProblem(f("A", "choice", "Three", { options: { choices: ["One"] } }))).toContain("isn't one of the options");
     expect(valueProblem(f("A", "list", "x"))).not.toBeNull();
     expect(valueProblem(f("A", "text"))).toBeNull();
+    // A caption typed before an image is chosen is fine.
+    expect(valueProblem(f("A", "image", { caption: "x" }))).toBeNull();
+    expect(valueProblem(f("A", "image", "x.png"))).not.toBeNull();
   });
 
   it("converts values like the Rust side", () => {

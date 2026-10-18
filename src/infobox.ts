@@ -94,10 +94,10 @@ export function valueProblem(f: Field): string | null {
       return isStringArray(v) ? null : "This value doesn't fit a " + kindLabel(f.type) + " field.";
     case "date":
       return typeof v === "object" && !Array.isArray(v) ? null : "This isn't a date.";
-    case "image":
-      return typeof v === "object" && !Array.isArray(v) && typeof (v as { file?: unknown }).file === "string"
-        ? null
-        : "This isn't an image.";
+    case "image": {
+      const file = typeof v === "object" && !Array.isArray(v) ? (v as { file?: unknown }).file : null;
+      return file === undefined || typeof file === "string" ? null : "This isn't an image.";
+    }
     default:
       return null;
   }
