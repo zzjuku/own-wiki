@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.8, 2026-10-17)
+# Own WIKI — Spec (v0.9, 2026-10-18)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: M1–M4 done; M5 next (to be defined); roadmap M6–M16 drafted.
+Status: M1–M4 done; M5 defined, next to build; roadmap M6–M16 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -70,13 +70,14 @@ Inspiration: Wikipedia, A Wiki of Ice and Fire (AWOIAF), Chronicler.
 - **Links:** manual, `[[Page]]`, with autocomplete while typing. Display text can differ from the target (`[[John Snow|John]]` shows "John"). Renaming a page updates every link to it. No automatic linking of plain words.
 - **Editor:** Markdown stays the file format. Editor = Markdown source with a formatting toolbar and keyboard shortcuts (headings, bold, lists, links…), plus a **live preview side by side** (option A). Juku never has to type Markdown syntax. Possible later upgrade: Obsidian-style inline live preview.
 - **Templates and infoboxes:** user-defined templates per project (characters, locations, items… — defined by the user, never shipped). New pages are pre-filled. AWOIAF-style infobox with images and captions. Fields are **typed** (text, link to page, date, image, list…) so maps, timelines and family trees can read them.
-  - Changing a template updates the layout and fields of all existing pages that use it; values stay.
-  - Deleting a field from a template **hides** the values on existing pages, it doesn't delete them.
+  - (Changed 2026-10-18.) A template is a **starting point**: a new page gets its own copy of the template's fields. Changing a template never changes existing pages on its own; **Apply to existing pages…** pushes a change to the chosen pages when Juku wants it.
+  - Values are never lost silently: a field removed by Apply **hides** its values on those pages instead of deleting them.
+  - Relations are entered once: reverse fields (e.g. children from other pages' parent fields) fill themselves (details in M5).
 - **Categories:** easy to add per page, AWOIAF-style list at the bottom of the page, automatic category pages.
 - **Embeds:** insert the content of one page into another (navboxes, item cards, stat blocks). Plain embeds first; embeds with parameters only if needed later. Embed loops are detected and blocked.
 - **Health reports:** auto-generated reports (broken links, orphan pages, unlinked mentions, missing images, duplicate titles, sync conflicts, hidden template values…) with tools to fix them.
 - **Graph view:** Obsidian-style interactive network of linked pages. Must handle thousands of pages: local graph (neighbours of the current page) plus a filterable global graph.
-- **Themes:** user-created, selectable, editable themes. A theme is either app-wide or belongs to one project (stored in and synced with that project); a project can use its own theme instead of the app-wide one. UI styling uses CSS variables from the start so themes are cheap to add. Colours/fonts only vs. custom CSS: undecided, settle before M11.
+- **Themes:** user-created, selectable, editable themes. A theme is either app-wide or belongs to one project (stored in and synced with that project); a project can use its own theme instead of the app-wide one. UI styling uses CSS variables from the start so themes are cheap to add. Colours/fonts only vs. custom CSS: undecided, settle before M11. Themes set one look for all pages, infoboxes included; a page can still give its own infobox a different **colour** (not style).
 - **Interactive maps:** zoomable, pannable; pins linked to pages with hover preview; drawable regions; nested maps (a pin opens another map); distance measuring.
   - Map source is a painted image (Photoshop), not SVG. Juku exports a large PNG (ideally 8,000+ px on the long side); the app tiles it for smooth deep zoom. Pins, regions, labels and distance lines are vector overlays drawn by the app and stay sharp at any zoom.
 - **Timelines** with **custom calendars** (own months, eras), fuzzy dates ("c. 250") and date ranges (e.g. reigns).
@@ -114,8 +115,8 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M2 Structure:** groups (nested folders), sidebar tree, move pages between groups, quick-open by title, project-wide unique titles, path-length warning. *(Detailed scope below.)*
 - **M3 Editor:** split-screen live preview, toolbar + shortcuts, table of contents, tables, footnotes, paste with formatting, word count, Wikipedia-like page look, theme-ready styling (CSS variables). *(Detailed scope below.)*
 - **M4 Links:** `[[ ]]` with autocomplete and display text, red links, backlinks, link rewrite on rename, hover previews, aliases/redirects, main page per project, back/forward. Introduces the link index in `.cache/`. *(Detailed scope below.)*
-- **M5 Templates & infoboxes:** template editor, typed fields, AWOIAF-style infobox. Date fields are stored in a calendar-ready format (era, year, optional month/day, approximate flag, ranges) so M13 doesn't need a migration.
-- **M6 Images & categories:** image import into `assets/`, captions, galleries, categories with automatic category pages.
+- **M5 Templates & infoboxes:** template editor, typed fields, AWOIAF-style infobox, reverse fields, image fields (basic image import moved here from M6). Date fields are stored in a calendar-ready format (era, year, optional month/day, approximate flag, ranges) so M13 doesn't need a migration. *(Detailed scope below.)*
+- **M6 Images & categories:** images in page text, captions, galleries, drag and drop, categories with automatic category pages (image import into `assets/` itself arrives in M5). To discuss: templates that add categories automatically.
 - **M7 Spoilers & embeds.**
 
 **M2 — Structure (done 2026-10-17)**
@@ -211,6 +212,38 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - Checkpoint for Juku partway: link syntax, autocomplete, Link button, red links incl. creating pages from them, following links, back/forward. Then: rename rewrite, backlinks, previews, aliases, main page, title rule.
 - Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen, a test project with 5,000 placeholder pages and ~20 links each reopens in under 1 s, autocomplete has no noticeable delay, renaming a page with 500 backlinks finishes within a few seconds and leaves no stale links, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
 
+**M5 — Templates & infoboxes (defined 2026-10-18)**
+- Model (Juku, 2026-10-18): a template is a **starting point**. A page created from it gets its own copy of the template's fields, colour and starter text. Editing, renaming or deleting a template never changes existing pages by itself. Each page can add, remove, rename and reorder its own fields.
+- Templates screen (per project):
+  - Create, rename, copy and delete templates. Deleting a template leaves every page as it is.
+  - Per template: a list of fields and section headings, reordered by dragging; each field has a label, a type, type options and an optional **hint** (a help line shown under the field in the Infobox tab).
+  - Infobox colour per template, starter text (pre-fills the text of new pages, e.g. headings), and a live preview of the box.
+  - **Pages using this template:** the pages created from it, each one clickable.
+  - **Apply to existing pages…:** shows which pages would change (checkboxes, all on by default). It adds new fields, updates labels, types, hints, options and order, renames renamed fields (values move along), and hides fields removed from the template. Fields a page added itself are never touched. Pages that kept the template's colour get the new colour; pages with their own colour keep theirs. Starter text is never applied (page text is the page's own).
+  - **Copy templates from another project:** pick a project, then the templates; a name already taken asks for a new name or skips.
+- Field types:
+  - **Text** (one line) and **Long text**: bold, italic and `[[links]]` work, with the same shortcuts (Cmd+B, Cmd+I, Cmd+K) and `[[` autocomplete as the editor.
+  - **Number**, **Yes/No**, **Choice** (a dropdown with own options), **List** (several text entries).
+  - **Page link** (one page) and **Page links** (several).
+  - **Linked from** (automatic reverse field): lists every page whose chosen link fields point to this page, e.g. *Children* = pages whose *Father* or *Mother* is this page. Filled automatically, read-only, not stored, so it can't drift.
+  - **Two-way** option for Page link(s) fields: e.g. *Spouse* set on A also shows A in B's *Spouse* (merged with B's own entries, no duplicates). Only A's file stores it.
+  - **Date:** year (whole number, negative allowed), era (short free text until M13), optional month and day (numbers until M13), qualifier exact / c. / before / after. Field option **allow ranges**: start and end date, the end can be open ("present"). Shown e.g. "c. 250 Era" or "283 – 298 Era". M13 maps eras and month numbers to the real calendar without a migration.
+  - **Image:** pick an image file (PNG, JPG, GIF, WebP); it's copied into the project's `assets/` folder; with a caption. Removing it from the field doesn't delete the file (unused images: M9).
+  - **Section heading:** a heading row inside the box (AWOIAF style).
+- Pages:
+  - The New page dialog and the red-link dialog offer a template picker (default: no template).
+  - In edit mode the left side gets two tabs, **Text** and **Infobox**; the preview on the right shows the box live.
+  - Infobox tab: fill in values; add, remove, rename and reorder this page's fields; change this page's infobox colour; **Add infobox** (from a template or empty), **Change template** (same-named fields keep their values, the rest become hidden values), **Remove infobox** (with confirmation).
+  - **Hidden values (N)** section in the Infobox tab: restore (puts the field back) or discard.
+  - Changing a field's type: values that don't fit stay in the file and get a warning in the form.
+  - Deleting a field with a value on a single page asks first, then deletes the value.
+- Infobox look: one box per page, AWOIAF-style, floating right of the text in the read view and the preview. Title bar = page title; image(s) with caption; section headings; label | value rows. Colour: the page's own colour, else the theme's infobox colour; colour changes title bar and section headings only (text colour picked automatically for contrast); everything else follows the theme. Empty fields are not shown; a section with no values isn't shown. In narrow windows the box sits above the text.
+- Links in fields: link values work like links in the text: red links, hover previews, rename rewrite (links through an alias untouched), deleted pages turn them red. **What links here** includes them, marked "via infobox: *field*". Linked-from and two-way entries shown on a page are not counted as links from it.
+- Hover cards show the page's first infobox image.
+- Not in M5: spoilers in fields (M7; `||` is already stored as typed), images in the page text and galleries (M6), templates adding categories (to discuss in M6), search in fields (M8), unused images / hidden values reports (M9), calculated fields such as age (M13), map location fields (M12), editing theme colours (M11).
+- Checkpoint for Juku partway: templates screen with text, long text, number, yes/no, choice, list and section headings; creating pages from templates; Infobox tab; the box with colour. Then: link fields, linked-from and two-way fields, dates, images, Apply to existing pages, hidden values, page-own field editing, copying templates, Pages using this template.
+- Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen, a test project with 5,000 placeholder pages with infoboxes (several link fields each) reopens in under 1 s, linked-from fields show without noticeable delay, Apply to 1,000 pages finishes within a few seconds, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
+
 **After v1 start**
 - **M8 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. Until M8 is done, Juku uses **only one computer** for real content.
 - **M9 Health reports.**
@@ -255,3 +288,4 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-18: M4 technical: the link index (`.cache/link-index.json`) also serves the page list (`get_tree`), so titles and aliases are read once; cache written at most every 10 s for small changes (a stale cache only costs re-reading changed files). Files without front matter stay without it when saved. Rename rewrites linking files in parallel. Measured (release build, 5,000 pages × 20 links): first index build 68 ms, reopen 16 ms, rename of a page with 519 links in 518 pages 1.4 s. The CodeMirror keys Cmd+[ / Cmd+] (indent) and, on Windows, Alt+Left/Right are given to back/forward.
 - 2026-10-18: M4 review: Edit link popup added, so the shown text of a link (and where it points) can be changed without typing `[[Page|text]]` (Juku chose it over a second box in the Link dialog or a prompt after autocomplete).
 - 2026-10-18: M4 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer.
+- 2026-10-18: M5 defined (Juku): templates are starting points: pages get their own copy of the fields, template changes reach existing pages only through **Apply to existing pages…**; deleting a template leaves pages unchanged; pages can edit their own fields. Basic image import moved from M6 into M5 (image fields). Dates: free-text era and numeric months until M13, qualifiers c./before/after, ranges. Automatic reverse fields ("Linked from") and two-way link fields so relations are entered once. Infobox values edited in an Infobox tab next to Text in edit mode. Templates can pre-fill page text. Switching template keeps same-named values, the rest become hidden values. Type changes keep values that don't fit, with a warning. One infobox per page. Infobox colour per template, changeable per page; themes give the universal look incl. infoboxes. Added: Pages using this template, copy templates from another project, field hints. Not added: default template per group.
