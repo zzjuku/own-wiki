@@ -59,7 +59,7 @@ A blank, local desktop program for building personal wikis for fictional stories
 ### 6. Spoilers
 - **Inline**, Discord-style: `||hidden text||`. The text stays hidden until clicked to reveal.
 - Spoilers stay hidden everywhere their text appears: page text, infobox fields, hover previews, embeds and search results.
-- A "reveal all spoilers" control exists (scope: see Open items).
+- "Reveal all spoilers" exists both per page and as a global switch for everywhere (2026-10-19). How long each stays on: see Open items.
 
 ### 7. Working mode
 - Juku doesn't need to understand or maintain the code. Claude builds, tests, and documents. Explanations stay short and user-facing.
@@ -192,7 +192,7 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - Later / undecided: Obsidian-style inline live preview, page history/undo of edits, image file pages ("File:" pages with description), group overview pages (Open items). Not planned: categories driven by field values, automatic linking of plain words.
 
 ## Open items (from Juku)
-- **Spoilers:** scope of "reveal all" — per page, everywhere (global switch), or both? Needed before M7.
+- **Spoilers:** how long "reveal all" stays on — per page: until leaving the page, or remembered? Global switch: until the app closes, or remembered (per computer)? Needed before M7.
 - **Themes:** custom CSS on top of the theme settings, yes or no? Needed before M12.
 - **Group overview pages** (a page per group listing its contents, maybe with own text): wanted later; overlaps with category pages (M6, which can have own text), decide where it fits after M6.
 - Visual references (beyond Wikipedia/AWOIAF/Chronicler: what exactly he likes about them)
@@ -204,3 +204,4 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - 2026-10-18 (maintenance, not a milestone): SPEC.md trimmed; finished scopes and the old decision log moved to `docs/history.md` unchanged, SPEC.md keeps a "Rules from finished milestones" summary. `src/styles.css` split into `src/styles/*.css` by area, imported in the original order from `src/main.tsx` (pure move: the built CSS is byte-identical, screenshots unchanged).
 - 2026-10-18 technical: automated UI tests with **Playwright** (Chromium) against the Vite dev server (port 1430) on `tests/ui/harness.html`, which installs an in-memory backend (`tests/ui/mock/`, via Tauri's `mockIPC`) before the app; images answer with a placeholder picture. tauri-driver isn't used (no macOS support). The real file and index logic stays covered by the Rust tests. `npm test` = unit + Rust (also in Windows CI); `npm run test:ui` = type-check + Playwright (Mac only for now). Smoke tests cover opening a project, creating/editing a page, links, infobox from a template, image in text and categories.
 - 2026-10-19 (planning): Juku's list of small additions placed. M7 gains an AWOIAF-style quote box (inserted by hand), a separator line in text + Divider infobox field (optional label), a thinner Contents box, and the app is always light on Mac and Windows (replaces "follows the system"). Automatic relation fields pulled forward from Family trees into a new **M8 Relations** (calculated from the link index, never written into other files; parents → children, two-way for spouse), together with automatic page lists such as "Chapters that take place at …". Themes (now M12) also set fonts (body, headings), text size, line spacing and page width; fonts are copied into the project. Later milestones renumbered +1 (old M8 → M9 … M16 → M17); `docs/history.md` keeps the old numbers. Edit/read hotkey already exists (Cmd+E).
+- 2026-10-19 (planning): "Reveal all spoilers" works both per page and globally (everywhere).
