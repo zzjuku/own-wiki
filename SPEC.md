@@ -2,7 +2,7 @@
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: M1–M5 done; M6 defined, next to build; roadmap M7–M16 drafted.
+Status: M1–M6 done; M7 next (to be defined); roadmap M7–M16 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -244,7 +244,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - Checkpoint for Juku partway: templates screen with text, long text, number, yes/no, choice, list and section headings; creating pages from templates; Infobox tab; the box with colour. Then: link fields, dates, images, Apply to existing pages, hidden values, page-own field editing, copying templates, Pages using this template.
 - Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen, a test project with 5,000 placeholder pages with infoboxes (several link fields each) reopens in under 1 s, Apply to 1,000 pages finishes within a few seconds, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
 
-**M6 — Images & categories (defined 2026-10-18)**
+**M6 — Images & categories (done 2026-10-18)**
 - Images in page text:
   - Inserted with an **Image** toolbar button, by dragging files from Finder/Explorer into the editor (at the drop point), or by pasting an image (e.g. a screenshot). Every route copies the file into `assets/`; the same file imported twice is stored once (as in M5). Imported files keep their original name; a clash gets " (2)".
   - Formats: PNG, JPG, GIF, WebP and **SVG** (Juku, 2026-10-18). SVGs are shown as pictures only; code inside them never runs.
@@ -336,3 +336,4 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-18: M6 checkpoint review (Juku): infobox pictures get an Adjust picture window with a size slider (down to the whole picture, up to 4× closer) and dragging in every direction, instead of only dragging along the side that sticks out. Stored as `crop: {x, y, zoom, aspect}` (zoom 1 = fills the frame; aspect = the picture's width/height, so pages place it without loading it first); pictures without a zoom still simply fill the frame.
 - 2026-10-18: M6 categories built (Claude's choices, open to Juku's review): a category exists while a page, a template default, a subcategory or its own file uses it; clicking a red `[[Category:…]]` link creates its file at once (empty) so it exists; the sidebar's **Categories** list also has a **New category** button; the read view always shows the categories box (with "none" and + Add when empty); category pages list pages in up to 3 columns, filed under the first letter of "Sort as" (else the title), digits under "0–9", other characters under "#"; the "Include pages of subcategories" switch is remembered per computer; back/forward include category pages; quick-open lists matching categories after pages ("Category:" typed = categories only). Technical: category files are named like pages (`categories/Name.md`, " (2)" on clashes) and indexed with the pages (cache version 4); renaming a page also rewrites links in category texts; `[[Category: X]]` with a space after the colon counts as the same link. Measured (release build, 5,000 pages × 3 categories): reopen 11 ms, a 2,000-page category 4 ms, renaming a category used on 1,000 pages 3.1 s.
 - 2026-10-18: M6 review (Juku): per-project option to hide the categories box at the bottom of pages (only the box; categories keep working). Lives in a new Project settings window (gear next to the project name), stored in project.json, since the app's Settings screen is per computer.
+- 2026-10-18: M6 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer.
