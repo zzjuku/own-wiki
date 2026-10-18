@@ -105,8 +105,8 @@ export function HoverCards() {
 
   // Links in the card show their targets but don't open further cards.
   const links = useMemo(
-    () => ({ resolve: (n: string) => wiki.names.resolve(n), currentId: card?.pageId }),
-    [wiki.names, card?.pageId],
+    () => ({ resolve: (n: string) => wiki.names.resolve(n), currentId: card?.pageId, image: (f: string, w?: number) => imageUrl(project, f, w) }),
+    [wiki.names, card?.pageId, project],
   );
   const html = useMemo(() => (card?.preview?.text ? renderSnippet(card.preview.text, links) : ""), [card, links]);
 
@@ -162,7 +162,7 @@ export function HoverCards() {
           <div className="hover-card-empty">{p.section ? "This section has no text yet." : "This page has no text yet."}</div>
         )}
       </div>
-      <div className="hover-card-image">{p.image && <img src={imageUrl(project, p.image)} alt="" />}</div>
+      <div className="hover-card-image">{p.image && <img src={imageUrl(project, p.image, 160)} alt="" />}</div>
     </div>
   );
 }

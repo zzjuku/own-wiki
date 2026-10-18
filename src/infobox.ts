@@ -2,7 +2,7 @@
 // AWOIAF-style box (HTML) for the read view and the editor preview.
 // The file format is described in src-tauri/src/infobox.rs.
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { Field, FieldKind, IncomingField, Infobox, Template } from "./api";
+import type { Field, FieldKind, Frame, IncomingField, Infobox, Template } from "./api";
 import { renderInline, renderPage, slugify, type LinkContext } from "./markdown";
 import { norm } from "./wikilinks";
 
@@ -268,8 +268,11 @@ export function colorStyle(color: string | null | undefined): string {
   return `--infobox-header-bg:${color};--infobox-header-text:${contrastText(color)}`;
 }
 
-export function imageUrl(project: string, file: string): string {
-  return convertFileSrc(`${project}/${file}`, "wikiasset");
+/** URL of an image in assets/. With `width` (CSS pixels): a smaller copy
+ * about that wide (sharp on high-resolution screens), made once and kept in .cache/. */
+export function imageUrl(project: string, file: string, width?: number): string {
+  const url = convertFileSrc(`${project}/${file}`, "wikiasset");
+  return width ? `${url}?w=${Math.ceil(width * 2)}` : url;
 }
 
 function escapeHtml(s: string) {
@@ -286,7 +289,26 @@ export interface BoxContext {
   placeholders?: boolean;
   /** Editor preview: show the box (title bar and a note) even without values. */
   showEmpty?: boolean;
+  /** The frame every image sits in (filled and cropped). */
+  frame?: Frame;
 }
+
+/** An Image field's value. `crop`: which part shows when the frame cuts the
+ * image (percent from left and top; 50/50 = the middle). */
+export interface ImageValue {
+  file?: string;
+  caption?: string;
+  crop?: { x: number; y: number };
+}
+
+const clampPct = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 50);
+
+/** CSS object-position for an image value's crop. */
+export function cropPosition(v: ImageValue | undefined): string {
+  return `${clampPct(v?.crop?.x)}% ${clampPct(v?.crop?.y)}%`;
+}
+
+const frameStyle = (f: Frame) => `width:${f.width}px;aspect-ratio:${f.width} / ${f.height}`;
 
 /** A page name as a [[link]], so it renders like links in the text. */
 function linkHtml(name: string, ctx: BoxContext): string {
@@ -357,18 +379,26 @@ export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): st
       continue;
     }
     if (f.type === "image") {
-      const img = f.value as { file?: string; caption?: string } | undefined;
+      const img = f.value as ImageValue | undefined;
+      const frame = ctx.frame;
       if (img?.file && !valueProblem(f)) {
         const caption = img.caption?.trim()
           ? `<div class="infobox-caption">${renderInline(img.caption, ctx.links)}</div>`
           : "";
+        const src = escapeHtml(imageUrl(ctx.project, img.file, frame?.width ?? 280));
+        const full = escapeHtml(imageUrl(ctx.project, img.file));
+        const alt = escapeHtml(img.caption ?? "");
+        const picture = frame
+          ? `<span class="infobox-frame" style="${frameStyle(frame)}"><img src="${src}" data-full="${full}" alt="${alt}" style="object-position:${cropPosition(img)}"></span>`
+          : `<img src="${src}" data-full="${full}" alt="${alt}">`;
         rows.push({
-          html:
-            `<tr><td colspan="2" class="infobox-image"><img src="${escapeHtml(imageUrl(ctx.project, img.file))}" alt="${escapeHtml(img.caption ?? "")}">` +
-            `${caption}</td></tr>`,
+          html: `<tr><td colspan="2" class="infobox-image" data-file="${escapeHtml(img.file)}">${picture}${caption}</td></tr>`,
         });
       } else if (ctx.placeholders) {
-        rows.push({ html: `<tr><td colspan="2" class="infobox-image"><div class="infobox-image-placeholder">${escapeHtml(f.label || "Image")}</div></td></tr>` });
+        const style = frame ? ` style="${frameStyle(frame)}"` : "";
+        rows.push({
+          html: `<tr><td colspan="2" class="infobox-image"><div class="infobox-image-placeholder"${style}>${escapeHtml(f.label || "Image")}</div></td></tr>`,
+        });
       }
       continue;
     }
@@ -386,7 +416,7 @@ export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): st
     shown.length = 0;
     shown.push({ html: `<tr><td colspan="2" class="infobox-empty">Fill in values in the Infobox tab.</td></tr>` });
   }
-  const style = colorStyle(ib.color);
+  const style = [colorStyle(ib.color), ctx.frame ? `--frame-width:${ctx.frame.width}px` : ""].filter(Boolean).join(";");
   return (
     `<div class="infobox"${style ? ` style="${style}"` : ""}><table><tbody>` +
     `<tr><th colspan="2" class="infobox-title">${escapeHtml(ctx.title)}</th></tr>` +

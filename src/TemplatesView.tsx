@@ -3,7 +3,7 @@
 // with a live preview of the box. Templates are starting points: changing
 // one never changes existing pages (see SPEC.md, M5).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type Field, type FieldKind, type PageInfo, type Template } from "./api";
+import { api, type Field, type FieldKind, type Frame, type PageInfo, type Template } from "./api";
 import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
 import { Chips, ColorPicker, DragHandle, moveItem, useReorder } from "./controls";
 import { useDialogs } from "./dialogs";
@@ -280,8 +280,8 @@ function TemplateEditor({ project, template: t, templates, onChange, onRename, o
   }, [templates]);
 
   const preview = useMemo(
-    () => infoboxHtml(instantiate(t), { project, title: "Page title", links, placeholders: true }),
-    [t, project, links],
+    () => infoboxHtml(instantiate(t), { project, title: "Page title", links, placeholders: true, frame: t.imageFrame ?? wiki.imageFrame }),
+    [t, project, links, wiki.imageFrame],
   );
 
   return (
@@ -301,6 +301,29 @@ function TemplateEditor({ project, template: t, templates, onChange, onRename, o
           <h3>Infobox colour</h3>
           <ColorPicker value={t.color} onChange={(color) => onChange({ ...t, color })} />
           <p className="hint">Colours the title bar and section headings. New pages start with it; each page can change its own.</p>
+        </section>
+
+        <section className="template-section">
+          <h3>Infobox image size</h3>
+          <p className="hint">
+            Every image in the infobox sits in a frame of this size, filled and cropped to fit. Each Image field can choose which
+            part of its image shows.
+          </p>
+          <div className="frame-choice">
+            <label className="check">
+              <input type="radio" name="frame" checked={!t.imageFrame} onChange={() => onChange({ ...t, imageFrame: undefined })} />
+              <span>Project size</span>
+            </label>
+            <FrameInputs value={wiki.imageFrame} onChange={wiki.setImageFrame} label="Project image size" />
+            <span className="muted small">for every template without its own size</span>
+          </div>
+          <div className="frame-choice">
+            <label className="check">
+              <input type="radio" name="frame" checked={!!t.imageFrame} onChange={() => onChange({ ...t, imageFrame: { ...wiki.imageFrame } })} />
+              <span>Own size for this template</span>
+            </label>
+            {t.imageFrame && <FrameInputs value={t.imageFrame} onChange={(imageFrame) => onChange({ ...t, imageFrame })} label="Template image size" />}
+          </div>
         </section>
 
         <section className="template-section">
@@ -376,6 +399,54 @@ function TemplateEditor({ project, template: t, templates, onChange, onRename, o
         <div className="markdown" dangerouslySetInnerHTML={{ __html: preview }} />
       </aside>
     </div>
+  );
+}
+
+const FRAME_MIN = 40;
+const FRAME_MAX = 1200;
+
+/** Width × height boxes; only sizes between 40 and 1,200 px are passed on. */
+function FrameInputs({ value, onChange, label }: { value: Frame; onChange: (f: Frame) => void; label: string }) {
+  const [w, setW] = useState(String(value.width));
+  const [h, setH] = useState(String(value.height));
+  useEffect(() => {
+    setW(String(value.width));
+    setH(String(value.height));
+  }, [value.width, value.height]);
+  const ok = (t: string) => /^\d+$/.test(t.trim()) && Number(t) >= FRAME_MIN && Number(t) <= FRAME_MAX;
+  const commit = (nw: string, nh: string) => {
+    if (ok(nw) && ok(nh) && (Number(nw) !== value.width || Number(nh) !== value.height)) onChange({ width: Number(nw), height: Number(nh) });
+  };
+  const title = `${FRAME_MIN}–${FRAME_MAX} pixels`;
+  return (
+    <span className="frame-inputs" role="group" aria-label={label}>
+      <input
+        inputMode="numeric"
+        aria-label={`${label}: width`}
+        title={title}
+        className={ok(w) ? "" : "invalid"}
+        value={w}
+        onChange={(e) => {
+          setW(e.target.value);
+          commit(e.target.value, h);
+        }}
+        onBlur={() => setW(String(value.width))}
+      />
+      <span>×</span>
+      <input
+        inputMode="numeric"
+        aria-label={`${label}: height`}
+        title={title}
+        className={ok(h) ? "" : "invalid"}
+        value={h}
+        onChange={(e) => {
+          setH(e.target.value);
+          commit(w, e.target.value);
+        }}
+        onBlur={() => setH(String(value.height))}
+      />
+      <span className="muted">px</span>
+    </span>
   );
 }
 

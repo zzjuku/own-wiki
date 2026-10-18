@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, errorText, isLongPath, type ProjectInfo, type Tree } from "./api";
+import { api, errorText, isLongPath, type Frame, type ProjectInfo, type Tree } from "./api";
 import { flushAll } from "./autosave";
 import { useDialogs, type PickOption } from "./dialogs";
 import { HoverCards } from "./HoverCard";
+import { ImageViewer } from "./ImageViewer";
 import { NameIndex } from "./names";
 import { useReportError } from "./notify";
 import { PageView } from "./PageView";
 import { IS_MAC, isQuickOpenKey, QuickOpen, QUICK_OPEN_KEYS } from "./QuickOpen";
-import { WikiContext, type FollowTarget, type Wiki } from "./wiki";
+import { DEFAULT_FRAME, WikiContext, type FollowTarget, type Wiki } from "./wiki";
 import { Sidebar, type MenuItem } from "./Sidebar";
 import { TemplatesView, useTemplates } from "./TemplatesView";
 import {
@@ -91,6 +92,10 @@ export function ProjectView({ project, onBack }: Props) {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const templates = useTemplates(project.id);
+  const [imageFrame, setImageFrameState] = useState<Frame>(DEFAULT_FRAME);
+  useEffect(() => {
+    api.getImageFrame(project.id).then(setImageFrameState, () => {});
+  }, [project.id]);
   // The Templates screen is shown instead of a page.
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templateSelected, setTemplateSelected] = useState<string | null>(null);
@@ -587,8 +592,13 @@ export function ProjectView({ project, onBack }: Props) {
       follow: (t) => actions.current.follow(t),
       createFromLink: (title, from) => actions.current.createFromLink(title, from),
       templates: templates.templates,
+      imageFrame,
+      setImageFrame: (f) => {
+        setImageFrameState(f);
+        api.setImageFrame(project.id, f).catch(report);
+      },
     }),
-    [project.id, names, templates.templates],
+    [project.id, names, templates.templates, imageFrame, report],
   );
 
   async function openTemplates() {
@@ -724,6 +734,7 @@ export function ProjectView({ project, onBack }: Props) {
       </main>
 
       <HoverCards />
+      <ImageViewer />
 
       {quickOpen && (
         <QuickOpen names={names} onOpen={(e) => void openPage(e.page.id)} close={() => setQuickOpen(false)} />

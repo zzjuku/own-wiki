@@ -11,6 +11,7 @@ import { tags } from "@lezer/highlight";
 import type { Heading } from "./api";
 import type { NameIndex } from "./names";
 import { IS_MAC } from "./QuickOpen";
+import { imageAtStart, parseImage, type TextImage } from "./images";
 import { displayGroup } from "./tree";
 import { linkAtStart, norm, type WikiLink } from "./wikilinks";
 
@@ -21,8 +22,30 @@ const NEWLINE = 10;
 /** Teaches the Markdown parser about [[links]], so they aren't read as
  * ordinary [links] and code stays code. */
 export const wikiLinkSyntax: MarkdownConfig = {
-  defineNodes: [{ name: "WikiLink", style: tags.link }],
+  defineNodes: [{ name: "WikiLink", style: tags.link }, { name: "WikiImage" }],
   parseInline: [
+    {
+      // [[File:Name.png|…|Caption]]; links in the caption are WikiLink children.
+      name: "WikiImage",
+      before: "Link",
+      parse(cx, next, pos) {
+        if (next !== OPEN || cx.char(pos + 1) !== OPEN) return -1;
+        const m = imageAtStart(cx.slice(pos, cx.end));
+        if (!m) return -1;
+        const children = [];
+        const text = cx.slice(pos, pos + m.length);
+        for (let i = 2; i < m.length - 2; i++) {
+          if (text.startsWith("[[", i)) {
+            const l = linkAtStart(text.slice(i));
+            if (l) {
+              children.push(cx.elt("WikiLink", pos + i, pos + i + l.length));
+              i += l.length - 1;
+            }
+          }
+        }
+        return cx.addElement(cx.elt("WikiImage", pos, pos + m.length, children));
+      },
+    },
     {
       name: "WikiLink",
       before: "Link",
@@ -78,11 +101,23 @@ export function linkRangeAt(state: EditorState, pos: number, side: -1 | 1 = 1): 
   return null;
 }
 
+/** The image whose source covers `pos` (with where it is), if any. */
+export function imageRangeAt(state: EditorState, pos: number): { from: number; to: number; image: TextImage } | null {
+  for (let n: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 1); n; n = n.parent) {
+    if (n.name === "WikiImage") {
+      const m = imageAtStart(state.sliceDoc(n.from, n.to));
+      return m ? { from: n.from, to: n.to, image: parseImage(m.inner) } : null;
+    }
+  }
+  return null;
+}
+
 function linkAt(state: EditorState, pos: number): WikiLink | null {
   return linkRangeAt(state, pos)?.link ?? null;
 }
 
 const plainLink = Decoration.mark({ class: "cm-wikilink" });
+const imageMark = Decoration.mark({ class: "cm-wikiimage", attributes: { title: "Image — click to change it" } });
 const IS_MOD = IS_MAC ? "⌘" : "Ctrl+";
 
 function decorate(view: EditorView): DecorationSet {
@@ -93,6 +128,10 @@ function decorate(view: EditorView): DecorationSet {
       from,
       to,
       enter(node) {
+        if (node.name === "WikiImage") {
+          marks.push(imageMark.range(node.from, node.to));
+          return;
+        }
         if (node.name !== "WikiLink") return;
         const link = linkAtStart(view.state.sliceDoc(node.from, node.to))?.link;
         if (!link) return;

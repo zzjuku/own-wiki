@@ -315,6 +315,24 @@ function blockSpot(state: EditorState) {
   return { from: line.from, to: line.to, before: prev.trim() ? "\n" : "", after };
 }
 
+/** Inserts `text` as a block of its own lines at the cursor; the cursor goes after it. */
+export function insertBlock(text: string): StateCommand {
+  return ({ state, dispatch }) => {
+    const spot = blockSpot(state);
+    const insert = spot.before + text + spot.after;
+    const end = spot.from + spot.before.length + text.length;
+    dispatch(
+      state.update({
+        changes: { from: spot.from, to: spot.to, insert },
+        selection: EditorSelection.cursor(end),
+        scrollIntoView: true,
+        userEvent: "input.format",
+      }),
+    );
+    return true;
+  };
+}
+
 /** A table with a header row and `rows` rows below it; selects the first
  * header cell's placeholder. */
 export function insertTable(rows: number, cols: number): StateCommand {

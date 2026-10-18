@@ -33,9 +33,12 @@ export function parseInner(inner: string, suffix = ""): WikiLink | null {
     pagePart = pagePart.slice(0, hash);
   }
   const page = pagePart.trim();
-  if (!page && section === null) return null;
+  if ((!page && section === null) || isFileName(page)) return null;
   return { page, section, label, suffix };
 }
+
+/** `File:…` names an image (`[[File:Name.png|…]]`), not a page. */
+export const isFileName = (name: string) => /^file:/i.test(name);
 
 /** Parses a link at the start of `src`; returns it with its length. */
 export function linkAtStart(src: string): { link: WikiLink; length: number } | null {

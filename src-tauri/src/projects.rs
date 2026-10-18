@@ -28,6 +28,9 @@ struct ProjectFile {
     /// Title of the page the project opens on.
     #[serde(rename = "mainPage", default, skip_serializing_if = "Option::is_none")]
     main_page: Option<String>,
+    /// Size of the frame every infobox image sits in.
+    #[serde(rename = "infoboxImage", default, skip_serializing_if = "Option::is_none")]
+    infobox_image: Option<Frame>,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -74,6 +77,33 @@ pub fn main_page(dir: &Path) -> Option<String> {
 pub fn set_main_page(dir: &Path, title: Option<&str>) -> AppResult<()> {
     let mut file = read_project_file(dir)?;
     file.main_page = title.map(str::to_string);
+    write_project_file(dir, &file)
+}
+
+/// Width and height (CSS pixels) of an image frame.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct Frame {
+    pub width: u32,
+    pub height: u32,
+}
+
+pub const DEFAULT_FRAME: Frame = Frame { width: 250, height: 300 };
+const FRAME_MIN: u32 = 40;
+const FRAME_MAX: u32 = 1200;
+
+/// The project's infobox image frame (the default if none is set).
+pub fn image_frame(dir: &Path) -> AppResult<Frame> {
+    Ok(read_project_file(dir)?.infobox_image.unwrap_or(DEFAULT_FRAME))
+}
+
+pub fn set_image_frame(dir: &Path, frame: Frame) -> AppResult<()> {
+    for v in [frame.width, frame.height] {
+        if !(FRAME_MIN..=FRAME_MAX).contains(&v) {
+            return Err(AppError::Invalid(format!("Sizes must be between {FRAME_MIN} and {FRAME_MAX} pixels.")));
+        }
+    }
+    let mut file = read_project_file(dir)?;
+    file.infobox_image = Some(frame);
     write_project_file(dir, &file)
 }
 
@@ -156,6 +186,7 @@ pub fn create_project(library: &Path, name: &str) -> AppResult<ProjectInfo> {
             format_version: FORMAT_VERSION,
             templates: Vec::new(),
             main_page: Some(MAIN_PAGE_TITLE.into()),
+            infobox_image: None,
             extra: Default::default(),
         },
     )?;

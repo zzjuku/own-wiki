@@ -60,6 +60,10 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--infobox-font-size` | Text size inside the box |
 | `--infobox-padding` | Cell padding |
 | `--infobox-gap` | Space between the box and the text beside it |
+| `--thumb-bg` / `--thumb-border` | Frame around images in the text and gallery cells |
+| `--thumb-caption` | Image and gallery captions |
+| `--thumb-gap` | Space between a floating image and the text beside it |
+| `--viewer-bg` / `--viewer-text` | Full-size image viewer background and its text |
 
 ## Fonts and sizes
 | Variable | Used for |

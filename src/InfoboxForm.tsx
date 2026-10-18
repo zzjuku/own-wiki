@@ -16,8 +16,10 @@ import {
   rawValueText,
   valueProblem,
   valueText,
+  type ImageValue,
 } from "./infobox";
-import { DateInput, ImageInput, PageLinksInput, PageNameInput } from "./FieldInputs";
+import { frameFor, useWiki } from "./wiki";
+import { DateInput, ImageFrameContext, ImageInput, PageLinksInput, PageNameInput } from "./FieldInputs";
 import { MiniEditor } from "./MiniEditor";
 import { FieldDef } from "./TemplatesView";
 
@@ -35,6 +37,7 @@ const newRowId = () => `row-${nextRowId++}`;
 
 export function InfoboxForm({ pageId, infobox: ib, error, templates, onChange: change }: Props) {
   const dialogs = useDialogs();
+  const wiki = useWiki();
   const [settingsOpen, setSettingsOpen] = useState<number | null>(null);
   const [justAdded, setJustAdded] = useState<number | null>(null);
   const [menu, setMenu] = useState<"add" | "change" | null>(null);
@@ -168,6 +171,7 @@ export function InfoboxForm({ pageId, infobox: ib, error, templates, onChange: c
   const hidden = ib.hidden ?? [];
 
   return (
+    <ImageFrameContext.Provider value={frameFor(wiki, ib.template)}>
     <div className="infobox-form">
       <div className="infobox-form-head">
         <span className="infobox-template">
@@ -309,6 +313,7 @@ export function InfoboxForm({ pageId, infobox: ib, error, templates, onChange: c
         </details>
       )}
     </div>
+    </ImageFrameContext.Provider>
   );
 }
 
@@ -411,7 +416,7 @@ function ValueInput({ pageId, field: f, onChange }: { pageId: string; field: Fie
     case "date":
       return <DateInput label={f.label} value={v} ranges={!!f.options?.ranges} onChange={onChange} />;
     case "image":
-      return <ImageInput pageId={pageId} label={f.label} value={v as { file?: string; caption?: string } | undefined} onChange={onChange} />;
+      return <ImageInput pageId={pageId} label={f.label} value={v as ImageValue | undefined} onChange={onChange} />;
     default:
       return <span className="muted small">{kindLabel(f.type)} fields can't be edited yet.</span>;
   }

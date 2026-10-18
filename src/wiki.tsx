@@ -2,7 +2,8 @@
 // links: resolving names, following links, and creating pages from red links.
 import { createContext, useCallback, useContext, useMemo } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { Template } from "./api";
+import type { Frame, Template } from "./api";
+import { imageUrl } from "./infobox";
 import type { LinkContext } from "./markdown";
 import { slugify } from "./markdown";
 import type { NameIndex } from "./names";
@@ -24,6 +25,18 @@ export interface Wiki {
   createFromLink: (title: string, fromPage?: string) => void;
   /** The project's templates. */
   templates: Template[];
+  /** The project's infobox image frame. */
+  imageFrame: Frame;
+  setImageFrame: (f: Frame) => void;
+}
+
+export const DEFAULT_FRAME: Frame = { width: 250, height: 300 };
+
+/** The frame infobox images sit in on a page from template `templateId`:
+ * the template's own size, else the project's. */
+export function frameFor(wiki: Wiki, templateId: string | null | undefined): Frame {
+  const t = templateId ? wiki.templates.find((x) => x.id === templateId) : undefined;
+  return t?.imageFrame ?? wiki.imageFrame;
 }
 
 export const WikiContext = createContext<Wiki | null>(null);
@@ -36,8 +49,15 @@ export function useWiki(): Wiki {
 
 /** Link resolving for rendering the page `currentId`. */
 export function useLinkContext(currentId?: string): LinkContext {
-  const { names } = useWiki();
-  return useMemo(() => ({ resolve: (n: string) => names.resolve(n), currentId }), [names, currentId]);
+  const { names, project } = useWiki();
+  return useMemo(
+    () => ({
+      resolve: (n: string) => names.resolve(n),
+      currentId,
+      image: (file: string, width?: number) => imageUrl(project, file, width),
+    }),
+    [names, currentId, project],
+  );
 }
 
 /** Scrolls the page (read view or preview) holding `from` to a section; to the top if it has none. */

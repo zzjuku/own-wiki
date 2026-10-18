@@ -1,6 +1,7 @@
 import DOMPurify from "dompurify";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
 import type { LinkTarget } from "./names";
+import { FULL_PX, GALLERY_PX, imageAtStart, parseGallery, parseImage, SIZE_PX, type TextImage } from "./images";
 import { linkAtStart, shownText, type WikiLink } from "./wikilinks";
 
 // One Enter in the source is a line break on the page; an empty line starts
@@ -36,7 +37,16 @@ export interface LinkContext {
   resolve: (name: string) => LinkTarget | null;
   /** The page being rendered: links to it show as bold text. */
   currentId?: string;
+  /** URL of an image in assets/; with `width` (CSS pixels) a copy about that wide. */
+  image?: (file: string, width?: number) => string;
 }
+
+/** Lets image URLs of the app's own `wikiasset:` scheme through, and lazy loading. */
+const PURIFY = {
+  SANITIZE_DOM: false,
+  ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|wikiasset):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
+  ADD_ATTR: ["loading", "decoding"],
+};
 
 // ---- per-render state (rendering is synchronous, so one at a time) ----
 
@@ -116,6 +126,38 @@ function renderWikiLink(link: WikiLink, text: string): string {
   return `<a class="wikilink" href="#" ${attrs.join(" ")}>${label}</a>`;
 }
 
+function imageSrc(file: string, width?: number): string {
+  return state.links?.image ? state.links.image(file, width) : file;
+}
+
+/** An image in the text: a frame with the picture and its caption. */
+function renderImage(img: TextImage, captionHtml: string, captionText: string): string {
+  const width = img.pos === "full" ? FULL_PX : SIZE_PX[img.size];
+  const cls = `wiki-image pos-${img.pos}${img.pos === "full" ? "" : ` size-${img.size}`}`;
+  const alt = escapeHtml(captionText || img.file);
+  return (
+    IMG_START +
+    `<span class="${cls}" data-file="${escapeHtml(img.file)}">` +
+    `<img src="${escapeHtml(imageSrc(img.file, width))}" data-full="${escapeHtml(imageSrc(img.file))}" alt="${alt}" loading="lazy" decoding="async">` +
+    (captionHtml ? `<span class="wiki-caption">${captionHtml}</span>` : "") +
+    `</span>` +
+    IMG_END
+  );
+}
+
+const IMG_START = "<!--img-->";
+const IMG_END = "<!--/img-->";
+
+/** An image on a line of its own floats beside the text that follows: the
+ * line break after it would only leave an empty line. */
+function dropBreaksAfterImages(html: string): string {
+  return html
+    .replace(/(?<=<p>|<br>\n?)<!--img-->([\s\S]*?)<!--\/img--><br>\n?/g, "$1")
+    .replace(/<!--\/?img-->/g, "");
+}
+
+const GALLERY = /^ {0,3}<gallery>[ \t]*(?:\n([\s\S]*?))?\n {0,3}<\/gallery>[ \t]*(?:\n+|$)/i;
+
 const FOOTNOTE_DEF = /^\[\^([^\]\s]+)\]:[ \t]?([^\n]*(?:\n(?: {2,}|\t)[^\n]*)*)(?:\n|$)/;
 const FOOTNOTE_REF = /^\[\^([^\]\s]+)\]/;
 
@@ -130,6 +172,48 @@ md.use({
     },
   },
   extensions: [
+    {
+      // [[File:Name.png|right|medium|Caption]] (before page links: it starts the same way)
+      name: "wikiImage",
+      level: "inline",
+      start: (src: string) => {
+        const m = /\[\[file:/i.exec(src);
+        return m ? m.index : undefined;
+      },
+      tokenizer(src: string) {
+        const m = imageAtStart(src);
+        if (!m) return undefined;
+        const image = parseImage(m.inner);
+        return { type: "wikiImage", raw: src.slice(0, m.length), image, tokens: this.lexer.inlineTokens(image.caption) };
+      },
+      renderer(token) {
+        return renderImage(token.image as TextImage, this.parser.parseInline(token.tokens!), inlineText(token.tokens));
+      },
+    },
+    {
+      // <gallery> … File|Caption lines … </gallery>
+      name: "gallery",
+      level: "block",
+      start: (src: string) => src.match(/^ {0,3}<gallery>/im)?.index,
+      tokenizer(src: string) {
+        const m = GALLERY.exec(src);
+        if (!m) return undefined;
+        const items = parseGallery((m[1] ?? "").split("\n")).map((i) => ({ ...i, tokens: this.lexer.inlineTokens(i.caption) }));
+        return { type: "gallery", raw: m[0], items };
+      },
+      renderer(token) {
+        const items = (token.items as { file: string; caption: string; tokens: Token[] }[]).map((i) => {
+          const caption = this.parser.parseInline(i.tokens);
+          const alt = escapeHtml(inlineText(i.tokens) || i.file);
+          return (
+            `<figure class="gallery-item" data-file="${escapeHtml(i.file)}"><span class="gallery-frame">` +
+            `<img src="${escapeHtml(imageSrc(i.file, GALLERY_PX))}" data-full="${escapeHtml(imageSrc(i.file))}" alt="${alt}" loading="lazy" decoding="async">` +
+            `</span>${caption ? `<figcaption>${caption}</figcaption>` : ""}</figure>`
+          );
+        });
+        return `<div class="wiki-gallery">${items.join("")}</div>\n`;
+      },
+    },
     {
       // [[Page]], [[Page|shown]], [[Page#Section]], [[#Section]]
       name: "wikiLink",
@@ -236,7 +320,7 @@ export function renderPage(
     }
     out.push(token);
   });
-  let html = md.parser(out);
+  let html = dropBreaksAfterImages(md.parser(out));
 
   // Notes: referenced ones in order of first reference, then any others.
   if (state.notes.size) {
@@ -260,14 +344,14 @@ export function renderPage(
   const toc = state.headings.length >= TOC_MIN_HEADINGS ? buildToc(state.headings) : [];
   html = html.replace(TOC_MARK, withBox && toc.length ? tocBox(toc) : "");
   // SANITIZE_DOM would drop heading ids such as "title" or "links".
-  return { html: DOMPurify.sanitize(html, { SANITIZE_DOM: false }), toc };
+  return { html: DOMPurify.sanitize(html, PURIFY), toc };
 }
 
 /** One line of Markdown (bold, italic, [[links]]) -> safe inline HTML, for infobox values. */
 export function renderInline(source: string, links: LinkContext | null = null): string {
   state = freshState(new Set(), links);
-  const html = md.parseInline(source.replace(/\[\^[^\]\s]+\]/g, "")) as string;
-  return DOMPurify.sanitize(html, { SANITIZE_DOM: false });
+  const html = dropBreaksAfterImages(md.parseInline(source.replace(/\[\^[^\]\s]+\]/g, "")) as string);
+  return DOMPurify.sanitize(html, PURIFY);
 }
 
 /** Markdown -> safe HTML. */
@@ -313,8 +397,7 @@ export function plainText(source: string): string {
   const parts: string[] = [];
   const walk = (tokens: Token[]) => {
     for (const t of tokens) {
-      if (t.type === "html" || t.type === "space" || t.type === "hr" || t.type === "def" || t.type === "footnoteRef")
-        continue;
+      if (["html", "space", "hr", "def", "footnoteRef", "wikiImage", "gallery"].includes(t.type)) continue;
       if (t.type === "table") {
         for (const cell of [...t.header, ...t.rows.flat()]) {
           walk(cell.tokens);

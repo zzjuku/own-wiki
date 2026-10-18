@@ -1,12 +1,14 @@
 // Inputs for the infobox field types that aren't plain text: page links,
 // dates and images.
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, errorText } from "./api";
-import { cleanValue, imageUrl, isRange, type DatePoint, type DateRange, type Qualifier } from "./infobox";
+import { api, errorText, type Frame } from "./api";
+import { useFileDrop } from "./dropFiles";
+import { FIELD_IMAGE_EXTENSIONS, hasExtension } from "./images";
+import { cleanValue, imageUrl, isRange, type DatePoint, type DateRange, type ImageValue, type Qualifier } from "./infobox";
 import { MiniEditor } from "./MiniEditor";
 import { displayGroup } from "./tree";
-import { useWiki } from "./wiki";
+import { DEFAULT_FRAME, useWiki } from "./wiki";
 
 // ---- page links ----
 
@@ -262,9 +264,69 @@ export function DateInput({
 
 // ---- images ----
 
-interface ImageValue {
-  file?: string;
-  caption?: string;
+/** The frame size infobox images on this page sit in (set by the Infobox tab). */
+export const ImageFrameContext = createContext<Frame>(DEFAULT_FRAME);
+
+const PREVIEW_MAX = 200;
+
+/** The image in its infobox frame, small; dragging it chooses which part shows. */
+function CropFrame({ project, value, onChange }: { project: string; value: ImageValue; onChange: (crop: { x: number; y: number }) => void }) {
+  const frame = useContext(ImageFrameContext);
+  const k = Math.min(1, PREVIEW_MAX / frame.width, PREVIEW_MAX / frame.height);
+  const pw = Math.round(frame.width * k);
+  const ph = Math.round(frame.height * k);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  const [live, setLive] = useState<{ x: number; y: number } | null>(null);
+  const crop = live ?? { x: value.crop?.x ?? 50, y: value.crop?.y ?? 50 };
+  // How far the (cover-scaled) image sticks out of the frame.
+  const s = natural ? Math.max(pw / natural.w, ph / natural.h) : 1;
+  const over = natural ? { x: natural.w * s - pw, y: natural.h * s - ph } : { x: 0, y: 0 };
+  const movable = over.x > 1 || over.y > 1;
+
+  function drag(e: React.PointerEvent) {
+    if (!movable || e.button !== 0) return;
+    e.preventDefault();
+    const start = { x: e.clientX, y: e.clientY, cx: crop.x, cy: crop.y };
+    let last = crop;
+    const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
+    const move = (ev: PointerEvent) => {
+      last = {
+        x: over.x > 1 ? clamp(start.cx - ((ev.clientX - start.x) / over.x) * 100) : start.cx,
+        y: over.y > 1 ? clamp(start.cy - ((ev.clientY - start.y) / over.y) * 100) : start.cy,
+      };
+      setLive(last);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.classList.remove("reordering");
+      setLive(null);
+      if (last.x !== crop.x || last.y !== crop.y) onChange(last);
+    };
+    document.body.classList.add("reordering");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  return (
+    <div className="crop-wrap">
+      <div
+        className={`crop-frame ${movable ? "movable" : ""}`}
+        style={{ width: pw, height: ph }}
+        title={movable ? "Drag to choose which part of the image shows" : undefined}
+        onPointerDown={drag}
+      >
+        <img
+          src={imageUrl(project, value.file!, frame.width)}
+          alt=""
+          draggable={false}
+          style={{ objectPosition: `${crop.x}% ${crop.y}%` }}
+          onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+        />
+      </div>
+      {movable && <span className="muted small">Drag the picture to choose what the frame shows.</span>}
+    </div>
+  );
 }
 
 export function ImageInput({
@@ -282,20 +344,17 @@ export function ImageInput({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const img = value ?? {};
+  const boxRef = useRef<HTMLDivElement>(null);
 
-  async function choose() {
+  async function use(path: () => Promise<string | null>) {
     setError(null);
     try {
-      const path = await open({
-        multiple: false,
-        directory: false,
-        title: "Choose an image",
-        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
-      });
-      if (typeof path !== "string") return;
+      const p = await path();
+      if (!p) return;
       setBusy(true);
-      const file = await api.importImage(wiki.project, path);
-      onChange({ ...img, file });
+      const file = await api.importImage(wiki.project, p, false);
+      // A new picture starts centred in the frame.
+      onChange({ ...img, file, crop: undefined });
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -303,11 +362,28 @@ export function ImageInput({
     }
   }
 
+  const choose = () =>
+    use(async () => {
+      const path = await open({
+        multiple: false,
+        directory: false,
+        title: "Choose an image",
+        filters: [{ name: "Images", extensions: FIELD_IMAGE_EXTENSIONS }],
+      });
+      return typeof path === "string" ? path : null;
+    });
+
+  useFileDrop(boxRef, (paths) => {
+    const p = paths.find((x) => hasExtension(x, FIELD_IMAGE_EXTENSIONS));
+    if (!p) return setError("Only PNG, JPG, GIF and WebP images can be used in infobox fields.");
+    void use(async () => p);
+  });
+
   return (
-    <div className="image-input">
+    <div className="image-input" ref={boxRef}>
       {img.file ? (
         <div className="image-chosen">
-          <img src={imageUrl(wiki.project, img.file)} alt="" />
+          <CropFrame project={wiki.project} value={img} onChange={(crop) => onChange({ ...img, crop })} />
           <div className="image-meta">
             <span className="image-file" title={`assets/${img.file}`}>
               {img.file}
@@ -319,17 +395,25 @@ export function ImageInput({
               <button
                 type="button"
                 title="Takes the image out of this field. The file stays in the project's assets folder."
-                onClick={() => onChange(cleanValue({ ...img, file: undefined }) as ImageValue | undefined)}
+                onClick={() => onChange(cleanValue({ ...img, file: undefined, crop: undefined }) as ImageValue | undefined)}
               >
                 Remove
               </button>
             </div>
+            {img.crop && (img.crop.x !== 50 || img.crop.y !== 50) && (
+              <button type="button" className="plain small" onClick={() => onChange({ ...img, crop: undefined })}>
+                Centre the picture again
+              </button>
+            )}
           </div>
         </div>
       ) : (
-        <button type="button" onClick={() => void choose()} disabled={busy}>
-          {busy ? "Copying…" : "Choose image…"}
-        </button>
+        <div className="image-empty">
+          <button type="button" onClick={() => void choose()} disabled={busy}>
+            {busy ? "Copying…" : "Choose image…"}
+          </button>
+          <span className="muted small">or drop an image file here</span>
+        </div>
       )}
       {error && <span className="ib-invalid">{error}</span>}
       <MiniEditor

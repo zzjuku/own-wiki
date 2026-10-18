@@ -101,8 +101,17 @@ describe("infoboxHtml", () => {
   it("shows images with captions", () => {
     const ib: Infobox = { fields: [f("Picture", "image", { file: "Image A.png", caption: "A *caption*" })] };
     const html = infoboxHtml(ib, ctx);
-    expect(html).toContain('src="wikiasset://localhost/Project%20A%2FImage%20A.png"');
+    expect(html).toContain('data-full="wikiasset://localhost/Project%20A%2FImage%20A.png"');
     expect(html).toContain("<em>caption</em>");
+  });
+
+  it("puts images in the frame, cropped where chosen, and widens the box for it", () => {
+    const ib: Infobox = { fields: [f("Picture", "image", { file: "Image A.png", crop: { x: 20, y: 0 } })] };
+    const html = infoboxHtml(ib, { ...ctx, frame: { width: 400, height: 200 } });
+    expect(html).toContain('style="--frame-width:400px"');
+    expect(html).toContain('<span class="infobox-frame" style="width:400px;aspect-ratio:400 / 200">');
+    expect(html).toContain('src="wikiasset://localhost/Project%20A%2FImage%20A.png?w=800"');
+    expect(html).toContain('style="object-position:20% 0%"');
   });
 });
 

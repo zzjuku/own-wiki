@@ -209,9 +209,33 @@ fn incoming_fields(state: State<'_, AppState>, project: String, id: String) -> A
     state.with_index(&project, false, |_, idx| relink::incoming_fields(idx, &id))
 }
 
+/// Copies an image file into the project. `svg`: SVG is allowed (page text, galleries).
 #[tauri::command(async)]
-fn import_image(state: State<'_, AppState>, project: String, path: String) -> AppResult<String> {
-    assets::import_image(&state.library()?, &project, std::path::Path::new(&path))
+fn import_image(state: State<'_, AppState>, project: String, path: String, svg: bool) -> AppResult<String> {
+    assets::import_image(&state.library()?, &project, std::path::Path::new(&path), svg)
+}
+
+/// Stores a pasted image. The bytes are the request body; `project` and
+/// `name` come as percent-encoded headers.
+#[tauri::command(async)]
+fn import_image_data(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> AppResult<String> {
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err(AppError::Invalid("No image data.".into()));
+    };
+    let header = |k: &str| {
+        request.headers().get(k).and_then(|v| v.to_str().ok()).map(assets::percent_decode).unwrap_or_default()
+    };
+    assets::import_image_data(&state.library()?, &header("project"), &header("name"), data, true)
+}
+
+#[tauri::command]
+fn get_image_frame(state: State<AppState>, project: String) -> AppResult<projects::Frame> {
+    projects::image_frame(&projects::project_dir(&state.library()?, &project)?)
+}
+
+#[tauri::command]
+fn set_image_frame(state: State<AppState>, project: String, frame: projects::Frame) -> AppResult<()> {
+    projects::set_image_frame(&projects::project_dir(&state.library()?, &project)?, frame)
 }
 
 #[tauri::command(async)]
@@ -369,18 +393,30 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         // Images in a project's assets/ folder: wikiasset://localhost/<project>%2F<file>
-        // (http://wikiasset.localhost/… on Windows).
-        .register_uri_scheme_protocol("wikiasset", |ctx, request| {
-            let state = ctx.app_handle().state::<AppState>();
-            let found = state.library().and_then(|lib| assets::resolve_url_path(&lib, request.uri().path()));
-            let response = match found.and_then(|path| Ok((std::fs::read(&path)?, path))) {
-                Ok((data, path)) => tauri::http::Response::builder()
-                    .header("Content-Type", assets::mime_type(&path.to_string_lossy()))
-                    .header("Cache-Control", "no-cache")
-                    .body(data),
-                Err(_) => tauri::http::Response::builder().status(404).body(Vec::new()),
-            };
-            response.unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
+        // (http://wikiasset.localhost/… on Windows). "?w=640" asks for a copy
+        // about that wide (made once, kept in .cache/). Answered off the main
+        // thread, since shrinking a big image takes a moment.
+        .register_asynchronous_uri_scheme_protocol("wikiasset", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            std::thread::spawn(move || {
+                let state = app.state::<AppState>();
+                let found = state.library().and_then(|lib| assets::resolve_url_path(&lib, request.uri().path()));
+                let width = assets::query_width(request.uri().query());
+                let file = found.map(|(dir, path)| match width {
+                    Some(w) => assets::display_file(&dir, &path, w),
+                    None => path,
+                });
+                let response = match file.and_then(|path| Ok((std::fs::read(&path)?, path))) {
+                    Ok((data, path)) => tauri::http::Response::builder()
+                        .header("Content-Type", assets::mime_type(&path.to_string_lossy()))
+                        .header("Cache-Control", "no-cache")
+                        // SVGs are pictures only: nothing inside them runs.
+                        .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:")
+                        .body(data),
+                    Err(_) => tauri::http::Response::builder().status(404).body(Vec::new()),
+                };
+                responder.respond(response.unwrap_or_else(|_| tauri::http::Response::new(Vec::new())));
+            });
         })
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
@@ -423,6 +459,9 @@ pub fn run() {
             apply_template,
             incoming_fields,
             import_image,
+            import_image_data,
+            get_image_frame,
+            set_image_frame,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

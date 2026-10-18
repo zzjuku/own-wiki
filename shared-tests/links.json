@@ -26,7 +26,9 @@
     { "name": "in a footnote", "input": "Text[^1]\n\n[^1]: See [[A]].", "links": [{ "page": "A", "section": null, "text": "A" }] },
     { "name": "in a heading", "input": "## About [[A|the a]]", "links": [{ "page": "A", "section": null, "text": "the a" }] },
     { "name": "hash in shown text", "input": "[[A|number #1]]", "links": [{ "page": "A", "section": null, "text": "number #1" }] },
-    { "name": "unicode title", "input": "[[Ünïcödé 名前]]", "links": [{ "page": "Ünïcödé 名前", "section": null, "text": "Ünïcödé 名前" }] }
+    { "name": "unicode title", "input": "[[Ünïcödé 名前]]", "links": [{ "page": "Ünïcödé 名前", "section": null, "text": "Ünïcödé 名前" }] },
+    { "name": "images are not page links", "input": "[[File:A.png|right|Cap]] and [[file:B.svg]]", "links": [] },
+    { "name": "links in image captions", "input": "[[File:A.png|left|See [[Page B]] and [[C|c]]]]", "links": [{ "page": "Page B", "section": null, "text": "Page B" }, { "page": "C", "section": null, "text": "c" }] }
   ],
   "anchors": [
     { "name": "basic", "input": "## Early Life\n\n### Later years", "anchors": ["early-life", "later-years"] },

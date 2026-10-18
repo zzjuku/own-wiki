@@ -112,11 +112,19 @@ export interface FieldOptions {
   [extra: string]: unknown;
 }
 
+/** Width and height of the frame infobox images sit in (CSS pixels). */
+export interface Frame {
+  width: number;
+  height: number;
+}
+
 export interface Template {
   id: string;
   name: string;
   color?: string | null;
   starterText?: string;
+  /** Own infobox image frame (else the project's). */
+  imageFrame?: Frame | null;
   fields: Field[];
   [extra: string]: unknown;
 }
@@ -189,7 +197,15 @@ export const api = {
   setMainPage: (project: string, title: string | null) => invoke<void>("set_main_page", { project, title }),
   saveInfobox: (project: string, id: string, infobox: Infobox | null) =>
     invoke<void>("save_infobox", { project, id, infobox }),
-  importImage: (project: string, path: string) => invoke<string>("import_image", { project, path }),
+  /** Copies an image file into assets/; `svg`: SVG allowed (page text, galleries). Returns its file name there. */
+  importImage: (project: string, path: string, svg: boolean) => invoke<string>("import_image", { project, path, svg }),
+  /** Stores a pasted image (bytes) in assets/. */
+  importImageData: (project: string, name: string, data: Uint8Array) =>
+    invoke<string>("import_image_data", data, {
+      headers: { project: encodeURIComponent(project), name: encodeURIComponent(name) },
+    }),
+  getImageFrame: (project: string) => invoke<Frame>("get_image_frame", { project }),
+  setImageFrame: (project: string, frame: Frame) => invoke<void>("set_image_frame", { project, frame }),
 
   // Templates
   getTemplates: (project: string) => invoke<Template[]>("get_templates", { project }),

@@ -70,6 +70,11 @@ pub fn has_link_chars(name: &str) -> bool {
     name.contains(LINK_CHARS)
 }
 
+/// `File:…` names an image (`[[File:Name.png|…]]`), not a page.
+pub fn is_file_name(name: &str) -> bool {
+    name.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("file:"))
+}
+
 // ---- scanning ----
 
 /// A fenced code block opener/closer: up to 3 spaces, then ``` or ~~~.
@@ -172,7 +177,7 @@ fn parse_at(line: &str, i: usize, base: usize, line_no: usize) -> Option<Link> {
         None => (page_part, None),
     };
     let page = page_raw.trim();
-    if page.is_empty() && section.is_none() {
+    if page.is_empty() && section.is_none() || is_file_name(page) {
         return None;
     }
     let lead = page_raw.len() - page_raw.trim_start().len();
@@ -218,6 +223,119 @@ pub fn rewrite_links(body: &str, old: &str, new: &str) -> (String, usize) {
     }
     out.push_str(&body[last..]);
     (out, count)
+}
+
+// ---- images: [[File:Name.png|right|medium|Caption]] and <gallery> blocks ----
+
+/// An image starting at `line[i..]`: the end (exclusive) and the inside of
+/// the brackets. The caption may contain `[[links]]`.
+pub fn image_at(line: &str, i: usize) -> Option<(usize, &str)> {
+    let inner_start = i + 2;
+    if !line[i..].starts_with("[[") || !is_file_name(line.get(inner_start..)?) {
+        return None;
+    }
+    let b = line.as_bytes();
+    let mut depth = 1;
+    let mut j = inner_start;
+    while j + 1 < b.len() {
+        if b[j] == b'[' && b[j + 1] == b'[' {
+            depth += 1;
+            j += 2;
+        } else if b[j] == b']' && b[j + 1] == b']' {
+            depth -= 1;
+            j += 2;
+            if depth == 0 {
+                return Some((j, &line[inner_start..j - 2]));
+            }
+        } else {
+            j += 1;
+        }
+    }
+    None
+}
+
+/// The file name inside `File:Name.png|…`.
+fn image_file(inner: &str) -> String {
+    let name = inner.get(5..).unwrap_or("");
+    let end = name.find('|').unwrap_or(name.len());
+    name[..end].trim_end_matches('\\').trim().to_string()
+}
+
+fn gallery_open(line: &str) -> bool {
+    line.trim().eq_ignore_ascii_case("<gallery>")
+}
+
+fn gallery_close(line: &str) -> bool {
+    line.trim().eq_ignore_ascii_case("</gallery>")
+}
+
+/// Image starts in a line of text, skipping code spans.
+fn images_in_line(line: &str, mut f: impl FnMut(usize, usize, &str)) {
+    let b = line.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'\\' => i += 2,
+            b'`' => {
+                let n = b[i..].iter().take_while(|&&c| c == b'`').count();
+                let ticks = &line[i..i + n];
+                i = match line[i + n..].find(ticks) {
+                    Some(end) => i + n + end + n,
+                    None => i + n,
+                };
+            }
+            b'[' => match image_at(line, i) {
+                Some((end, inner)) => {
+                    f(i, end, inner);
+                    i = end;
+                }
+                None => i += 1,
+            },
+            _ => i += 1,
+        }
+    }
+}
+
+/// Every image file used in the page text and its galleries, in order (code skipped).
+pub fn images(body: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_gallery = false;
+    text_lines(body, |_, _, line| {
+        if in_gallery {
+            if gallery_close(line) {
+                in_gallery = false;
+            } else if !line.trim().is_empty() {
+                let t = line.trim();
+                let t = if is_file_name(t) { &t[5..] } else { t };
+                let file = t.split('|').next().unwrap_or("").trim();
+                if !file.is_empty() {
+                    out.push(file.to_string());
+                }
+            }
+        } else if gallery_open(line) {
+            in_gallery = true;
+        } else {
+            images_in_line(line, |_, _, inner| {
+                let file = image_file(inner);
+                if !file.is_empty() {
+                    out.push(file);
+                }
+            });
+        }
+    });
+    out
+}
+
+/// A line without its images (for hover previews).
+fn strip_images(line: &str) -> String {
+    let mut out = String::new();
+    let mut last = 0;
+    images_in_line(line, |start, end, _| {
+        out.push_str(&line[last..start]);
+        last = end;
+    });
+    out.push_str(&line[last..]);
+    out
 }
 
 // ---- headings and section anchors ----
@@ -460,18 +578,34 @@ fn first_paragraph<'a>(lines: impl Iterator<Item = &'a str>, mut stop: impl FnMu
     format!("{}…", text[..cut].trim_end())
 }
 
-fn code_free_lines(body: &str) -> Vec<(usize, &str)> {
+/// Lines outside code and galleries, without their images (for previews).
+fn code_free_lines(body: &str) -> Vec<(usize, String)> {
     let mut v = Vec::new();
+    let mut in_gallery = false;
     text_lines(body, |n, off, _| {
         let line = body[off..].split('\n').next().unwrap_or("").trim_end_matches('\r');
-        v.push((n, line));
+        if in_gallery {
+            in_gallery = !gallery_close(line);
+            return;
+        }
+        if gallery_open(line) {
+            in_gallery = true;
+            return;
+        }
+        let stripped = strip_images(line);
+        // A line that only held images is left out entirely.
+        if stripped.trim().is_empty() && !line.trim().is_empty() {
+            return;
+        }
+        v.push((n, stripped));
     });
     v
 }
 
 /// The page's opening paragraph (Markdown), for hover previews.
 pub fn summary(body: &str) -> String {
-    first_paragraph(code_free_lines(body).into_iter().map(|(_, l)| l), |_| false)
+    let lines = code_free_lines(body);
+    first_paragraph(lines.iter().map(|(_, l)| l.as_str()), |_| false)
 }
 
 /// The start of the section with `anchor`: the first paragraph after its
@@ -485,7 +619,7 @@ pub fn section_summary(body: &str, anchor: &str) -> Option<String> {
     }
     let level = h.level;
     let lines = code_free_lines(body);
-    let after = lines.into_iter().filter(|(n, _)| *n > h.line).map(|(_, l)| l);
+    let after = lines.iter().filter(|(n, _)| *n > h.line).map(|(_, l)| l.as_str());
     Some(first_paragraph(after, |l| atx_heading(l).is_some_and(|(lv, _)| lv <= level)))
 }
 
@@ -543,6 +677,27 @@ mod tests {
             "[[New Name]] [[New Name|own text]] [[New Name#Sec]] [[New Name\\|x]] [[New Name|]] [[Old (A)]] [[New Name]]s [[Other]] `[[Old]]` [[#Old]]"
         );
         assert_eq!(rewrite_links("no links", "Old", "New"), ("no links".to_string(), 0));
+    }
+
+    #[test]
+    fn images_are_not_page_links() {
+        let body = "[[File:A.png|right|medium|See [[Page B]] and [[C|c]]]] text [[File:D.svg]] `[[File:E.png]]`\n\n<gallery>\nF.png|Caption [[G]]\nFile:H.jpg\n</gallery>\n[[file:x.png|y]]";
+        let pages: Vec<String> = parse_links(body).into_iter().map(|l| l.page).collect();
+        assert_eq!(pages, ["Page B", "C", "G"]);
+        assert_eq!(images(body), ["A.png", "D.svg", "F.png", "H.jpg", "x.png"]);
+        let (out, n) = rewrite_links(body, "Page B", "Page Z");
+        assert_eq!(n, 1);
+        assert!(out.starts_with("[[File:A.png|right|medium|See [[Page Z]] and"));
+        assert_eq!(images("[[File:A (2).png\\|left|x]]"), ["A (2).png"]);
+        // An unclosed image is plain text.
+        assert!(images("[[File:A.png|cap [[B]]").is_empty());
+    }
+
+    #[test]
+    fn previews_leave_images_out() {
+        assert_eq!(summary("[[File:A.png|right|Cap]]\nFirst text."), "First text.");
+        assert_eq!(summary("Some [[File:A.png|x [[B]]]] text."), "Some  text.");
+        assert_eq!(summary("<gallery>\nA.png|Cap\n</gallery>\n\nAfter."), "After.");
     }
 
     #[test]

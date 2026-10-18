@@ -13,6 +13,7 @@ import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   activeFormats,
   indentListItem,
+  insertBlock,
   insertDivider,
   insertFootnote,
   insertTable,
@@ -23,17 +24,22 @@ import {
   toggleQuote,
   type ActiveFormats,
 } from "./formatting";
-import { api, type IncomingField, type Infobox } from "./api";
+import { api, errorText, type IncomingField, type Infobox } from "./api";
 import { infoboxHtml } from "./infobox";
 import { InfoboxForm } from "./InfoboxForm";
-import { editorLinks, insertLink, linkCompletions, linkRangeAt, setLinkEnv, wikiLinkSyntax, type LinkEnv } from "./editorLinks";
+import { editorLinks, imageRangeAt, insertLink, linkCompletions, linkRangeAt, setLinkEnv, wikiLinkSyntax, type LinkEnv } from "./editorLinks";
 import { LinkPopup } from "./LinkPopup";
+import { chooseTextImages, ImagePopup } from "./ImagePopup";
+import { GalleryDialog } from "./GalleryDialog";
+import { useFileDrop } from "./dropFiles";
+import { galleryAround, gallerySource, hasExtension, imageSource, newImage, parseGallery, TEXT_IMAGE_EXTENSIONS, type GalleryItem, type TextImage } from "./images";
+import { useReportError } from "./notify";
 import { editedLink, shownText, type WikiLink } from "./wikilinks";
 import { countWords, plainText, renderPage } from "./markdown";
 import { htmlToMarkdown } from "./paste";
 import { TableDialog } from "./TableDialog";
 import { IS_MAC, PagePicker } from "./QuickOpen";
-import { scrollToSection, useContentClick, useLinkContext, useWiki } from "./wiki";
+import { frameFor, scrollToSection, useContentClick, useLinkContext, useWiki } from "./wiki";
 
 interface Props {
   /** The page being edited. */
@@ -86,6 +92,8 @@ const TOOLS: (Tool | "|")[] = [
   { id: "table", label: <Icon name="table" />, title: "Insert table", run: () => true },
   { id: "footnote", label: <Icon name="footnote" />, title: "Footnote", run: cmd(insertFootnote) },
   { id: "link", label: <Icon name="link" />, title: `Link to a page (${MOD}K)`, run: () => true },
+  { id: "image", label: <Icon name="image" />, title: "Insert image (you can also drop or paste images)", run: () => true },
+  { id: "gallery", label: <Icon name="gallery" />, title: "Insert gallery", run: () => true },
 ];
 
 // Cmd+[ / Cmd+] (Alt+Left / Alt+Right on Windows) are Back and Forward, not indenting.
@@ -103,18 +111,32 @@ const pastePlain: Command = (view) => {
   return true;
 };
 
-/** Pasted formatted text (Word, Google Docs, web pages) becomes Markdown. */
-const pasteFormatted = EditorView.domEventHandlers({
-  paste(event, view) {
-    const html = event.clipboardData?.getData("text/html");
-    if (!html) return false;
-    const md = htmlToMarkdown(html);
-    if (md === null) return false;
-    event.preventDefault();
-    view.dispatch(view.state.replaceSelection(md), { userEvent: "input.paste", scrollIntoView: true });
-    return true;
-  },
-});
+/** Pasted formatted text (Word, Google Docs, web pages) becomes Markdown;
+ * a pasted image (e.g. a screenshot) is added to the project. */
+function pasteFormatted(pasteImages: (files: File[]) => void) {
+  return EditorView.domEventHandlers({
+    paste(event, view) {
+      const data = event.clipboardData;
+      const html = data?.getData("text/html");
+      const md = html ? htmlToMarkdown(html) : null;
+      if (md) {
+        event.preventDefault();
+        view.dispatch(view.state.replaceSelection(md), { userEvent: "input.paste", scrollIntoView: true });
+        return true;
+      }
+      const images = [...(data?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+      if (images.length) {
+        event.preventDefault();
+        pasteImages(images);
+        return true;
+      }
+      return false;
+    },
+  });
+}
+
+/** Is the line at `pos` a table row (links and images write `\|` there)? */
+const inTableAt = (state: EditorState, pos: number) => /^\s*\|/.test(state.doc.lineAt(pos).text);
 
 const formatKeymap = [
   { key: "Mod-b", run: cmd(toggleInline("bold")) },
@@ -227,6 +249,7 @@ const NO_FORMATS: ActiveFormats = {
 
 export function SplitEditor({ pageId, title, initial, onChange, infobox, infoboxError, incoming, onInfoboxChange, status }: Props) {
   const wiki = useWiki();
+  const report = useReportError();
   const [tab, setTab] = useState<Tab>("text");
   const links = useLinkContext(pageId);
   const onContentClick = useContentClick(pageId);
@@ -235,6 +258,14 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
   const [popup, setPopup] = useState<{ from: number; to: number; link: WikiLink; at: { left: number; top: number } } | null>(null);
   const popupRef = useRef(popup);
   popupRef.current = popup;
+  // The Edit image popup, after clicking an image in the source.
+  const [imagePopup, setImagePopup] = useState<{ from: number; to: number; image: TextImage; at: { left: number; top: number } } | null>(null);
+  const imagePopupRef = useRef(imagePopup);
+  imagePopupRef.current = imagePopup;
+  // The gallery dialog: a new gallery, or the one on lines `range` (0-based).
+  const [gallery, setGallery] = useState<{ range: { start: number; end: number } | null; items: GalleryItem[] } | null>(null);
+  const insertImagesRef = useRef<(files: string[], at?: number) => void>(() => {});
+  const pasteImagesRef = useRef<(files: File[]) => void>(() => {});
   const openLinkPickerRef = useRef(() => {});
   openLinkPickerRef.current = () => {
     const view = viewRef.current;
@@ -247,6 +278,8 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
   const previewRef = useRef<HTMLDivElement>(null);
   const splitRef = useRef<HTMLDivElement>(null);
   const anchors = useRef<{ line: number; top: number }[]>([]);
+  // Counts images that finished loading in the preview (they move the line anchors).
+  const [loads, setLoads] = useState(0);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
@@ -292,7 +325,7 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
       }),
       theme,
       popupTheme,
-      pasteFormatted,
+      pasteFormatted((files) => pasteImagesRef.current(files)),
       Prec.high(
         keymap.of([
           ...formatKeymap,
@@ -318,19 +351,38 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
         }
         // Width changes re-wrap lines; keep the preview aligned.
         if (u.geometryChanged) requestAnimationFrame(syncScroll);
-        // Clicking into a link opens the Edit link popup; moving away or typing closes it.
+        // Clicking into a link opens the Edit link popup, clicking an image
+        // the Edit image popup, clicking a gallery the gallery dialog;
+        // moving away or typing closes the popups.
         if (u.docChanged && popupRef.current) setPopup(null);
+        if (u.docChanged && imagePopupRef.current && !u.transactions.some((t) => t.isUserEvent("input.image"))) setImagePopup(null);
         if (u.selectionSet && !u.docChanged) {
           const sel = u.state.selection.main;
           const clicked = u.transactions.some((t) => t.isUserEvent("select.pointer"));
           const r = sel.empty ? linkRangeAt(u.state, sel.head) : null;
+          const img = sel.empty && !(r && r.from < sel.head && sel.head < r.to) ? imageRangeAt(u.state, sel.head) : null;
           if (clicked && r && r.from < sel.head && sel.head < r.to) {
+            setImagePopup(null);
             requestAnimationFrame(() => {
               const c = u.view.coordsAtPos(r.from);
               if (c) setPopup({ ...r, at: { left: c.left, top: c.bottom + 6 } });
             });
-          } else if (popupRef.current && (sel.head < popupRef.current.from || sel.head > popupRef.current.to)) {
+          } else if (clicked && img && img.from < sel.head && sel.head < img.to) {
             setPopup(null);
+            requestAnimationFrame(() => {
+              const c = u.view.coordsAtPos(sel.head);
+              const start = u.view.coordsAtPos(img.from);
+              if (c) setImagePopup({ ...img, at: { left: start && start.top === c.top ? start.left : c.left - 40, top: c.bottom + 6 } });
+            });
+          } else {
+            if (popupRef.current && (sel.head < popupRef.current.from || sel.head > popupRef.current.to)) setPopup(null);
+            const ip = imagePopupRef.current;
+            if (ip && (sel.head < ip.from || sel.head > ip.to)) setImagePopup(null);
+            if (clicked && sel.empty) {
+              const lines = u.state.doc.toString().split("\n");
+              const range = galleryAround(lines, u.state.doc.lineAt(sel.head).number - 1);
+              if (range) setGallery({ range, items: parseGallery(lines.slice(range.start + 1, range.end)) });
+            }
           }
         }
         if (u.docChanged || u.selectionSet) {
@@ -350,6 +402,7 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
     const onScroll = () => {
       requestAnimationFrame(syncScroll);
       if (popupRef.current) setPopup(null);
+      if (imagePopupRef.current) setImagePopup(null);
     };
     view.scrollDOM.addEventListener("scroll", onScroll);
     return () => {
@@ -384,10 +437,91 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
     viewRef.current?.dispatch({ effects: setLinkEnv.of(env) });
   }, [env]);
 
+  /** Inserts images at `at` (default: replacing the selection); a single one opens its popup. */
+  insertImagesRef.current = (files, at) => {
+    const view = viewRef.current;
+    if (!view || !files.length) return;
+    const sel = view.state.selection.main;
+    const from = at ?? sel.from;
+    const to = at ?? sel.to;
+    const inTable = inTableAt(view.state, from);
+    const insert = files.map((f) => imageSource(newImage(f), inTable)).join(" ");
+    view.dispatch({
+      changes: { from, to, insert },
+      selection: { anchor: from + insert.length },
+      userEvent: "input.image",
+      scrollIntoView: true,
+    });
+    view.focus();
+    if (files.length === 1) {
+      requestAnimationFrame(() => {
+        const c = view.coordsAtPos(from);
+        if (c) setImagePopup({ from, to: from + insert.length, image: newImage(files[0]), at: { left: c.left, top: c.bottom + 6 } });
+      });
+    }
+  };
+
+  pasteImagesRef.current = (files) => {
+    void (async () => {
+      try {
+        const names: string[] = [];
+        for (const f of files) names.push(await api.importImageData(wiki.project, f.name || "image.png", new Uint8Array(await f.arrayBuffer())));
+        insertImagesRef.current(names);
+      } catch (e) {
+        report(`Couldn't add the image: ${errorText(e)}`);
+      }
+    })();
+  };
+
+  async function chooseImages() {
+    try {
+      insertImagesRef.current(await chooseTextImages(wiki.project, true));
+    } catch (e) {
+      report(`Couldn't add the image: ${errorText(e)}`);
+    }
+  }
+
+  // Image files dropped on the text go where they were dropped.
+  useFileDrop(
+    hostRef,
+    (paths, at) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const images = paths.filter((p) => hasExtension(p, TEXT_IMAGE_EXTENSIONS));
+      if (images.length < paths.length) report("Only PNG, JPG, GIF, WebP and SVG images can be added.");
+      if (!images.length) return;
+      const pos = view.posAtCoords(at) ?? view.state.selection.main.head;
+      void Promise.all(images.map((p) => api.importImage(wiki.project, p, true))).then(
+        (files) => insertImagesRef.current(files, pos),
+        (e) => report(`Couldn't add the image: ${errorText(e)}`),
+      );
+    },
+    tab === "text",
+  );
+
+  /** Writes the gallery dialog's images into the text (new or replacing the edited gallery). */
+  function saveGallery(items: GalleryItem[] | null) {
+    const view = viewRef.current;
+    const g = gallery;
+    setGallery(null);
+    if (!view || !g) return;
+    if (!g.range) {
+      if (items) cmd(insertBlock(gallerySource(items)))(view);
+    } else {
+      const doc = view.state.doc;
+      const from = doc.line(g.range.start + 1).from;
+      let to = doc.line(g.range.end + 1).to;
+      if (!items && to < doc.length) to++; // removing: take its line break too
+      const insert = items ? gallerySource(items) : "";
+      view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length }, userEvent: "input.gallery", scrollIntoView: true });
+    }
+    view.focus();
+  }
+
   const textHtml = useMemo(() => renderPage(text, { lineAnchors: true, links }).html, [text, links]);
   const boxHtml = useMemo(
-    () => infoboxHtml(infobox, { project: wiki.project, title, links, incoming, showEmpty: true }),
-    [infobox, wiki.project, title, links, incoming],
+    () => infoboxHtml(infobox, { project: wiki.project, title, links, incoming, showEmpty: true, frame: frameFor(wiki, infobox?.template) }),
+    [infobox, wiki, title, links, incoming],
   );
   const html = boxHtml + textHtml;
   const counts = useMemo(() => {
@@ -425,7 +559,23 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
       top: el.offsetTop,
     }));
     syncScroll();
-  }, [html, previewHidden, split]);
+  }, [html, previewHidden, split, loads]);
+
+  // Images change the preview's height as they load: measure again.
+  useEffect(() => {
+    const pv = previewRef.current;
+    if (!pv) return;
+    let frame = 0;
+    const loaded = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setLoads((n) => n + 1));
+    };
+    pv.addEventListener("load", loaded, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      pv.removeEventListener("load", loaded, true);
+    };
+  }, [previewHidden]);
 
   function startDrag(e: React.PointerEvent) {
     e.preventDefault();
@@ -493,7 +643,15 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
               aria-label={tool.title}
               aria-pressed={tool.active ? tool.active(formats) : undefined}
               onClick={() =>
-                tool.id === "table" ? setTableOpen(true) : tool.id === "link" ? openLinkPickerRef.current() : run(tool.run)
+                tool.id === "table"
+                  ? setTableOpen(true)
+                  : tool.id === "link"
+                    ? openLinkPickerRef.current()
+                    : tool.id === "image"
+                      ? void chooseImages()
+                      : tool.id === "gallery"
+                        ? setGallery({ range: null, items: [] })
+                        : run(tool.run)
               }
             >
               {tool.label}
@@ -604,6 +762,52 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
         />
       )}
 
+      {imagePopup && (
+        <ImagePopup
+          key={`${imagePopup.from}`}
+          image={imagePopup.image}
+          pageId={pageId}
+          at={imagePopup.at}
+          change={(img) => {
+            const view = viewRef.current;
+            const p = imagePopupRef.current;
+            if (!view || !p) return;
+            const insert = imageSource(img, inTableAt(view.state, p.from));
+            view.dispatch({ changes: { from: p.from, to: p.to, insert }, userEvent: "input.image" });
+            const next = { ...p, to: p.from + insert.length, image: img };
+            imagePopupRef.current = next;
+            setImagePopup(next);
+          }}
+          remove={() => {
+            const view = viewRef.current;
+            const p = imagePopupRef.current;
+            setImagePopup(null);
+            if (!view || !p) return;
+            // Take a space next to it along, so no double space is left.
+            const after = view.state.sliceDoc(p.to, p.to + 1) === " " ? 1 : 0;
+            view.dispatch({ changes: { from: p.from, to: p.to + after }, selection: { anchor: p.from }, userEvent: "delete.image" });
+            view.focus();
+          }}
+          close={() => {
+            setImagePopup(null);
+            viewRef.current?.focus();
+          }}
+        />
+      )}
+
+      {gallery && (
+        <GalleryDialog
+          pageId={pageId}
+          initial={gallery.range ? gallery.items : undefined}
+          save={(items) => saveGallery(items)}
+          remove={gallery.range ? () => saveGallery(null) : undefined}
+          close={() => {
+            setGallery(null);
+            viewRef.current?.focus();
+          }}
+        />
+      )}
+
       {linkPicker && (
         <PagePicker
           names={wiki.names}
@@ -675,6 +879,14 @@ const ICONS: Record<string, ReactNode> = {
       className="stroke"
     />
   ),
+  image: (
+    <>
+      <path d="M2 3h12v10H2z" className="stroke thin" />
+      <path d="m2.5 12 3.5-4 2.5 2.5 2-2 3 3.5" className="stroke thin" />
+      <circle cx="10.8" cy="5.8" r="1.2" />
+    </>
+  ),
+  gallery: <path d="M1.5 2.5h5.5v5H1.5zM9 2.5h5.5v5H9zM1.5 9h5.5v5H1.5zM9 9h5.5v5H9z" className="stroke thin" />,
   undo: <path d="M5 3.5 2 6.5l3 3M2.5 6.5h7a4 4 0 0 1 0 8H7" className="stroke" />,
   redo: <path d="m11 3.5 3 3-3 3M13.5 6.5h-7a4 4 0 0 0 0 8H9" className="stroke" />,
 };

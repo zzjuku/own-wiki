@@ -69,6 +69,14 @@
   --infobox-padding: 0.2em 0.4em;
   --infobox-gap: 1.4em;
 
+  /* Images in the text, galleries and the image viewer (M6) */
+  --thumb-bg: #f8f9fa;
+  --thumb-border: #c8ccd1;
+  --thumb-caption: #202122;
+  --thumb-gap: 1.4em;
+  --viewer-bg: rgb(12 12 12 / 0.92);
+  --viewer-text: #f2f2f0;
+
   /* Fonts */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -144,5 +152,9 @@
     --infobox-header-bg: #2c3a4f;
     --infobox-header-text: #e9e8e5;
     --infobox-label: #e9e8e5;
+
+    --thumb-bg: #232322;
+    --thumb-border: #54595d;
+    --thumb-caption: #e9e8e5;
   }
 }

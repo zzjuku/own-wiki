@@ -10,7 +10,7 @@ import { Backlinks } from "./Backlinks";
 import { SplitEditor } from "./SplitEditor";
 import { TocPanel } from "./TocPanel";
 import { groupChain } from "./tree";
-import { scrollToSection, useContentClick, useLinkContext, useWiki } from "./wiki";
+import { frameFor, scrollToSection, useContentClick, useLinkContext, useWiki } from "./wiki";
 import { LINK_CHARS } from "./wikilinks";
 
 interface Props {
@@ -136,8 +136,8 @@ export function PageView(props: Props) {
   const rendered = useMemo(() => renderPage(body, { tocBox: false, links }), [body, links]);
   const shownTitle = props.title ?? page?.title ?? "";
   const boxHtml = useMemo(
-    () => infoboxHtml(infobox, { project, title: shownTitle, links, incoming }),
-    [infobox, project, shownTitle, links, incoming],
+    () => infoboxHtml(infobox, { project, title: shownTitle, links, incoming, frame: frameFor(wiki, infobox?.template) }),
+    [infobox, project, shownTitle, links, incoming, wiki],
   );
   const readRef = useRef<HTMLDivElement>(null);
 
