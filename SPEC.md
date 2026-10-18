@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.9, 2026-10-18)
+# Own WIKI — Spec (v0.10, 2026-10-18)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes.
 
-Status: M1–M5 done; roadmap M6–M16 drafted, M6 next to define.
+Status: M1–M5 done; M6 defined, next to build; roadmap M7–M16 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -33,6 +33,7 @@ A blank, local desktop program for building personal wikis for fictional stories
     pages/              # one Markdown file per page, structured fields in YAML front matter;
                         # groups are subfolders here (nested allowed)
     assets/             # images and other media, copied in on import (never linked to outside paths)
+    categories/         # one Markdown file per category that has its own text or parent categories (M6)
     .cache/             # search index etc. Rebuildable, never synced, never exported.
   ```
 - All projects live in one **library folder**. The user chooses its location in the app settings.
@@ -73,13 +74,13 @@ Inspiration: Wikipedia, A Wiki of Ice and Fire (AWOIAF), Chronicler.
   - (Changed 2026-10-18.) A template is a **starting point**: a new page gets its own copy of the template's fields. Changing a template never changes existing pages on its own; **Apply to existing pages…** pushes a change to the chosen pages when Juku wants it.
   - Values are never lost silently: a field removed by Apply **hides** its values on those pages instead of deleting them.
   - Relations are entered once: reverse fields (e.g. children from other pages' parent fields) fill themselves (postponed from M5 on 2026-10-18; see Open items).
-- **Categories:** easy to add per page, AWOIAF-style list at the bottom of the page, automatic category pages.
+- **Categories:** easy to add per page, AWOIAF-style list at the bottom of the page, automatic category pages with optional own text, subcategories, and default categories from templates.
 - **Embeds:** insert the content of one page into another (navboxes, item cards, stat blocks). Plain embeds first; embeds with parameters only if needed later. Embed loops are detected and blocked.
 - **Health reports:** auto-generated reports (broken links, orphan pages, unlinked mentions, missing images, duplicate titles, sync conflicts, hidden template values…) with tools to fix them.
 - **Graph view:** Obsidian-style interactive network of linked pages. Must handle thousands of pages: local graph (neighbours of the current page) plus a filterable global graph.
 - **Themes:** user-created, selectable, editable themes. A theme is either app-wide or belongs to one project (stored in and synced with that project); a project can use its own theme instead of the app-wide one. UI styling uses CSS variables from the start so themes are cheap to add. Colours/fonts only vs. custom CSS: undecided, settle before M11. Themes set one look for all pages, infoboxes included; a page can still give its own infobox a different **colour** (not style).
 - **Interactive maps:** zoomable, pannable; pins linked to pages with hover preview; drawable regions; nested maps (a pin opens another map); distance measuring.
-  - Map source is a painted image (Photoshop), not SVG. Juku exports a large PNG (ideally 8,000+ px on the long side); the app tiles it for smooth deep zoom. Pins, regions, labels and distance lines are vector overlays drawn by the app and stay sharp at any zoom.
+  - Map source (changed 2026-10-18) is either a painted image (Photoshop) exported as a large PNG (ideally 8,000+ px on the long side), which the app tiles for smooth deep zoom, or an **SVG**, which stays sharp at any zoom without tiling (very detailed SVGs can zoom slowly; PNG stays the safe choice for big painted maps). Pins, regions, labels and distance lines are vector overlays drawn by the app and stay sharp at any zoom.
 - **Timelines** with **custom calendars** (own months, eras), fuzzy dates ("c. 250") and date ranges (e.g. reigns).
 - **Family trees:** generated automatically from infobox link fields, editable, and also creatable manually. Must support multiple spouses, unknown parents, intermarriage and incest (the "tree" is really a graph).
   - Editing a relation in the tree writes it back to the infobox fields of the pages involved (one source of truth).
@@ -116,7 +117,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M3 Editor:** split-screen live preview, toolbar + shortcuts, table of contents, tables, footnotes, paste with formatting, word count, Wikipedia-like page look, theme-ready styling (CSS variables). *(Detailed scope below.)*
 - **M4 Links:** `[[ ]]` with autocomplete and display text, red links, backlinks, link rewrite on rename, hover previews, aliases/redirects, main page per project, back/forward. Introduces the link index in `.cache/`. *(Detailed scope below.)*
 - **M5 Templates & infoboxes:** template editor, typed fields, AWOIAF-style infobox, image fields (reverse fields postponed, see Open items) (basic image import moved here from M6). Date fields are stored in a calendar-ready format (era, year, optional month/day, approximate flag, ranges) so M13 doesn't need a migration. *(Detailed scope below.)*
-- **M6 Images & categories:** images in page text, captions, galleries, drag and drop, categories with automatic category pages (image import into `assets/` itself arrives in M5). To discuss: templates that add categories automatically.
+- **M6 Images & categories:** images in page text, captions, galleries, drag and drop, SVG, uniform infobox image frames, categories with automatic category pages, subcategories, default categories from templates, sort keys (image import into `assets/` itself arrived in M5). *(Detailed scope below.)*
 - **M7 Spoilers & embeds.**
 
 **M2 — Structure (done 2026-10-17)**
@@ -243,6 +244,38 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - Checkpoint for Juku partway: templates screen with text, long text, number, yes/no, choice, list and section headings; creating pages from templates; Infobox tab; the box with colour. Then: link fields, dates, images, Apply to existing pages, hidden values, page-own field editing, copying templates, Pages using this template.
 - Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen, a test project with 5,000 placeholder pages with infoboxes (several link fields each) reopens in under 1 s, Apply to 1,000 pages finishes within a few seconds, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
 
+**M6 — Images & categories (defined 2026-10-18)**
+- Images in page text:
+  - Inserted with an **Image** toolbar button, by dragging files from Finder/Explorer into the editor (at the drop point), or by pasting an image (e.g. a screenshot). Every route copies the file into `assets/`; the same file imported twice is stored once (as in M5). Imported files keep their original name; a clash gets " (2)".
+  - Formats: PNG, JPG, GIF, WebP and **SVG** (Juku, 2026-10-18). SVGs are shown as pictures only; code inside them never runs.
+  - Each image has a caption (bold, italic and `[[links]]` work), a position (right like a Wikipedia thumbnail, left, centre, full width) and a size (small, medium, large). Images in the text keep their shape (no cropping).
+  - Clicking an image in the source opens an **Edit image popup** (like the Edit link popup): caption, position, size, Replace, Remove. Juku never types image syntax.
+  - Clicking an image in the read view or preview opens a **full-size viewer** (zoom, Esc closes; arrows step through the page's images).
+  - Removing an image from a page never deletes its file (unused images: M9).
+- Galleries: a **Gallery** toolbar button inserts a grid of images with captions (equal cells, images fitted inside). Clicking a gallery in the source opens a gallery dialog: add, remove, reorder by dragging, caption. The viewer steps through the gallery.
+- Infobox images (Juku, 2026-10-18):
+  - Every image in an infobox sits in the **same fixed frame** (width × height), filled and **cropped** to fit. Per image, the crop position can be dragged in the Image field (so faces aren't cut off); it's stored with the field value. The image file itself is never changed.
+  - The frame size is a **project setting** on the Templates screen; a template can use **its own size** instead (e.g. wider for locations than for characters). A page uses its template's size, else the project's.
+  - The infobox grows wider when the frame is wider than the box, so images always fill it.
+  - Image fields stay PNG, JPG, GIF and WebP (no SVG). Image files can also be dropped onto an Image field.
+- Hover cards show the first infobox image, else the first image in the page text.
+- Categories:
+  - Stored as a `categories:` list in the page's front matter.
+  - In edit mode a **Categories** line under Aliases: add (suggestions from existing categories; a new name creates the category) and remove.
+  - The read view shows an AWOIAF-style box at the bottom of the page: "Categories: A · B · C". Categories can be added (+) and removed (×) there directly, without edit mode.
+  - **Category pages** (automatic): title "Category: Name", optional **own text** (written with the normal editor; stored in `categories/Name.md`, created only when text or parents are added), then **Subcategories**, then **Pages** listed alphabetically under letter headings with a count. A switch **Include pages of subcategories** lists every page below it once.
+  - **Subcategories:** a category can be put into parent categories (from its category page, same Categories line/box). Its pages don't appear in the parent's list unless the switch is on. A parent that would create a loop (a category inside itself) is refused.
+  - **Sort as** (optional, per page): a line in edit mode next to Aliases and Categories, stored as `sort:` in front matter. Category pages sort and file the page under it; the sidebar keeps sorting by title.
+  - `[[Category:Name]]` in the text links to a category page (hover card: start of its text and member count; red if the category doesn't exist, clicking creates it). What links here works on category pages.
+  - Category names are their own name space (a page and a category may share a name), unique among categories ignoring case; `[`, `]`, `|`, `#` aren't allowed. Page titles and aliases can't start with "Category:" or "File:"; existing ones show the M4 rename notice.
+  - A **Categories** entry in the sidebar opens a list of all categories with member counts and a filter box. Quick-open (Cmd+O) also finds categories.
+  - **Rename a category:** updates every page, subcategory, `[[Category:…]]` link and template default; the dialog shows the counts first.
+  - **Delete a category:** after a confirmation with counts, it's removed from every page and template, its subcategories lose it as parent, its file goes to the Trash; links to it turn red.
+  - **Templates** (Juku, 2026-10-18: option a): a template has **default categories**; new pages get their own copy. **Apply to existing pages…** adds missing default categories (shown per page, untickable) and never removes any. Categories that follow field values: not planned.
+- Not in M6: spoilers in captions (M7), unused-image report (M9), image file pages ("File:" pages with description), categories driven by field values, group overview pages (still open, see Open items).
+- Checkpoint for Juku partway: images in text (toolbar, drag and drop, paste, SVG, popup, viewer), galleries, infobox image frames. Then: categories, category pages, subcategories, sort keys, template defaults, rename/delete.
+- Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen, a test project with 5,000 placeholder pages (~3 categories each) reopens in under 1 s, a category with 2,000 members opens without noticeable delay, renaming a category used on 1,000 pages finishes within a few seconds, a page with 30 large (8,000 px) images scrolls smoothly, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
+
 **After v1 start**
 - **M8 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. Until M8 is done, Juku uses **only one computer** for real content.
 - **M9 Health reports.**
@@ -258,7 +291,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **Automatic relation fields** (postponed from M5, 2026-10-18): "Linked from" fields that fill themselves (e.g. *Children* lists every page whose *Father* or *Mother* field points here) and two-way link fields (*Spouse* set on A also shows A on B). Natural place: with M14 Family trees. The link index already records infobox links, so no data change is needed.
 - **Spoilers:** scope of "reveal all" — per page, everywhere (global switch), or both? Needed before M7.
 - **Themes:** colours + fonts only, or also custom CSS? Needed before M11.
-- **Group overview pages** (a page per group listing its contents, maybe with own text): wanted later; overlaps with category pages (M6), decide where it fits after M6.
+- **Group overview pages** (a page per group listing its contents, maybe with own text): wanted later; overlaps with category pages (M6, which can have own text), decide where it fits after M6.
 - Visual references (beyond Wikipedia/AWOIAF/Chronicler: what exactly he likes about them)
 - App name
 
@@ -295,3 +328,5 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - 2026-10-18: M5 built (Claude's choices, open to Juku's review): Page link fields suggest titles and aliases as you type and show missing pages in red; date fields have boxes for qualifier, day, month, year and era, ranges add "To" with a "present" tick; image fields show a thumbnail with Replace/Remove (Remove keeps the file in `assets/`), the same image file imported twice is stored once; Apply shows per page what changes ("adds 2 fields · hides 1 value"); copying a template whose name is taken shows a box for a new name (untick = skip). Measured (release build, 5,000 pages with infoboxes): reopen 12 ms, Apply to 1,000 pages 3.2 s.
 - 2026-10-18: M5 review (Juku): Page link and Page links merged into one **Page link** type that holds one page or several (stored as a list; fields of the older one-page type still read and edit).
 - 2026-10-18: M5 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer.
+- 2026-10-18: M6 defined (Juku): subcategories yes; templates give default categories (copied to new pages, added by Apply, never removed); categories can be added/removed in the read view; per-page sort key included; SVG supported for images in page text, galleries and interactive maps (M12, replaces "not SVG"), not for infobox image fields; infobox images all in one fixed frame, filled and cropped, with a draggable crop position; frame size set per project, a template can override it. Claude's choices (Juku left them open): wiki-style image syntax; category pages can have own text, stored in a new `categories/` folder.
+- 2026-10-18: M6 technical: images in text are written `[[File:Name.png|right|medium|Caption]]` (not standard Markdown, which has no room for position and size); galleries are a block of `File|Caption` lines between `<gallery>` and `</gallery>`. Displayed images use smaller cached copies in `.cache/`, never the full file. The infobox frame size isn't copied into pages (unlike colour), so changing it changes every infobox at once. Categories, parents and sort keys go into the link index.
