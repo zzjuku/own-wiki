@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.13, 2026-10-20)
+# Own WIKI — Spec (v0.14, 2026-10-20)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes. Detailed scopes and decisions of finished milestones are in `docs/history.md`.
 
-Status: M1–M6 done; M7 defined (2026-10-20), next to build; roadmap M8–M17 drafted.
+Status: M1–M7 done (M7 on 2026-10-20); next: define M8 Relations; roadmap M8–M17 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -109,7 +109,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M4 Links** (done 2026-10-18): `[[ ]]` with autocomplete and display text, red links, backlinks, link rewrite on rename, hover previews, aliases/redirects, main page per project, back/forward, link index in `.cache/`.
 - **M5 Templates & infoboxes** (done 2026-10-18): template editor, typed fields, AWOIAF-style infobox, image fields, calendar-ready dates, Apply to existing pages.
 - **M6 Images & categories** (done 2026-10-18): images in page text, captions, galleries, drag and drop, SVG, uniform infobox image frames, categories with category pages, subcategories, template default categories, sort keys, project settings.
-- **M7 Spoilers & embeds**, plus small additions (2026-10-19): AWOIAF-style quote box; separator line in text (toolbar button) and Divider infobox field with optional label; thinner Contents box; app always light.
+- **M7 Spoilers & embeds** (done 2026-10-20), plus small additions (2026-10-19): AWOIAF-style quote box; separator line in text (toolbar button) and Divider infobox field with optional label; thinner Contents box; app always light; collapsible embed boxes.
 
 **After v1 start**
 - **M8 Relations** (2026-10-19, pulled forward from Family trees): reverse fields that fill themselves (children from parent fields), two-way fields (spouse), automatic page lists at the bottom of pages (e.g. chapters that take place at a place). A field hidden as a spoiler stays hidden in the reverse field and page lists it fills (2026-10-20).
@@ -123,56 +123,18 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M16 Solar system map** (later version, scope to be defined).
 - **M17 Export:** zip, static HTML site.
 
-### M7 — Spoilers & embeds, plus small additions (defined 2026-10-20)
-Juku's answers (2026-10-20) are noted as (Juku).
-
-**Spoilers**
-- `||text||` hides text until it's clicked. A **Spoiler** toolbar button (Cmd+Shift+S) wraps the selection, in the editor and in infobox text fields; Juku never types `||`.
-- Hidden everywhere their text appears: page text, headings (incl. the Contents panel), tables, footnotes, captions (images, galleries, infobox images), quote boxes, infobox text / long text / list fields, category page text, hover cards and the link index's previews, What links here context lines, embeds.
-- (Juku) **Images and galleries in page text** can be spoilers: blurred until clicked (Edit image popup / gallery dialog: "Spoiler").
-- (Juku) **Infobox fields:** each field on a page has a **Spoiler** toggle that hides its whole value until clicked, for every type (choice, date, page link, image, yes/no…). Stored on the page's field (`spoiler: true`); templates can't set it.
-- Never hidden: page titles, aliases, category names, the sidebar, and the fact that one page links to another.
-- (Juku) Clicking a hidden spoiler reveals it until the page is left; a link inside isn't followed by that click. Hover cards never reveal.
-- Revealed spoilers keep a faint background so they stay recognisable.
-- (Juku) The **editor preview** shows spoilers revealed but marked.
-- **Reveal all:** button in the page header (until the page is left) and a global eye switch (stays on until switched off, per computer, never synced); while it's on, a visible marker shows it.
-- Spoiler colours are theme variables.
-
-**Embeds**
-- An **Embed** toolbar button: pick a page (autocomplete), then (Juku) what to show: **whole page** (infobox + text), **one section**, or **infobox only**. Stored as `{{Page}}`, `{{Page#Section}}`, `{{Page|infobox}}` (Claude's choice; `[[ ]]` stays links only). Clicking an embed in the source opens a popup: Open, Change, Remove.
-- An embed always shows the source page's current content; never a copy.
-- (Juku) Look: **seamless**, no frame; a small "open page" link appears on hover.
-- (Juku) Links inside an embed **don't count as links of the host page** (backlinks, later health reports and graph ignore them; they still show red when missing). The source page's What links here lists **Embedded in** separately.
-- Renaming the source page updates its embeds (incl. section embeds). A missing page shows a red box; clicking creates it.
-- Embeds inside embeds work up to 5 levels; loops and self-embeds are blocked and show a small warning box instead.
-- Headings inside an embed aren't in the host's Contents panel; the embedded page's categories don't carry over; spoilers stay spoilers and the host's Reveal all covers them.
-- Embeds work in page text and category page text, not in infobox fields. No parameters.
-- (Juku, 2026-10-20, at review) An embed can instead be a **collapsible box** (AWOIAF navbox style): framed, the page's title as a bar that opens the page, "[show]/[hide]" at its right, starting open or closed, chosen per embed in the embed dialog. Stored as `|collapsible` / `|collapsed`.
-
-**Small additions**
-- (Juku) **Quote box**, AWOIAF style: centred, large quotation marks, "— By, Source" right-aligned underneath. A **Quote** toolbar button opens a dialog: Quote (bold, italic, links, spoilers), By (optional; text or a page link), Source (optional). Clicking a quote box in the source reopens the dialog. Stored as a block in the page text (format Claude's choice).
-- **Separator line:** toolbar button inserting a thin horizontal line, with the spacing handled so it never turns the line above into a heading.
-- **Divider** infobox field type: a thin line with an optional label, no value. Available in templates and as a page's own field; Apply to existing pages treats it like any field.
-- (Juku) **Contents panel** in the read view becomes narrower than today's 230 px; exact width settled at the checkpoint.
-- **App always light** on Mac and Windows, incl. the window title bar; the system's dark mode is ignored.
-
-- Not in M7: spoiler levels per book (see Open items), embeds with parameters, embeds in infobox fields.
-- Checkpoint for Juku partway: always light, Contents panel, separator, Divider, quote box, spoilers everywhere incl. infobox toggle, images and Reveal all. Then: embeds.
-- **Progress (2026-10-20):** checkpoint approved by Juku ("all fine"; Hide spoilers now also hides spoilers revealed one by one). Embeds built: Embed button and dialog (whole page / one section / infobox only), popup on click (Open, Change…, Remove), seamless look with an "open page" link on hover, red box for missing pages, warning boxes for self-embeds, loops and more than 5 levels, "Embedded in" in What links here, renames rewrite embeds. Speed: 50 embeds render in ~70 ms; renaming a page embedded on 1,000 pages ~3.6 s; a 5,000-page project reopens in ~10–20 ms. Collapsible embed boxes added at Juku's request. Waiting for Juku's final review.
-- Done when: new features have Playwright UI tests and pass with the unit and Rust tests; screenshots check the new and changed screens; a page with 50 embeds opens without noticeable delay, renaming a page embedded on 1,000 pages finishes within a few seconds, a 5,000-page project still reopens in under 1 s after the index change; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
-
 ### How every milestone is written
 - **Done when** always includes: new features have automated UI tests (Playwright smoke tests in `tests/ui/`) and pass with the Rust and unit tests; screenshots check how new or changed screens look; speed targets only if the milestone touches loading, the index, search or big lists; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
 - A milestone may name a **checkpoint** partway for Juku. A session that ends partway adds a short **Progress** note (done / left / open questions) to the milestone here.
 
-## Rules from finished milestones (M1–M6)
+## Rules from finished milestones (M1–M7)
 Everything later work must keep working. Reasons and full detail: `docs/history.md` (search it).
 
 **Stack and code**
 - Tauri 2 + React + TypeScript. Rust does all file access (commands in `src-tauri/src/lib.rs`, typed wrappers in `src/api.ts`). Editor: CodeMirror 6. Pasted HTML → Markdown via Turndown. Web links open through the opener plugin; plain paste reads the clipboard plugin.
 - Links are parsed in both Rust (index, rewrites) and TypeScript (rendering, editor); both run `shared-tests/links.json`, so change both together.
-- Theme contract: every colour and font, the type scale and main layout widths are CSS variables in `src/theme.css`, listed in `docs/theme-variables.md`. No hard-coded colours. Light/dark followed the system through M6; from M7 the app is always light (2026-10-19).
-- Per-machine settings (library path) live in `settings.json` in the OS app-config folder. Per-computer UI state (open groups, editor divider, folded contents sections, "Include pages of subcategories") lives in browser local storage. Neither is ever synced.
+- Theme contract: every colour and font, the type scale and main layout widths are CSS variables in `src/theme.css`, listed in `docs/theme-variables.md`. No hard-coded colours. The app is always light, title bar included (window `theme: "Light"`); the system's dark mode is ignored; other looks only from themes (M12).
+- Per-machine settings (library path) live in `settings.json` in the OS app-config folder. Per-computer UI state (open groups, editor divider, folded contents sections, "Include pages of subcategories", the global "show all spoilers" switch) lives in browser local storage. Neither is ever synced.
 - App id `io.github.zzjuku.ownwiki`, display name "Own WIKI" (placeholder). Windows installer: NSIS, built by `.github/workflows/windows.yml`. Builds unsigned.
 
 **Folders and files**
@@ -182,7 +144,7 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - Pages: `pages/…/Title.md`; groups are subfolders (nested). Page and group ids are `/`-separated paths inside `pages/`. A group's name is its folder name (characters invalid in file names become `-`). Two titles mapping to one file name in a folder: the second gets " (2)" etc. Renaming a page renames its file. Files without front matter stay without it when saved.
 - Page front matter keys: `title` (the real title), `aliases` (list), `categories` (list), `sort` ("Sort as"), `infobox` (`template`, `color`, `ownColor`, `fields`, `hidden`).
 - Category files: `categories/Name.md` (named like pages, " (2)" on clashes) with own text and `parents`; created when a category gets text or parents, or is created from a red link / New category. A category exists while a page, template default, subcategory or its own file uses it.
-- Link index: `.cache/link-index.json` (cache version 4; bump when its format changes), per-file modification time and size for incremental rebuilds. Holds titles, aliases, headings, outgoing links (text and infobox), opening paragraphs, hover-card image, categories, parents and sort keys; also serves the page tree. Updated on every save, rename, move and delete; written at most every 10 s for small changes. Files changed outside the app are picked up at next project open (live reload: M8).
+- Link index: `.cache/link-index.json` (cache version 6; bump when its format changes), per-file modification time and size for incremental rebuilds. Holds titles, aliases, headings, outgoing links (text and infobox), embeds (kept apart from links), opening paragraphs (quote boxes and embed lines left out, never cut inside a spoiler), hover-card image (not a spoiler image), categories, parents and sort keys; also serves the page tree. Updated on every save, rename, move and delete; written at most every 10 s for small changes. Files changed outside the app are picked up at next project open (live reload: M8).
 - Image thumbnails: `.cache/thumbs/`, widths 320/640/1280/2560 px; at most 2 big images decoded at once; SVG and GIF shown as they are. Images reach the page only through the `wikiasset:` URL scheme, which reads only a project's `assets/`; SVG responses carry a policy that blocks scripts.
 
 **Names**
@@ -198,33 +160,39 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - `[[Category:Name]]` (also `[[Category: Name]]`) links a category page; red if missing, click creates it. `[[File:…]]` is image syntax (below).
 - Heading anchors: lower-case, spaces → `-`, duplicates `-2`, `-3`….
 - Links in infobox text and Page link fields count as links everywhere (red links, previews, rename rewrite, What links here "via infobox: field").
-- Renaming a page rewrites `[[Old]]` → `[[New]]` and `[[Old#S]]` → `[[New#S]]` in pages, category texts and infobox fields; links with own text keep it; links through an alias are untouched; `mainPage` follows; optional "keep old title as alias". Renaming a heading doesn't rewrite links. Deleting a page turns its links red.
+- Renaming a page rewrites `[[Old]]` → `[[New]]`, `[[Old#S]]` → `[[New#S]]` and embeds `{{Old…}}` → `{{New…}}` in pages, category texts and infobox fields; links with own text keep it; links through an alias are untouched; `mainPage` follows; optional "keep old title as alias". Renaming a heading doesn't rewrite links. Deleting a page turns its links red.
 - New projects get an empty "Main Page" set as main page.
 
 **Images**
-- In text: `[[File:Name.png|right|medium|Caption]]`; positions `right` (default), `left`, `center`, `full`; sizes `small` 160, `medium` (default) 250, `large` 400 px. In captions `|` is stored as `&#124;` and an unfinished `[[` as `[`. Galleries: `<gallery>` … one `File|Caption` line per image … `</gallery>`.
+- In text: `[[File:Name.png|right|medium|Caption]]`; positions `right` (default), `left`, `center`, `full`; sizes `small` 160, `medium` (default) 250, `large` 400 px; option `spoiler` (blurred until clicked). In captions `|` is stored as `&#124;` (read back as `|`, so `||spoilers||` work there) and an unfinished `[[` as `[`. Galleries: `<gallery>` (or `<gallery spoiler>`) … one `File|Caption` line per image … `</gallery>`.
 - Import (button, drag and drop, paste, Image fields) copies into `assets/`, keeps the original name (" (2)" on clashes), the same file twice is stored once, pasted images are named "Pasted image.png". Removing an image never deletes its file.
 - Formats: PNG, JPG, GIF, WebP, SVG in text and galleries; Image fields: no SVG.
 
 **Templates and infobox fields**
-- Field: `key` (template field it came from; absent = the page's own), `label`, `type`, `hint`, `options` (`choices`, `ranges`, reserved `twoWay`/`from`), `value`. Types: `text`, `longtext`, `number`, `yesno`, `choice`, `list`, `links` ("Page link": one page or several, stored as a list; the older one-page `link` type still reads and edits but isn't offered), `date`, `image`, `heading`; `linkedfrom` reserved (M8).
+- Field: `key` (template field it came from; absent = the page's own), `label`, `type`, `hint`, `options` (`choices`, `ranges`, reserved `twoWay`/`from`), `value`. Types: `text`, `longtext`, `number`, `yesno`, `choice`, `list`, `links` ("Page link": one page or several, stored as a list; the older one-page `link` type still reads and edits but isn't offered), `date`, `image`, `heading`, `divider` (a line in the box, optional label, no value); `linkedfrom` reserved (M8). A page's field may have `spoiler: true` (whole value hidden until clicked; templates can't set it; Apply keeps it).
 - Date value: `{year, era, month, day, qualifier: c|before|after}`, or with ranges `{start: {…}, end: {…} | "present"}`. Shown day.month.year until M13 maps eras and months to calendars.
 - Image value: `{file, caption, crop: {x, y, zoom, aspect}}` (x/y in percent, zoom 1 = fills the frame, aspect = width/height; no zoom = simply fills). Every infobox image sits in one frame size: the template's `imageFrame`, else the project's `infoboxImage`; never copied into pages.
-- Text fields allow bold, italic, `[[links]]`; `||` is stored as typed (spoilers M7).
+- Text fields allow bold, italic, `[[links]]`, `||spoilers||`.
 - Template field keys are random ("f-k2j4") and never reused; template ids are readable + random ("template-a-54px").
 - A template is a starting point: a new page copies its fields, colour, starter text and default categories. Editing, renaming or deleting a template never changes pages by itself.
 - **Apply to existing pages…** (per page, untickable; dry run shows the changes): adds new fields; updates labels, types, hints, options and order; renamed fields keep their values; fields removed from the template become **hidden values** (never deleted); fields the page added itself are untouched, except one named like a new template field, which becomes it with its value; template fields deleted on a page come back; colour only on pages without their own (`ownColor`); starter text never; default categories added, never removed.
 - Change template: same-named fields keep values, the rest become hidden values. Changing a field's type keeps values that don't fit, with a warning. Values are never lost silently.
 
+**Spoilers, quote boxes, embeds (M7)**
+- Spoiler `||text||`: first character not `|` or a space, shortest text up to `||` not ending in `\`, one line only (TS `SPOILER_AT_START` = Rust `spoiler_at`); in table rows `\|\|`. The Spoiler button / Cmd+Shift+S wraps each selected line on its own. Hidden everywhere their text shows (text, headings and the Contents panel, tables, footnotes, captions, quote boxes, infobox values, category text, hover cards, What links here lines, embeds); never hidden: titles, aliases, category names, the sidebar, the existence of links.
+- A click reveals one spoiler (a link inside isn't followed by that click) until the page is left; "Reveal spoilers" in the header shows all of the page's, "Hide spoilers" hides all again; the global eye switch in the sidebar shows them everywhere (per computer) with a visible bar while on. The editor preview shows them revealed but marked. Hover cards never reveal. Spoiler colours and blur are theme variables.
+- Quote box: `<quote>` line, quote text lines (blank line = paragraph), optional `<by>…</by>` and `<source>…</source>` lines, `</quote>`; written by the Quote box dialog, clicking it in the source reopens the dialog. Left out of hover previews; links in it count.
+- Separator line button writes `---` with blank lines around it.
+- Embeds: a line holding only `{{Page}}` (infobox + text), `{{Page#Section}}` (that section up to the next heading of the same or higher level, with its notes) or `{{Page|infobox}}`; options `|collapsible` / `|collapsed` make an AWOIAF-style box with a title bar and [show]/[hide], starting open or closed. Written by the Embed dialog; clicking an embed line in the source shows Open, Change…, Remove. Always the current content (loaded through `embed_sources`). Seamless look with an "open page" link on hover. Links inside don't count as the host's; What links here lists "Embedded in" apart. Missing page: red box, click creates it. Up to 5 levels; self-embeds, loops and deeper ones show a warning box. Embedded headings stay out of the host's Contents (their ids are dropped, footnote ids prefixed); the embedded page's categories don't carry over. Works in page text and category text, not in infobox fields.
+
 **Behaviour to keep**
 - Autosave a moment after typing stops and before switching pages, leaving the project or closing the window; no Save button.
-- Pages open in the read view; new pages open in the editor. Shortcuts in use (Ctrl on Windows): Cmd+O quick-open, Cmd+E read/edit, Cmd+B/I bold/italic, Cmd+Shift+X strikethrough, Cmd+Alt+1/2/3 headings, Cmd+Shift+8/7 lists, Cmd+K link, Cmd+F find, Cmd+Z / Cmd+Shift+Z undo/redo, Cmd+Shift+V plain paste, Cmd+[ / Cmd+] back/forward (Alt+Left/Right on Windows), Cmd+click follows a link in the source.
+- Pages open in the read view; new pages open in the editor. Shortcuts in use (Ctrl on Windows): Cmd+O quick-open, Cmd+E read/edit, Cmd+B/I bold/italic, Cmd+Shift+X strikethrough, Cmd+Shift+S spoiler, Cmd+Alt+1/2/3 headings, Cmd+Shift+8/7 lists, Cmd+K link, Cmd+F find, Cmd+Z / Cmd+Shift+Z undo/redo, Cmd+Shift+V plain paste, Cmd+[ / Cmd+] back/forward (Alt+Left/Right on Windows), Cmd+click follows a link in the source.
 - One Enter = new line in the preview; an empty line = new paragraph.
 
-**Promised to later milestones (from M1–M6 scopes)**
-- M7: spoilers in infobox fields, captions, hover cards and the link index's previews; embeds.
-- M8: `linkedfrom` fields and the reserved `twoWay`/`from` options.
-- M9: search in infobox fields and aliases; live reload of files changed outside the app.
+**Promised to later milestones (from M1–M7 scopes)**
+- M8: `linkedfrom` fields and the reserved `twoWay`/`from` options; a field hidden as a spoiler stays hidden in the reverse fields and page lists it fills.
+- M9: search in infobox fields and aliases (spoilers stay hidden in results); live reload of files changed outside the app.
 - M10: unlinked mentions, broken section links (incl. renamed headings), unused images, hidden template values.
 - M12: editing theme colours (variables already in place, incl. infobox and embed colours); embed box look (frame, background, colours) editable per theme (Juku, 2026-10-20).
 - M13: map location fields; SVG maps.
@@ -240,14 +208,9 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 
 
 ## Decision log
-- Entries up to 2026-10-18 (M1–M6): see `docs/history.md`.
+- Entries up to 2026-10-18 (M1–M6) and the M7 entries (2026-10-19 – 2026-10-20): see `docs/history.md`.
 - 2026-10-18 (maintenance, not a milestone): SPEC.md trimmed; finished scopes and the old decision log moved to `docs/history.md` unchanged, SPEC.md keeps a "Rules from finished milestones" summary. `src/styles.css` split into `src/styles/*.css` by area, imported in the original order from `src/main.tsx` (pure move: the built CSS is byte-identical, screenshots unchanged).
 - 2026-10-18 technical: automated UI tests with **Playwright** (Chromium) against the Vite dev server (port 1430) on `tests/ui/harness.html`, which installs an in-memory backend (`tests/ui/mock/`, via Tauri's `mockIPC`) before the app; images answer with a placeholder picture. tauri-driver isn't used (no macOS support). The real file and index logic stays covered by the Rust tests. `npm test` = unit + Rust (also in Windows CI); `npm run test:ui` = type-check + Playwright (Mac only for now). Smoke tests cover opening a project, creating/editing a page, links, infobox from a template, image in text and categories.
 - 2026-10-19 (planning): Juku's list of small additions placed. M7 gains an AWOIAF-style quote box (inserted by hand), a separator line in text + Divider infobox field (optional label), a thinner Contents box, and the app is always light on Mac and Windows (replaces "follows the system"). Automatic relation fields pulled forward from Family trees into a new **M8 Relations** (calculated from the link index, never written into other files; parents → children, two-way for spouse), together with automatic page lists such as "Chapters that take place at …". Themes (now M12) also set fonts (body, headings), text size, line spacing and page width; fonts are copied into the project. Later milestones renumbered +1 (old M8 → M9 … M16 → M17); `docs/history.md` keeps the old numbers. Edit/read hotkey already exists (Cmd+E).
-- 2026-10-19 (planning): "Reveal all spoilers" works both per page and globally (everywhere).
-- 2026-10-19 (planning, Claude decided at Juku's request): per-page reveal lasts until the page is left; the global switch stays on until switched off, remembered per computer.
-- 2026-10-20 technical (M7): spoiler rule `||text||` = first character not `|` or a space, shortest text up to `||` not ending in `\`, one line only (TS `SPOILER_AT_START`, Rust `spoiler_at`); in table rows `\|\|`. Spoiler images `[[File:…|spoiler|…]]`, `<gallery spoiler>`; infobox fields `spoiler: true`; `|` in image captions now reads back from `&#124;`. Quote box block: `<quote>` text lines, optional `<by>…</by>` and `<source>…</source>` lines, `</quote>`. Embeds: a line holding only `{{Page}}`, `{{Page#Section}}` or `{{Page|infobox}}`; the link index keeps embeds apart from links (cache version 6); renames rewrite embeds like links; embed content comes from the new `embed_sources` command (Rust follows embeds up to 5 levels), "Embedded in" from `embedded_in`. Embedded headings lose their ids and footnote ids get a prefix, so they don't clash with the host's. Divider field type `divider` (no value; label optional).
-- 2026-10-20 (M7 review, Juku): embeds can be collapsible boxes (title bar, show/hide, start open or closed per embed), like AWOIAF navboxes; added to M7.
-- 2026-10-20 (planning): M7 defined. Spoilers: infobox fields get a per-field Spoiler toggle for all types; images and galleries in text can be spoilers; the editor preview shows spoilers revealed but marked; a revealed spoiler stays revealed until the page is left; titles, categories and the existence of links are never hidden; spoiler-hidden values stay hidden where they reappear (M8 reverse fields etc.). Embeds: whole page, one section or infobox only; seamless look; links inside embeds don't count for the host, the source lists "Embedded in"; up to 5 levels; syntax `{{Page}}` (Claude). Quote box AWOIAF style; Contents panel narrower. Spoiler levels per book added to Open items.
 - 2026-10-20 (planning): AWOIAF-style rework of the hover cards moved to a later version (listed under "Later / undecided"); the current M4/M6 hover cards stay as they are.
 - 2026-10-20 (planning): embed boxes get their own look per theme (frame/box appearance, background, colours), added to M12 Themes.

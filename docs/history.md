@@ -181,6 +181,44 @@ Read this file only when changing a finished feature, and search it rather than 
 - Checkpoint for Juku partway: images in text (toolbar, drag and drop, paste, SVG, popup, viewer), galleries, infobox image frames. Then: categories, category pages, subcategories, sort keys, template defaults, rename/delete.
 - Done when: tests pass, the Mac app is built, installed and launched, every item above is clicked through on screen, a test project with 5,000 placeholder pages (~3 categories each) reopens in under 1 s, a category with 2,000 members opens without noticeable delay, renaming a category used on 1,000 pages finishes within a few seconds, a page with 30 large (8,000 px) images scrolls smoothly, the Windows workflow produces an installer, and Juku has reviewed the installed app and approved it.
 
+### M7 — Spoilers & embeds, plus small additions (defined 2026-10-20, done 2026-10-20)
+Juku's answers (2026-10-20) are noted as (Juku).
+
+**Spoilers**
+- `||text||` hides text until it's clicked. A **Spoiler** toolbar button (Cmd+Shift+S) wraps the selection, in the editor and in infobox text fields; Juku never types `||`.
+- Hidden everywhere their text appears: page text, headings (incl. the Contents panel), tables, footnotes, captions (images, galleries, infobox images), quote boxes, infobox text / long text / list fields, category page text, hover cards and the link index's previews, What links here context lines, embeds.
+- (Juku) **Images and galleries in page text** can be spoilers: blurred until clicked (Edit image popup / gallery dialog: "Spoiler").
+- (Juku) **Infobox fields:** each field on a page has a **Spoiler** toggle that hides its whole value until clicked, for every type (choice, date, page link, image, yes/no…). Stored on the page's field (`spoiler: true`); templates can't set it.
+- Never hidden: page titles, aliases, category names, the sidebar, and the fact that one page links to another.
+- (Juku) Clicking a hidden spoiler reveals it until the page is left; a link inside isn't followed by that click. Hover cards never reveal.
+- Revealed spoilers keep a faint background so they stay recognisable.
+- (Juku) The **editor preview** shows spoilers revealed but marked.
+- **Reveal all:** button in the page header (until the page is left) and a global eye switch (stays on until switched off, per computer, never synced); while it's on, a visible marker shows it.
+- Spoiler colours are theme variables.
+
+**Embeds**
+- An **Embed** toolbar button: pick a page (autocomplete), then (Juku) what to show: **whole page** (infobox + text), **one section**, or **infobox only**. Stored as `{{Page}}`, `{{Page#Section}}`, `{{Page|infobox}}` (Claude's choice; `[[ ]]` stays links only). Clicking an embed in the source opens a popup: Open, Change, Remove.
+- An embed always shows the source page's current content; never a copy.
+- (Juku) Look: **seamless**, no frame; a small "open page" link appears on hover.
+- (Juku) Links inside an embed **don't count as links of the host page** (backlinks, later health reports and graph ignore them; they still show red when missing). The source page's What links here lists **Embedded in** separately.
+- Renaming the source page updates its embeds (incl. section embeds). A missing page shows a red box; clicking creates it.
+- Embeds inside embeds work up to 5 levels; loops and self-embeds are blocked and show a small warning box instead.
+- Headings inside an embed aren't in the host's Contents panel; the embedded page's categories don't carry over; spoilers stay spoilers and the host's Reveal all covers them.
+- Embeds work in page text and category page text, not in infobox fields. No parameters.
+- (Juku, 2026-10-20, at review) An embed can instead be a **collapsible box** (AWOIAF navbox style): framed, the page's title as a bar that opens the page, "[show]/[hide]" at its right, starting open or closed, chosen per embed in the embed dialog. Stored as `|collapsible` / `|collapsed`.
+
+**Small additions**
+- (Juku) **Quote box**, AWOIAF style: centred, large quotation marks, "— By, Source" right-aligned underneath. A **Quote** toolbar button opens a dialog: Quote (bold, italic, links, spoilers), By (optional; text or a page link), Source (optional). Clicking a quote box in the source reopens the dialog. Stored as a block in the page text (format Claude's choice).
+- **Separator line:** toolbar button inserting a thin horizontal line, with the spacing handled so it never turns the line above into a heading.
+- **Divider** infobox field type: a thin line with an optional label, no value. Available in templates and as a page's own field; Apply to existing pages treats it like any field.
+- (Juku) **Contents panel** in the read view becomes narrower than today's 230 px; exact width settled at the checkpoint.
+- **App always light** on Mac and Windows, incl. the window title bar; the system's dark mode is ignored.
+
+- Not in M7: spoiler levels per book (see Open items), embeds with parameters, embeds in infobox fields.
+- Checkpoint for Juku partway: always light, Contents panel, separator, Divider, quote box, spoilers everywhere incl. infobox toggle, images and Reveal all. Then: embeds.
+- **Progress (2026-10-20):** checkpoint approved by Juku ("all fine"; Hide spoilers now also hides spoilers revealed one by one). Embeds built: Embed button and dialog (whole page / one section / infobox only), popup on click (Open, Change…, Remove), seamless look with an "open page" link on hover, red box for missing pages, warning boxes for self-embeds, loops and more than 5 levels, "Embedded in" in What links here, renames rewrite embeds. Speed: 50 embeds render in ~70 ms; renaming a page embedded on 1,000 pages ~3.6 s; a 5,000-page project reopens in ~10–20 ms. Collapsible embed boxes added at Juku's request. Waiting for Juku's final review.
+- Done when: new features have Playwright UI tests and pass with the unit and Rust tests; screenshots check the new and changed screens; a page with 50 embeds opens without noticeable delay, renaming a page embedded on 1,000 pages finishes within a few seconds, a 5,000-page project still reopens in under 1 s after the index change; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
+
 ## Decision log (2026-10-15 – 2026-10-18)
 - 2026-10-15: projects as top level; blank app with user-defined templates; local-first Mac + Windows; content as plain files in project folders; images stored locally per project; sync via external folder sync; single user; inline spoilers.
 - 2026-10-15: UI in English; sync via Google Drive for desktop (Mirror mode or folder available offline); library path is a per-machine setting.
@@ -221,3 +259,11 @@ Read this file only when changing a finished feature, and search it rather than 
 - 2026-10-18: M6 categories built (Claude's choices, open to Juku's review): a category exists while a page, a template default, a subcategory or its own file uses it; clicking a red `[[Category:…]]` link creates its file at once (empty) so it exists; the sidebar's **Categories** list also has a **New category** button; the read view always shows the categories box (with "none" and + Add when empty); category pages list pages in up to 3 columns, filed under the first letter of "Sort as" (else the title), digits under "0–9", other characters under "#"; the "Include pages of subcategories" switch is remembered per computer; back/forward include category pages; quick-open lists matching categories after pages ("Category:" typed = categories only). Technical: category files are named like pages (`categories/Name.md`, " (2)" on clashes) and indexed with the pages (cache version 4); renaming a page also rewrites links in category texts; `[[Category: X]]` with a space after the colon counts as the same link. Measured (release build, 5,000 pages × 3 categories): reopen 11 ms, a 2,000-page category 4 ms, renaming a category used on 1,000 pages 3.1 s.
 - 2026-10-18: M6 review (Juku): per-project option to hide the categories box at the bottom of pages (only the box; categories keep working). Lives in a new Project settings window (gear next to the project name), stored in project.json, since the app's Settings screen is per computer.
 - 2026-10-18: M6 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer.
+
+## Decision log of M7 (2026-10-19 – 2026-10-20)
+- 2026-10-19 (planning): "Reveal all spoilers" works both per page and globally (everywhere).
+- 2026-10-19 (planning, Claude decided at Juku's request): per-page reveal lasts until the page is left; the global switch stays on until switched off, remembered per computer.
+- 2026-10-20 technical (M7): spoiler rule `||text||` = first character not `|` or a space, shortest text up to `||` not ending in `\`, one line only (TS `SPOILER_AT_START`, Rust `spoiler_at`); in table rows `\|\|`. Spoiler images `[[File:…|spoiler|…]]`, `<gallery spoiler>`; infobox fields `spoiler: true`; `|` in image captions now reads back from `&#124;`. Quote box block: `<quote>` text lines, optional `<by>…</by>` and `<source>…</source>` lines, `</quote>`. Embeds: a line holding only `{{Page}}`, `{{Page#Section}}` or `{{Page|infobox}}`; the link index keeps embeds apart from links (cache version 6); renames rewrite embeds like links; embed content comes from the new `embed_sources` command (Rust follows embeds up to 5 levels), "Embedded in" from `embedded_in`. Embedded headings lose their ids and footnote ids get a prefix, so they don't clash with the host's. Divider field type `divider` (no value; label optional).
+- 2026-10-20 (M7 review, Juku): embeds can be collapsible boxes (title bar, show/hide, start open or closed per embed), like AWOIAF navboxes; added to M7.
+- 2026-10-20 (planning): M7 defined. Spoilers: infobox fields get a per-field Spoiler toggle for all types; images and galleries in text can be spoilers; the editor preview shows spoilers revealed but marked; a revealed spoiler stays revealed until the page is left; titles, categories and the existence of links are never hidden; spoiler-hidden values stay hidden where they reappear (M8 reverse fields etc.). Embeds: whole page, one section or infobox only; seamless look; links inside embeds don't count for the host, the source lists "Embedded in"; up to 5 levels; syntax `{{Page}}` (Claude). Quote box AWOIAF style; Contents panel narrower. Spoiler levels per book added to Open items.
+- 2026-10-20: M7 done. Approved by Juku; tests pass on Mac and Windows; Windows CI produced the installer. Measured (release build): 50 embeds on a page render in ~70 ms; renaming a page embedded on 1,000 pages 3.6 s; a 5,000-page project reopens in 10–20 ms.
