@@ -113,6 +113,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 
 **After v1 start**
 - **M8 Relations** (2026-10-19, pulled forward from Family trees): reverse fields that fill themselves (children from parent fields), two-way fields (spouse), automatic page lists at the bottom of pages (e.g. chapters that take place at a place). A field hidden as a spoiler stays hidden in the reverse field and page lists it fills (2026-10-20).
+  - Plus (Juku, 2026-10-20): app-styled tooltips. Hovering a toolbar button or any other button/control shows its name in a small tooltip that fades in and out, replacing the plain system tooltips (about 80 today). Keeps the shortcut where one exists ("Bold (Cmd+B)"). Page links keep their hover cards instead. Tooltip colours are theme variables.
 - **M9 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. Until M9 is done, Juku uses **only one computer** for real content.
 - **M10 Health reports.**
 - **M11 Graph view.**
@@ -214,3 +215,4 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - 2026-10-19 (planning): Juku's list of small additions placed. M7 gains an AWOIAF-style quote box (inserted by hand), a separator line in text + Divider infobox field (optional label), a thinner Contents box, and the app is always light on Mac and Windows (replaces "follows the system"). Automatic relation fields pulled forward from Family trees into a new **M8 Relations** (calculated from the link index, never written into other files; parents → children, two-way for spouse), together with automatic page lists such as "Chapters that take place at …". Themes (now M12) also set fonts (body, headings), text size, line spacing and page width; fonts are copied into the project. Later milestones renumbered +1 (old M8 → M9 … M16 → M17); `docs/history.md` keeps the old numbers. Edit/read hotkey already exists (Cmd+E).
 - 2026-10-20 (planning): AWOIAF-style rework of the hover cards moved to a later version (listed under "Later / undecided"); the current M4/M6 hover cards stay as they are.
 - 2026-10-20 (planning): embed boxes get their own look per theme (frame/box appearance, background, colours), added to M12 Themes.
+- 2026-10-20 (planning): fading app-styled tooltips for all buttons and controls added to M8 (Juku: next milestone).
