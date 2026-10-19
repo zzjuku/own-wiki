@@ -3,7 +3,7 @@
 // subsections fold open and closed.
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { handleContentClick } from "./links";
-import type { TocEntry } from "./markdown";
+import { partsHtml, type TocEntry } from "./markdown";
 
 interface Props {
   toc: TocEntry[];
@@ -127,7 +127,8 @@ export function TocPanel({ toc, scrollRef, storageKey }: Props) {
               className={`toc-left-item toc-depth-${Math.min(e.depth, 5)} ${highlighted === e.id ? "active" : ""}`}
             >
               <a href={`#${encodeURIComponent(e.id)}`}>
-                <span className="toc-number">{e.number}</span> {e.text}
+                <span className="toc-number">{e.number}</span>{" "}
+                {e.parts.some((p) => p.spoiler) ? <span dangerouslySetInnerHTML={{ __html: partsHtml(e) }} /> : e.text}
               </a>
               {hasChildren.has(i) && (
                 <button

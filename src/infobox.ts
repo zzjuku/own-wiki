@@ -3,13 +3,13 @@
 // The file format is described in src-tauri/src/infobox.rs.
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Field, FieldKind, Frame, IncomingField, Infobox, Template } from "./api";
-import { renderInline, renderPage, slugify, type LinkContext } from "./markdown";
+import { renderInline, renderPage, slugify, spoilerHtml, type LinkContext } from "./markdown";
 import { norm } from "./wikilinks";
 
 export interface KindInfo {
   kind: FieldKind;
   label: string;
-  /** Has a value (headings and Linked from don't). */
+  /** Has a value (headings, dividers and Linked from don't). */
   hasValue: boolean;
 }
 
@@ -28,7 +28,14 @@ export const KINDS: KindInfo[] = [
   { kind: "date", label: "Date", hasValue: true },
   { kind: "image", label: "Image", hasValue: true },
   { kind: "heading", label: "Section heading", hasValue: false },
+  { kind: "divider", label: "Divider", hasValue: false },
 ];
+
+/** Section headings and dividers: they lay out the box and hold no value. */
+export const isLayout = (k: string) => k === "heading" || k === "divider";
+
+/** A new field's starting label. */
+export const newFieldLabel = (k: string) => (k === "heading" ? "New section" : k === "divider" ? "" : "New field");
 
 export const kindLabel = (k: string) => KINDS.find((x) => x.kind === k)?.label ?? k;
 export const hasValue = (k: string) => KINDS.find((x) => x.kind === k)?.hasValue ?? true;
@@ -410,10 +417,15 @@ const PLACEHOLDER = '<span class="infobox-placeholder">…</span>';
  */
 export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): string {
   if (!ib) return "";
-  const rows: { html: string; heading?: boolean }[] = [];
+  const rows: { html: string; heading?: boolean; divider?: boolean }[] = [];
   for (const f of ib.fields) {
     if (f.type === "heading") {
       rows.push({ heading: true, html: `<tr><th colspan="2" class="infobox-heading">${escapeHtml(f.label)}</th></tr>` });
+      continue;
+    }
+    if (f.type === "divider") {
+      const label = f.label.trim() ? `<span>${escapeHtml(f.label.trim())}</span>` : "";
+      rows.push({ divider: true, html: `<tr><td colspan="2" class="infobox-divider">${label}</td></tr>` });
       continue;
     }
     if (f.type === "image") {
@@ -429,8 +441,9 @@ export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): st
         const picture = frame
           ? `<span class="infobox-frame" style="${frameStyle(frame)}"><img src="${src}" data-full="${full}" alt="${alt}" style="${pictureStyle(img.crop, frame)}"></span>`
           : `<img src="${src}" data-full="${full}" alt="${alt}">`;
+        const inner = f.spoiler ? `<div class="spoiler spoiler-media" title="Spoiler: click to show">${picture}${caption}</div>` : picture + caption;
         rows.push({
-          html: `<tr><td colspan="2" class="infobox-image" data-file="${escapeHtml(img.file)}">${picture}${caption}</td></tr>`,
+          html: `<tr><td colspan="2" class="infobox-image" data-file="${escapeHtml(img.file)}">${inner}</td></tr>`,
         });
       } else if (ctx.placeholders) {
         const style = frame ? ` style="${frameStyle(frame)}"` : "";
@@ -443,13 +456,24 @@ export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): st
     let value = valueHtml(f, ctx);
     if (!value && ctx.placeholders) value = PLACEHOLDER;
     if (!value) continue;
+    if (f.spoiler && value !== PLACEHOLDER) value = spoilerHtml(value, f.type === "longtext");
     rows.push({
       html: `<tr><th scope="row" class="infobox-label">${escapeHtml(f.label)}</th><td class="infobox-value">${value}</td></tr>`,
     });
   }
-  // Drop headings with nothing after them (up to the next heading).
-  const shown = rows.filter((r, i) => !r.heading || (rows[i + 1] && !rows[i + 1].heading));
-  if (!shown.some((r) => !r.heading) && !ctx.placeholders) {
+  // Drop headings with nothing after them (up to the next heading), and
+  // dividers at the top, the bottom, or next to a heading or another divider.
+  const withHeadings = rows.filter((r, i) => !r.heading || (rows[i + 1] && !rows[i + 1].heading));
+  const shown = ctx.placeholders
+    ? withHeadings
+    : withHeadings.filter((r, i, all) => {
+        if (!r.divider) return true;
+        const prev = all[i - 1];
+        const next = all[i + 1];
+        return !!prev && !!next && !prev.heading && !prev.divider && !next.heading && !next.divider;
+      });
+  const isValue = (r: (typeof rows)[number]) => !r.heading && !r.divider;
+  if (!shown.some(isValue) && !ctx.placeholders) {
     if (!ctx.showEmpty) return "";
     shown.length = 0;
     shown.push({ html: `<tr><td colspan="2" class="infobox-empty">Fill in values in the Infobox tab.</td></tr>` });

@@ -4,6 +4,7 @@
 // keys step through the page's images (from a gallery: through that
 // gallery). Esc closes. Also marks images whose file is missing.
 import { useEffect, useRef, useState } from "react";
+import { isHiddenSpoiler } from "./spoilers";
 
 const CONTENT = ".read-view .markdown, .split-preview .markdown";
 const MAX_ZOOM = 8;
@@ -34,7 +35,7 @@ export function ImageViewer() {
       const root = img.closest(CONTENT)!;
       const gallery = img.closest(".wiki-gallery");
       const all = [...(gallery ?? root).querySelectorAll<HTMLImageElement>("img")].filter(
-        (i) => (gallery || !i.closest(".wiki-gallery")) && !i.closest(".broken"),
+        (i) => (gallery || !i.closest(".wiki-gallery")) && !i.closest(".broken") && !isHiddenSpoiler(i),
       );
       const index = Math.max(0, all.indexOf(img));
       e.preventDefault();

@@ -1,6 +1,6 @@
 # Theme variables
 
-The contract for themes (M11). Defaults live in [`src/theme.css`](../src/theme.css), light values first and dark values in a `prefers-color-scheme: dark` block. A theme sets any of these variables; anything it leaves out keeps the default. Keep this list and `theme.css` in sync.
+The contract for themes (M11). Defaults live in [`src/theme.css`](../src/theme.css), always light (the system's dark mode is ignored since M7). A theme sets any of these variables; anything it leaves out keeps the default. Keep this list and `theme.css` in sync.
 
 Rule: the app's CSS uses no colour or font of its own. Every colour and font comes from a variable below, as do the type scale and the main layout sizes. Small fixed spacings inside controls (button padding, icon sizes, gaps of a few pixels) are not themeable.
 
@@ -64,6 +64,16 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--thumb-caption` | Image and gallery captions |
 | `--thumb-gap` | Space between a floating image and the text beside it |
 | `--viewer-bg` / `--viewer-text` | Full-size image viewer background and its text |
+
+## Spoilers and quote boxes (M7)
+| Variable | Used for |
+|---|---|
+| `--spoiler-bg` / `--spoiler-hover-bg` | A hidden spoiler (and under the mouse); hidden captions |
+| `--spoiler-revealed-bg` | A revealed spoiler's faint background; spoiler text in the source editor |
+| `--spoiler-mark` | Dashed mark around spoilers in the editor preview and source, Reveal buttons |
+| `--spoiler-blur` | How strongly hidden images and galleries are blurred |
+| `--spoiler-label-bg` / `--spoiler-label-text` | The "Spoiler" label on hidden images |
+| `--quote-mark` | The large quotation marks of quote boxes |
 
 ## Fonts and sizes
 | Variable | Used for |

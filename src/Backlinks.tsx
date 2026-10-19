@@ -27,6 +27,8 @@ function cleanLine(line: string): string {
       .filter(Boolean)
       .join(" · ");
   }
+  // Quote boxes: "<by>…</by>" lines read as "— …".
+  t = t.replace(/^<(by|source)>(.*)<\/\1>$/i, "— $2");
   return t.replace(/^\[\^[^\]\s]+\]:\s*/, "");
 }
 

@@ -12,7 +12,9 @@ import {
   fieldHasValue,
   hasValue,
   instantiate,
+  isLayout,
   kindLabel,
+  newFieldLabel,
   rawValueText,
   valueProblem,
   valueText,
@@ -22,6 +24,7 @@ import { frameFor, useWiki } from "./wiki";
 import { DateInput, ImageFrameContext, ImageInput, PageLinksInput, PageNameInput } from "./FieldInputs";
 import { MiniEditor } from "./MiniEditor";
 import { FieldDef } from "./TemplatesView";
+import { Icon } from "./editorTheme";
 
 interface Props {
   pageId: string;
@@ -125,8 +128,7 @@ export function InfoboxForm({ pageId, infobox: ib, error, templates, onChange: c
   }
 
   function addField(kind: FieldKind) {
-    const label = kind === "heading" ? "New section" : "New field";
-    restructure({ ...ib!, fields: [...ib!.fields, { label, type: kind }] }, [...rowIds.current, newRowId()]);
+    restructure({ ...ib!, fields: [...ib!.fields, { label: newFieldLabel(kind), type: kind }] }, [...rowIds.current, newRowId()]);
     setSettingsOpen(ib!.fields.length);
     setJustAdded(ib!.fields.length);
   }
@@ -210,11 +212,13 @@ export function InfoboxForm({ pageId, infobox: ib, error, templates, onChange: c
 
       <ul className="ib-fields" ref={(el) => void (reorder.listRef.current = el)}>
         {ib.fields.map((f, i) => (
-          <li key={`${rowIds.current[i]}:${f.type}`} data-reorder className={`ib-row ${f.type === "heading" ? "is-heading" : ""} ${reorder.rowClass(i, ib.fields.length)}`}>
+          <li key={`${rowIds.current[i]}:${f.type}`} data-reorder className={`ib-row ${isLayout(f.type) ? `is-${f.type}` : ""} ${reorder.rowClass(i, ib.fields.length)}`}>
             <div className="ib-line">
               <DragHandle label={`Move ${f.label}`} onPointerDown={(e) => reorder.start(e, i)} />
               {f.type === "heading" ? (
                 <span className="ib-heading">{f.label || "Section"}</span>
+              ) : f.type === "divider" ? (
+                <span className="ib-divider">{f.label ? <span>{f.label}</span> : null}</span>
               ) : (
                 <span className="ib-label" title={f.key ? undefined : "This page's own field"}>
                   {f.label || <span className="muted">(no label)</span>}
@@ -229,7 +233,18 @@ export function InfoboxForm({ pageId, infobox: ib, error, templates, onChange: c
               >
                 <GearIcon />
               </button>
-              {f.type !== "heading" && (
+              {!isLayout(f.type) && (
+                <button
+                  className={`plain ib-spoiler ${f.spoiler ? "active" : ""}`}
+                  title={f.spoiler ? "Spoiler: the value stays hidden until clicked. Click to show it normally." : "Make this value a spoiler (hidden until clicked)"}
+                  aria-label={`Spoiler: ${f.label}`}
+                  aria-pressed={!!f.spoiler}
+                  onClick={() => setField(i, { ...f, spoiler: f.spoiler ? undefined : true })}
+                >
+                  <Icon name="spoiler" />
+                </button>
+              )}
+              {!isLayout(f.type) && (
                 <div className="ib-input">
                   <ValueInput pageId={pageId} field={f} onChange={(value) => setField(i, { ...f, value: cleanValue(value) })} />
                 </div>
@@ -259,6 +274,7 @@ export function InfoboxForm({ pageId, infobox: ib, error, templates, onChange: c
       <div className="row ib-add">
         <button onClick={() => addField("text")}>+ Add field</button>
         <button onClick={() => addField("heading")}>+ Add section heading</button>
+        <button onClick={() => addField("divider")}>+ Add divider</button>
       </div>
 
       {hidden.length > 0 && (

@@ -15,7 +15,8 @@ interface Props {
   pageId: string;
   /** The gallery being edited; absent for a new one. */
   initial?: GalleryItem[];
-  save: (items: GalleryItem[]) => void;
+  initialSpoiler?: boolean;
+  save: (items: GalleryItem[], spoiler: boolean) => void;
   /** Deletes the gallery being edited. */
   remove?: () => void;
   close: () => void;
@@ -29,9 +30,10 @@ interface Row extends GalleryItem {
 let nextId = 1;
 const withIds = (items: GalleryItem[]): Row[] => items.map((i) => ({ ...i, id: nextId++ }));
 
-export function GalleryDialog({ pageId, initial, save, remove, close }: Props) {
+export function GalleryDialog({ pageId, initial, initialSpoiler, save, remove, close }: Props) {
   const wiki = useWiki();
   const [rows, setRows] = useState<Row[]>(() => withIds(initial ?? []));
+  const [spoiler, setSpoiler] = useState(!!initialSpoiler);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const reorder = useReorder((from, to) => setRows((r) => moveItem(r, from, to)));
@@ -67,7 +69,7 @@ export function GalleryDialog({ pageId, initial, save, remove, close }: Props) {
         aria-label={initial ? "Edit gallery" : "New gallery"}
         onSubmit={(e) => {
           e.preventDefault();
-          if (rows.length) save(rows.map(({ file, caption }) => ({ file, caption })));
+          if (rows.length) save(rows.map(({ file, caption }) => ({ file, caption })), spoiler);
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape" && !(e.target as HTMLElement).closest(".cm-tooltip, .link-popup")) close();
@@ -99,6 +101,11 @@ export function GalleryDialog({ pageId, initial, save, remove, close }: Props) {
           <button type="button" disabled={busy} onClick={() => void add(() => chooseTextImages(wiki.project, true))}>
             {busy ? "Copying…" : "Add images…"}
           </button>
+          <div className="spacer" />
+          <label className="check">
+            <input type="checkbox" checked={spoiler} onChange={(e) => setSpoiler(e.target.checked)} />
+            <span>Spoiler: blurred until clicked</span>
+          </label>
         </div>
         {error && <p className="dialog-error">{error}</p>}
         <div className="dialog-actions">

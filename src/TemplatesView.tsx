@@ -7,7 +7,7 @@ import { api, type Field, type FieldKind, type Frame, type PageInfo, type Templa
 import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
 import { Chips, ColorPicker, DragHandle, moveItem, useReorder } from "./controls";
 import { useDialogs } from "./dialogs";
-import { infoboxHtml, instantiate, KINDS, newFieldKey, newTemplateId } from "./infobox";
+import { infoboxHtml, instantiate, isLayout, KINDS, newFieldKey, newFieldLabel, newTemplateId } from "./infobox";
 import { MiniEditor } from "./MiniEditor";
 import { ApplyDialog, CopyTemplatesDialog } from "./TemplateDialogs";
 import { useReportError } from "./notify";
@@ -16,7 +16,7 @@ import { useLinkContext, useWiki } from "./wiki";
 import { norm } from "./wikilinks";
 
 /** Field types offered (Linked from is postponed; see SPEC.md, Open items). */
-export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "links", "date", "image", "heading"];
+export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "links", "date", "image", "heading", "divider"];
 
 const STATUS_TEXT: Record<SaveStatus, string> = {
   saved: "Saved",
@@ -202,7 +202,7 @@ export function TemplatesView({ project, state, selected, setSelected, openPage 
             >
               <span className="template-dot" style={t.color ? { background: t.color } : undefined} />
               <span className="template-name">{t.name}</span>
-              <span className="template-count">{t.fields.filter((f) => f.type !== "heading").length}</span>
+              <span className="template-count">{t.fields.filter((f) => !isLayout(f.type)).length}</span>
             </button>
           ))}
           {templates.length === 0 && (
@@ -266,8 +266,7 @@ function TemplateEditor({ project, template: t, templates, onChange, onRename, o
   const reorder = useReorder((from, to) => setFields(moveItem(t.fields, from, to)));
 
   function addField(kind: FieldKind) {
-    const label = kind === "heading" ? "New section" : "New field";
-    setFields([...t.fields, { key: newFieldKey(t.fields), label, type: kind }]);
+    setFields([...t.fields, { key: newFieldKey(t.fields), label: newFieldLabel(kind), type: kind }]);
     setJustAdded(t.fields.length);
   }
 
@@ -330,7 +329,7 @@ function TemplateEditor({ project, template: t, templates, onChange, onRename, o
           <h3>Fields</h3>
           <ul className="field-defs" ref={(el) => void (reorder.listRef.current = el)}>
             {t.fields.map((f, i) => (
-              <li key={f.key ?? i} data-reorder className={`field-def ${f.type === "heading" ? "is-heading" : ""} ${reorder.rowClass(i, t.fields.length)}`}>
+              <li key={f.key ?? i} data-reorder className={`field-def ${isLayout(f.type) ? `is-${f.type}` : ""} ${reorder.rowClass(i, t.fields.length)}`}>
                 <FieldDef
                   field={f}
                   autoFocus={justAdded === i}
@@ -346,6 +345,7 @@ function TemplateEditor({ project, template: t, templates, onChange, onRename, o
           <div className="row">
             <button onClick={() => addField("text")}>+ Add field</button>
             <button onClick={() => addField("heading")}>+ Add section heading</button>
+            <button onClick={() => addField("divider")}>+ Add divider</button>
           </div>
         </section>
 
@@ -484,21 +484,23 @@ export function FieldDef({
   };
   const kinds = KINDS.filter((k) => READY_KINDS.includes(k.kind) || k.kind === f.type);
 
-  if (f.type === "heading") {
+  if (isLayout(f.type)) {
+    const heading = f.type === "heading";
+    const name = heading ? "Section heading" : "Divider label";
     return (
       <div className="field-def-row">
         {handle}
-        <span className="field-def-kind">Section</span>
+        <span className="field-def-kind">{heading ? "Section" : "Divider"}</span>
         <input
-          className="field-label heading-label"
+          className={`field-label ${f.type}-label`}
           autoFocus={autoFocus}
           onFocus={(e) => autoFocus && e.target.select()}
           value={f.label}
-          aria-label="Section heading"
-          placeholder="Section heading"
+          aria-label={name}
+          placeholder={heading ? "Section heading" : "Label (optional)"}
           onChange={(e) => onChange({ ...f, label: e.target.value })}
         />
-        <button className="plain remove" title="Remove section heading" aria-label="Remove section heading" onClick={onRemove}>
+        <button className="plain remove" title={`Remove ${heading ? "section heading" : "divider"}`} aria-label={`Remove ${heading ? "section heading" : "divider"}`} onClick={onRemove}>
           ×
         </button>
       </div>

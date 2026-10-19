@@ -12,6 +12,7 @@ import { renderPage } from "./markdown";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
 import { SplitEditor } from "./SplitEditor";
+import { useSpoilerReveal } from "./spoilers";
 import { displayGroup } from "./tree";
 import { useContentClick, useLinkContext, useWiki } from "./wiki";
 
@@ -126,6 +127,8 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted }
   const onContentClick = useContentClick();
   const text = editing ? (latest.current ?? "") : (data?.text ?? "");
   const html = useMemo(() => (text.trim() ? renderPage(text, { tocBox: false, links }).html : ""), [text, links]);
+  const readRef = useRef<HTMLDivElement>(null);
+  const revealOne = useSpoilerReveal(readRef);
   const groups = useMemo(() => fileMembers(data?.pages ?? []), [data]);
 
   async function saveParents(next: string[]) {
@@ -238,7 +241,7 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted }
           status={<span className={`save-status ${status}`}>{STATUS_TEXT[status]}</span>}
         />
       ) : (
-        <div className="read-view">
+        <div className="read-view" ref={readRef} onClickCapture={revealOne}>
           <div className="read-column">
             <div className="markdown category-body" onClick={onContentClick}>
               {!data.exists && (

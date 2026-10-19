@@ -1,0 +1,229 @@
+/* ---- M7: spoilers, quote boxes, infobox dividers ---- */
+
+/* A hidden spoiler: a solid block until clicked. Revealed ones (clicked, the
+ * page's "Reveal spoilers", the global switch) keep a faint background; the
+ * editor preview shows them revealed and marked. */
+.spoiler {
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.spoiler:not(.revealed, .split-preview .spoiler, .reveal-spoilers .spoiler) {
+  background: var(--spoiler-bg);
+  color: transparent;
+  cursor: pointer;
+  user-select: none;
+}
+.spoiler:not(.revealed, .split-preview .spoiler, .reveal-spoilers .spoiler) * {
+  color: transparent !important;
+  text-decoration-color: transparent !important;
+  border-color: transparent !important;
+  pointer-events: none;
+}
+.spoiler:not(.revealed, .split-preview .spoiler, .reveal-spoilers .spoiler):hover {
+  background: var(--spoiler-hover-bg);
+}
+.spoiler.revealed,
+.reveal-spoilers .spoiler,
+.split-preview .spoiler {
+  background: var(--spoiler-revealed-bg);
+}
+.split-preview .spoiler {
+  outline: 1px dashed var(--spoiler-mark);
+  outline-offset: 0;
+}
+.markdown div.spoiler-block {
+  padding: 0 4px;
+}
+.markdown div.spoiler-block > :first-child {
+  margin-top: 0;
+}
+.markdown div.spoiler-block > :last-child {
+  margin-bottom: 0;
+}
+
+/* Images and galleries: blurred, captions hidden. */
+.spoiler.spoiler-media {
+  position: relative;
+  border-radius: 0;
+}
+/* Media keep their own background, hidden or not. */
+.markdown .wiki-image.spoiler-media {
+  background: var(--thumb-bg) !important;
+}
+.markdown .wiki-gallery.spoiler-media,
+.markdown .infobox .spoiler-media {
+  background: transparent !important;
+}
+.markdown .infobox .spoiler-media {
+  display: inline-block;
+}
+.spoiler-media:not(.revealed, .split-preview .spoiler, .reveal-spoilers .spoiler) img {
+  filter: blur(var(--spoiler-blur));
+  clip-path: inset(0);
+}
+.spoiler-media:not(.revealed, .split-preview .spoiler, .reveal-spoilers .spoiler) :is(.wiki-caption, figcaption, .infobox-caption) {
+  background: var(--spoiler-bg);
+  border-radius: 3px;
+}
+.spoiler-media:not(.revealed, .split-preview .spoiler, .reveal-spoilers .spoiler)::after,
+.split-preview .spoiler-media::after {
+  content: "Spoiler";
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 10px;
+  border-radius: 10px;
+  background: var(--spoiler-label-bg);
+  color: var(--spoiler-label-text);
+  font: 600 var(--text-xs) var(--font-ui);
+  pointer-events: none;
+}
+.split-preview .spoiler-media::after {
+  top: 6px;
+  left: auto;
+  right: 6px;
+  transform: none;
+}
+
+/* Source editor: spoiler text is easy to spot. */
+.cm-spoiler {
+  background: var(--spoiler-revealed-bg);
+  border-bottom: 1px dashed var(--spoiler-mark);
+}
+
+/* Page header and sidebar */
+.project.reveal-spoilers .reveal-button {
+  display: none;
+}
+button.reveal-button.active {
+  background: var(--spoiler-revealed-bg);
+  border-color: var(--spoiler-mark);
+}
+button.spoiler-switch.active {
+  color: var(--accent);
+}
+button.spoilers-shown {
+  display: block;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 3px 8px;
+  border: 1px dashed var(--spoiler-mark);
+  border-radius: var(--radius);
+  background: var(--spoiler-revealed-bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* Infobox tab: the per-field Spoiler toggle */
+button.ib-spoiler {
+  padding: 5px;
+  color: var(--muted);
+  display: inline-flex;
+  opacity: 0.55;
+}
+button.ib-spoiler:hover {
+  opacity: 1;
+}
+button.ib-spoiler.active {
+  color: var(--accent);
+  opacity: 1;
+}
+.image-spoiler {
+  margin-top: 2px;
+}
+
+/* Quote boxes (AWOIAF style) */
+/* A table shrinks to the quote, centres, and stays clear of floating images. */
+.markdown .quote-box {
+  display: table;
+  margin: 1.2em auto 1.4em;
+  max-width: 36em;
+  text-align: center;
+}
+.markdown .quote-box .quote-text {
+  position: relative;
+  margin: 0;
+  padding: 0 2.6em;
+  border: none;
+  color: var(--page-text);
+}
+.markdown .quote-box .quote-text::before,
+.markdown .quote-box .quote-text::after {
+  position: absolute;
+  font-family: var(--font-heading);
+  font-size: 3.4em;
+  line-height: 1;
+  color: var(--quote-mark);
+}
+.markdown .quote-box .quote-text::before {
+  content: "“";
+  left: 0;
+  top: -0.1em;
+}
+.markdown .quote-box .quote-text::after {
+  content: "”";
+  right: 0;
+  bottom: -0.45em;
+}
+.markdown .quote-box .quote-text p {
+  margin: 0.3em 0;
+}
+.markdown .quote-box .quote-by {
+  margin: 0.3em 2.6em 0;
+  text-align: right;
+  color: var(--quote-text);
+}
+.markdown .quote-box .quote-by cite {
+  font-style: italic;
+}
+.quote-dialog {
+  width: min(560px, 92vw);
+}
+.quote-dialog .mini-editor.multi .cm-content {
+  min-height: 5.5em;
+}
+
+/* Infobox divider: a thin line, optionally with a label in the middle */
+.markdown .infobox td.infobox-divider {
+  padding: 0.35em 0.4em;
+}
+.markdown .infobox td.infobox-divider::before {
+  content: "";
+  display: block;
+  border-top: 1px solid var(--infobox-border);
+}
+.markdown .infobox td.infobox-divider:has(span) {
+  display: table-cell;
+  text-align: center;
+  background: linear-gradient(var(--infobox-border), var(--infobox-border)) center / 100% 1px no-repeat;
+}
+.markdown .infobox td.infobox-divider:has(span)::before {
+  display: none;
+}
+.markdown .infobox td.infobox-divider span {
+  padding: 0 0.6em;
+  background: var(--infobox-bg);
+  color: var(--muted);
+  font-size: 0.92em;
+}
+.ib-divider {
+  position: relative;
+  display: block;
+  margin-top: 11px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+.ib-divider span {
+  position: relative;
+  top: -0.75em;
+  padding: 0 8px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.field-def.is-divider {
+  background: var(--bg-soft);
+}

@@ -6,8 +6,8 @@
  * it leaves out keeps the default below. The full list with descriptions is in
  * docs/theme-variables.md — keep both in sync.
  *
- * Light values first, dark values in the media query (light/dark follows the
- * system setting).
+ * The app is always light (2026-10-19): the system's dark mode is ignored;
+ * other looks come only from themes (M12).
  */
 :root {
   /* App surfaces and text */
@@ -77,6 +77,16 @@
   --viewer-bg: rgb(12 12 12 / 0.92);
   --viewer-text: #f2f2f0;
 
+  /* Spoilers and quote boxes (M7) */
+  --spoiler-bg: #3b3d42;
+  --spoiler-hover-bg: #4a4d53;
+  --spoiler-revealed-bg: rgb(59 61 66 / 0.08);
+  --spoiler-mark: #8d939c;
+  --spoiler-blur: 16px;
+  --spoiler-label-bg: rgb(30 31 34 / 0.78);
+  --spoiler-label-text: #ffffff;
+  --quote-mark: #b0b5bb;
+
   /* Fonts */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -101,60 +111,6 @@
   --sidebar-width: 250px;
   --page-width: 1200px;
   --page-padding-x: 32px;
-  --toc-side-width: 230px;
+  --toc-side-width: 190px;
   --editor-padding: 20px 24px 40vh;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1d1d1c;
-    --bg-soft: #262625;
-    --bg-hover: #31312f;
-    --border: #3b3b39;
-    --text: #e9e8e5;
-    --muted: #9b9a96;
-    --accent: #6b93ff;
-    --accent-text: #0f1320;
-    --danger: #ff7a6e;
-    --danger-text: #1d1d1c;
-    --ok: #7cc489;
-    --warn: #f2c46b;
-    --warn-bg: #3a3020;
-    --drop: rgb(107 147 255 / 0.2);
-    --selection: rgb(107 147 255 / 0.3);
-    --shadow: 0 10px 30px rgb(0 0 0 / 0.5);
-    --backdrop: rgb(0 0 0 / 0.5);
-
-    --editor-mark: #75746f;
-    --editor-quote: #b3b2ad;
-    --search-match: rgb(255 210 0 / 0.25);
-    --search-match-current: rgb(255 150 0 / 0.45);
-
-    --page-text: #e9e8e5;
-    --heading-color: #f4f3f0;
-    --heading-rule: #54595d;
-    --link: #88a9ff;
-    --link-new: #ff8a7a;
-    --quote-border: #54595d;
-    --quote-text: #b3b2ad;
-    --code-bg: #262625;
-    --table-border: #54595d;
-    --table-bg: #232322;
-    --table-header-bg: #2e2e2c;
-    --toc-bg: #232322;
-    --toc-border: #54595d;
-    --toc-number: #9b9a96;
-    --toc-active: #d9a55b;
-    --card-border: #54595d;
-
-    --infobox-bg: #232322;
-    --infobox-border: #54595d;
-    --infobox-header-bg: #2c3a4f;
-    --infobox-header-text: #e9e8e5;
-    --infobox-label: #e9e8e5;
-
-    --thumb-bg: #232322;
-    --thumb-border: #54595d;
-    --thumb-caption: #e9e8e5;
-  }
 }

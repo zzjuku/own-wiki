@@ -28,7 +28,8 @@
     { "name": "hash in shown text", "input": "[[A|number #1]]", "links": [{ "page": "A", "section": null, "text": "number #1" }] },
     { "name": "unicode title", "input": "[[Ünïcödé 名前]]", "links": [{ "page": "Ünïcödé 名前", "section": null, "text": "Ünïcödé 名前" }] },
     { "name": "images are not page links", "input": "[[File:A.png|right|Cap]] and [[file:B.svg]]", "links": [] },
-    { "name": "links in image captions", "input": "[[File:A.png|left|See [[Page B]] and [[C|c]]]]", "links": [{ "page": "Page B", "section": null, "text": "Page B" }, { "page": "C", "section": null, "text": "c" }] }
+    { "name": "links in image captions", "input": "[[File:A.png|left|See [[Page B]] and [[C|c]]]]", "links": [{ "page": "Page B", "section": null, "text": "Page B" }, { "page": "C", "section": null, "text": "c" }] },
+    { "name": "links inside spoilers count", "input": "Text ||see [[Page A|the page]]|| end", "links": [{ "page": "Page A", "section": null, "text": "the page" }] }
   ],
   "anchors": [
     { "name": "basic", "input": "## Early Life\n\n### Later years", "anchors": ["early-life", "later-years"] },
@@ -42,6 +43,7 @@
     { "name": "fenced heading ignored", "input": "```\n## In code\n```\n## Real", "anchors": ["real"] },
     { "name": "punctuation kept", "input": "## What's up?", "anchors": ["what's-up?"] },
     { "name": "notes section", "input": "## Notes\n\nText[^1]\n\n[^1]: A note.", "anchors": ["notes", "notes-2"] },
-    { "name": "unicode", "input": "## Ünïcödé Ärä", "anchors": ["ünïcödé-ärä"] }
+    { "name": "unicode", "input": "## Ünïcödé Ärä", "anchors": ["ünïcödé-ärä"] },
+    { "name": "spoiler markers removed", "input": "## The ||hidden|| part\n\n## Not || a spoiler\n\n## Two ||a|| and ||b **c**||", "anchors": ["the-hidden-part", "not-||-a-spoiler", "two-a-and-b-c"] }
   ]
 }

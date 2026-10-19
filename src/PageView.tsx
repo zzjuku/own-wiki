@@ -14,6 +14,7 @@ import { frameFor, scrollToSection, useContentClick, useLinkContext, useWiki } f
 import { LINK_CHARS } from "./wikilinks";
 import { isReservedName } from "./categories";
 import { CategoryChips } from "./CategoryChips";
+import { hasSpoilers, useSpoilerReveal } from "./spoilers";
 
 interface Props {
   project: string;
@@ -144,6 +145,10 @@ export function PageView(props: Props) {
     [infobox, project, shownTitle, links, incoming, wiki],
   );
   const readRef = useRef<HTMLDivElement>(null);
+  const revealOne = useSpoilerReveal(readRef);
+  // "Reveal spoilers" in the header: all of this page's, until the page is left.
+  const [revealAll, setRevealAll] = useState(false);
+  const pageHasSpoilers = useMemo(() => hasSpoilers(boxHtml) || hasSpoilers(rendered.html), [boxHtml, rendered.html]);
 
   // Arriving through a link: scroll to its section (or the top).
   const { arrival } = props;
@@ -189,7 +194,7 @@ export function PageView(props: Props) {
   const shownName = props.title ?? page.title;
 
   return (
-    <article className="page">
+    <article className={`page ${revealAll ? "reveal-spoilers" : ""}`}>
       <header className="page-head">
         <div className="page-titles">
           {page.group && (
@@ -212,6 +217,16 @@ export function PageView(props: Props) {
           )}
         </div>
         <div className="spacer" />
+        {!editing && pageHasSpoilers && (
+          <button
+            className={`reveal-button ${revealAll ? "active" : ""}`}
+            aria-pressed={revealAll}
+            title={revealAll ? "Hide this page's spoilers again" : "Show all spoilers on this page (until you leave it)"}
+            onClick={() => setRevealAll(!revealAll)}
+          >
+            {revealAll ? "Hide spoilers" : "Reveal spoilers"}
+          </button>
+        )}
         <button title="Pages that link to this page" onClick={() => setBacklinksOpen(true)}>
           Links here{linkingPages !== null && <span className="count">{linkingPages}</span>}
         </button>
@@ -284,7 +299,7 @@ export function PageView(props: Props) {
           }
         />
       ) : body.trim() || boxHtml ? (
-        <div className="read-view" ref={readRef}>
+        <div className="read-view" ref={readRef} onClickCapture={revealOne}>
           {rendered.toc.length > 0 && (
             <TocPanel toc={rendered.toc} scrollRef={readRef} storageKey={`ownwiki.tocFolded.${project}/${pageId}`} />
           )}

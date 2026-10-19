@@ -200,8 +200,8 @@
   flex: 0 0 var(--toc-side-width);
   max-height: calc(100vh - 72px);
   overflow-y: auto;
-  margin: 16px 0 16px 20px;
-  padding: 10px 10px 12px 12px;
+  margin: 16px 0 16px 16px;
+  padding: 8px 6px 10px 8px;
   background: var(--toc-bg);
   border: 1px solid var(--toc-border);
   font-size: var(--text-md);
@@ -223,7 +223,7 @@
   display: flex;
   align-items: flex-start;
   gap: 2px;
-  padding: 4px 4px 4px 6px;
+  padding: 3px 2px 3px 4px;
 }
 .toc-left-item.toc-depth-1,
 .toc-left-item.toc-depth-2,
@@ -233,18 +233,18 @@
   border-left: 1px solid var(--toc-border);
 }
 .toc-left-item.toc-depth-1 {
-  margin-left: 6px;
-  padding-left: 18px;
+  margin-left: 4px;
+  padding-left: 12px;
 }
 .toc-left-item.toc-depth-2 {
-  margin-left: 6px;
-  padding-left: 32px;
+  margin-left: 4px;
+  padding-left: 22px;
 }
 .toc-left-item.toc-depth-3,
 .toc-left-item.toc-depth-4,
 .toc-left-item.toc-depth-5 {
-  margin-left: 6px;
-  padding-left: 46px;
+  margin-left: 4px;
+  padding-left: 32px;
 }
 .toc-left a {
   color: var(--link);
@@ -258,18 +258,18 @@
 }
 .toc-left-item.active {
   border-left: 3px solid var(--toc-active);
-  padding-left: 4px;
+  padding-left: 2px;
 }
 .toc-left-item.active.toc-depth-1 {
-  padding-left: 16px;
+  padding-left: 10px;
 }
 .toc-left-item.active.toc-depth-2 {
-  padding-left: 30px;
+  padding-left: 20px;
 }
 .toc-left-item.active.toc-depth-3,
 .toc-left-item.active.toc-depth-4,
 .toc-left-item.active.toc-depth-5 {
-  padding-left: 44px;
+  padding-left: 30px;
 }
 .toc-left-item.active a {
   font-weight: 700;

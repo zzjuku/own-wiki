@@ -26,7 +26,7 @@ describe("image syntax", () => {
     const img = { file: "A.png", pos: "full" as const, size: "large" as const, caption: "a | b [[P|q]]" };
     const src = imageSource(img);
     expect(src).toBe("[[File:A.png|full|large|a &#124; b [[P|q]]]]");
-    expect(parseImage(imageAtStart(src)!.inner).caption).toBe("a &#124; b [[P|q]]");
+    expect(parseImage(imageAtStart(src)!.inner).caption).toBe("a | b [[P|q]]");
     expect(imageSource(img, true)).toBe("[[File:A.png\\|full\\|large\\|a &#124; b [[P\\|q]]]]");
     expect(parseImage(imageAtStart(imageSource(img, true))!.inner)).toMatchObject({ pos: "full", size: "large" });
   });

@@ -2,18 +2,27 @@ import DOMPurify from "dompurify";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
 import type { LinkTarget } from "./names";
 import { categoryOf } from "./categories";
-import { FULL_PX, GALLERY_PX, imageAtStart, parseGallery, parseImage, SIZE_PX, type TextImage } from "./images";
+import { FULL_PX, GALLERY, GALLERY_PX, imageAtStart, parseGallery, parseImage, SIZE_PX, type TextImage } from "./images";
+import { parseQuote, QUOTE_BLOCK } from "./quotes";
+import { SPOILER_AT_START } from "./spoilers";
 import { linkAtStart, shownText, type WikiLink } from "./wikilinks";
 
 // One Enter in the source is a line break on the page; an empty line starts
 // a new paragraph.
 const OPTIONS = { async: false, gfm: true, breaks: true } as const;
 
+/** A piece of heading text; `spoiler` pieces stay hidden until clicked. */
+export interface TextPart {
+  text: string;
+  spoiler: boolean;
+}
+
 export interface TocEntry {
   id: string;
   /** "1", "1.1", … */
   number: string;
   text: string;
+  parts: TextPart[];
   /** Nesting depth, 0 = top. */
   depth: number;
 }
@@ -59,6 +68,7 @@ interface Heading {
   id: string;
   level: number;
   text: string;
+  parts: TextPart[];
 }
 
 interface RenderState {
@@ -71,12 +81,14 @@ interface RenderState {
   refCount: Map<string, number>;
   notes: Map<string, string>;
   links: LinkContext | null;
+  /** The heading being rendered: its spoilers share keys with its Contents entry. */
+  heading: { id: string; n: number } | null;
 }
 
 let state: RenderState = freshState(new Set());
 
 function freshState(defined: Set<string>, links: LinkContext | null = null): RenderState {
-  return { usedIds: new Map(), headings: [], defined, numbers: new Map(), refCount: new Map(), notes: new Map(), links };
+  return { usedIds: new Map(), headings: [], defined, numbers: new Map(), refCount: new Map(), notes: new Map(), links, heading: null };
 }
 
 /** Section anchor: lower-case, spaces -> "-", repeats get "-2", "-3"… These
@@ -106,6 +118,36 @@ function inlineText(tokens: Token[] | undefined): string {
       return "text" in t && typeof t.text === "string" ? t.text : "";
     })
     .join("");
+}
+
+/** Heading text in pieces, spoilers apart (for the Contents). */
+function inlineParts(tokens: Token[] | undefined, spoiler = false, out: TextPart[] = []): TextPart[] {
+  for (const t of tokens ?? []) {
+    if (t.type === "spoiler") inlineParts(t.tokens, true, out);
+    else if (t.type === "footnoteRef" || t.type === "html") continue;
+    else if ("tokens" in t && t.tokens?.length) inlineParts(t.tokens, spoiler, out);
+    else {
+      const text = t.type === "br" ? " " : "text" in t && typeof t.text === "string" ? t.text : "";
+      const last = out[out.length - 1];
+      if (last && last.spoiler === spoiler) last.text += text;
+      else if (text) out.push({ text, spoiler });
+    }
+  }
+  return out;
+}
+
+/** Trims the pieces like the heading text is trimmed. */
+function trimParts(parts: TextPart[]): TextPart[] {
+  const out = parts.map((p) => ({ ...p }));
+  if (out.length) out[0].text = out[0].text.trimStart();
+  if (out.length) out[out.length - 1].text = out[out.length - 1].text.trimEnd();
+  return out.filter((p) => p.text);
+}
+
+/** A spoiler as HTML (`block`: around block content such as a long text). */
+export function spoilerHtml(inner: string, block = false, key?: string): string {
+  const tag = block ? "div" : "span";
+  return `<${tag} class="spoiler${block ? " spoiler-block" : ""}"${key ? ` data-sp="${escapeHtml(key)}"` : ""} title="Spoiler: click to show">${inner}</${tag}>`;
 }
 
 /**
@@ -145,7 +187,7 @@ function imageSrc(file: string, width?: number): string {
 /** An image in the text: a frame with the picture and its caption. */
 function renderImage(img: TextImage, captionHtml: string, captionText: string): string {
   const width = img.pos === "full" ? FULL_PX : SIZE_PX[img.size];
-  const cls = `wiki-image pos-${img.pos}${img.pos === "full" ? "" : ` size-${img.size}`}`;
+  const cls = `wiki-image pos-${img.pos}${img.pos === "full" ? "" : ` size-${img.size}`}${img.spoiler ? " spoiler spoiler-media" : ""}`;
   const alt = escapeHtml(captionText || img.file);
   return (
     IMG_START +
@@ -168,8 +210,6 @@ function dropBreaksAfterImages(html: string): string {
     .replace(/<!--\/?img-->/g, "");
 }
 
-const GALLERY = /^ {0,3}<gallery>[ \t]*(?:\n([\s\S]*?))?\n {0,3}<\/gallery>[ \t]*(?:\n+|$)/i;
-
 const FOOTNOTE_DEF = /^\[\^([^\]\s]+)\]:[ \t]?([^\n]*(?:\n(?: {2,}|\t)[^\n]*)*)(?:\n|$)/;
 const FOOTNOTE_REF = /^\[\^([^\]\s]+)\]/;
 
@@ -179,8 +219,11 @@ md.use({
     heading(token: Tokens.Heading) {
       const text = inlineText(token.tokens).trim();
       const id = uniqueId(slugify(text));
-      state.headings.push({ id, level: token.depth, text });
-      return `<h${token.depth} id="${escapeHtml(id)}">${this.parser.parseInline(token.tokens)}</h${token.depth}>\n`;
+      state.headings.push({ id, level: token.depth, text, parts: trimParts(inlineParts(token.tokens)) });
+      state.heading = { id, n: 0 };
+      const inner = this.parser.parseInline(token.tokens);
+      state.heading = null;
+      return `<h${token.depth} id="${escapeHtml(id)}">${inner}</h${token.depth}>\n`;
     },
   },
   extensions: [
@@ -206,12 +249,12 @@ md.use({
       // <gallery> … File|Caption lines … </gallery>
       name: "gallery",
       level: "block",
-      start: (src: string) => src.match(/^ {0,3}<gallery>/im)?.index,
+      start: (src: string) => src.match(/^ {0,3}<gallery[\s>]/im)?.index,
       tokenizer(src: string) {
         const m = GALLERY.exec(src);
         if (!m) return undefined;
-        const items = parseGallery((m[1] ?? "").split("\n")).map((i) => ({ ...i, tokens: this.lexer.inlineTokens(i.caption) }));
-        return { type: "gallery", raw: m[0], items };
+        const items = parseGallery((m[2] ?? "").split("\n")).map((i) => ({ ...i, tokens: this.lexer.inlineTokens(i.caption) }));
+        return { type: "gallery", raw: m[0], items, spoiler: !!m[1] };
       },
       renderer(token) {
         const items = (token.items as { file: string; caption: string; tokens: Token[] }[]).map((i) => {
@@ -223,7 +266,49 @@ md.use({
             `</span>${caption ? `<figcaption>${caption}</figcaption>` : ""}</figure>`
           );
         });
-        return `<div class="wiki-gallery">${items.join("")}</div>\n`;
+        return `<div class="wiki-gallery${token.spoiler ? " spoiler spoiler-media" : ""}">${items.join("")}</div>\n`;
+      },
+    },
+    {
+      // <quote by="…" source="…"> quote text </quote>
+      name: "quoteBox",
+      level: "block",
+      start: (src: string) => src.match(/^ {0,3}<quote[\s>]/im)?.index,
+      tokenizer(src: string) {
+        const m = QUOTE_BLOCK.exec(src);
+        if (!m) return undefined;
+        const q = parseQuote(m[0]);
+        const paras = q.text.split(/\n[ \t]*\n/).map((p) => this.lexer.inlineTokens(p.trim())).filter((p) => p.length);
+        return { type: "quoteBox", raw: m[0], paras, by: this.lexer.inlineTokens(q.by), source: this.lexer.inlineTokens(q.source) };
+      },
+      renderer(token) {
+        const paras = (token.paras as Token[][]).map((p) => `<p>${this.parser.parseInline(p)}</p>`).join("");
+        const by = this.parser.parseInline(token.by as Token[]);
+        const source = this.parser.parseInline(token.source as Token[]);
+        const credit = [by, source && `<cite>${source}</cite>`].filter(Boolean).join(", ");
+        return (
+          `<figure class="quote-box"><blockquote class="quote-text">${paras}</blockquote>` +
+          (credit ? `<figcaption class="quote-by">— ${credit}</figcaption>` : "") +
+          `</figure>\n`
+        );
+      },
+    },
+    {
+      // ||hidden text||
+      name: "spoiler",
+      level: "inline",
+      start: (src: string) => {
+        const i = src.indexOf("||");
+        return i < 0 ? undefined : i;
+      },
+      tokenizer(src: string) {
+        const m = SPOILER_AT_START.exec(src);
+        if (!m) return undefined;
+        return { type: "spoiler", raw: m[0], tokens: this.lexer.inlineTokens(m[1]) };
+      },
+      renderer(token) {
+        const key = state.heading ? `h:${state.heading.id}:${state.heading.n++}` : undefined;
+        return spoilerHtml(this.parser.parseInline(token.tokens!), false, key);
       },
     },
     {
@@ -340,7 +425,7 @@ export function renderPage(
       if (!state.numbers.has(label)) state.numbers.set(label, state.numbers.size + 1);
     }
     const id = uniqueId(slugify(NOTES_HEADING));
-    state.headings.push({ id, level: 2, text: NOTES_HEADING });
+    state.headings.push({ id, level: 2, text: NOTES_HEADING, parts: [{ text: NOTES_HEADING, spoiler: false }] });
     const items = [...state.numbers]
       .filter(([label]) => state.notes.has(label))
       .sort((a, b) => a[1] - b[1])
@@ -389,8 +474,14 @@ export function buildToc(headings: Heading[]): TocEntry[] {
     const top = stack[stack.length - 1];
     if (top && top.level === h.level) top.n++;
     else stack.push({ level: h.level, n: 1 });
-    return { id: h.id, text: h.text, number: stack.map((s) => s.n).join("."), depth: stack.length - 1 };
+    return { id: h.id, text: h.text, parts: h.parts, number: stack.map((s) => s.n).join("."), depth: stack.length - 1 };
   });
+}
+
+/** A Contents entry's text, its spoilers hidden (they share keys with the heading's). */
+export function partsHtml(e: TocEntry): string {
+  let n = 0;
+  return e.parts.map((p) => (p.spoiler ? spoilerHtml(escapeHtml(p.text), false, `h:${e.id}:${n++}`) : escapeHtml(p.text))).join("");
 }
 
 function tocBox(toc: TocEntry[]): string {
@@ -398,7 +489,7 @@ function tocBox(toc: TocEntry[]): string {
     .map(
       (e) =>
         `<li class="toc-depth-${Math.min(e.depth, 5)}"><a href="#${encodeURIComponent(e.id)}">` +
-        `<span class="toc-number">${e.number}</span> ${escapeHtml(e.text)}</a></li>`,
+        `<span class="toc-number">${e.number}</span> ${partsHtml(e)}</a></li>`,
     )
     .join("");
   return `<details class="toc" open><summary>Contents</summary><ol>${items}</ol></details>\n`;
@@ -410,7 +501,12 @@ export function plainText(source: string): string {
   const walk = (tokens: Token[]) => {
     for (const t of tokens) {
       if (["html", "space", "hr", "def", "footnoteRef", "wikiImage", "gallery"].includes(t.type)) continue;
-      if (t.type === "table") {
+      if (t.type === "quoteBox") {
+        for (const p of [...(t.paras as Token[][]), t.by as Token[], t.source as Token[]]) {
+          walk(p);
+          parts.push(" ");
+        }
+      } else if (t.type === "table") {
         for (const cell of [...t.header, ...t.rows.flat()]) {
           walk(cell.tokens);
           parts.push(" ");

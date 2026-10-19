@@ -1,6 +1,7 @@
 //! Page links (`[[Page]]`, `[[Page|shown]]`, `[[Page#Section]]`, `[[#Section]]`)
 //! and the bits of Markdown the link index needs: headings with their section
-//! anchors, and opening paragraphs for hover previews.
+//! anchors, opening paragraphs for hover previews, images, spoilers
+//! (`||hidden||`, see src/spoilers.ts) and quote boxes (src/quotes.ts).
 //!
 //! The TypeScript renderer (src/markdown.ts) parses the same syntax; both run
 //! the cases in shared-tests/links.json so they can't disagree.
@@ -73,6 +74,35 @@ pub fn has_link_chars(name: &str) -> bool {
 /// `File:…` names an image (`[[File:Name.png|…]]`), not a page.
 pub fn is_file_name(name: &str) -> bool {
     name.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("file:"))
+}
+
+/// A spoiler `||…||` starting at byte `i` of `text`: the end (after the
+/// closing `||`). Same rule as `SPOILER_AT_START` in src/spoilers.ts: the first
+/// character isn't `|` or a space, the text doesn't end in `\`, one line only.
+pub fn spoiler_at(text: &str, i: usize) -> Option<usize> {
+    let rest = text.get(i..)?.strip_prefix("||")?;
+    let first = rest.chars().next()?;
+    if first == '|' || first.is_whitespace() {
+        return None;
+    }
+    let start = i + 2;
+    let mut j = start + first.len_utf8();
+    loop {
+        let b = text.as_bytes();
+        match text[j..].find(['|', '\n']) {
+            None => return None,
+            Some(k) => {
+                j += k;
+                if b[j] == b'\n' {
+                    return None;
+                }
+                if text[j..].starts_with("||") && (j == start + first.len_utf8() || b[j - 1] != b'\\') {
+                    return Some(j + 2);
+                }
+                j += 1;
+            }
+        }
+    }
 }
 
 // ---- scanning ----
@@ -288,8 +318,23 @@ fn image_file(inner: &str) -> String {
     name[..end].trim_end_matches('\\').trim().to_string()
 }
 
-fn gallery_open(line: &str) -> bool {
-    line.trim().eq_ignore_ascii_case("<gallery>")
+/// `<gallery>`, or `<gallery spoiler>` (blurred until clicked): Some(spoiler).
+fn gallery_open(line: &str) -> Option<bool> {
+    let t = line.trim().to_ascii_lowercase();
+    let inner = t.strip_prefix("<gallery")?.strip_suffix('>')?;
+    match inner.trim() {
+        "" if inner.is_empty() => Some(false),
+        "spoiler" if inner.starts_with(char::is_whitespace) => Some(true),
+        _ => None,
+    }
+}
+
+fn quote_open(line: &str) -> bool {
+    line.trim().eq_ignore_ascii_case("<quote>")
+}
+
+fn quote_close(line: &str) -> bool {
+    line.trim().eq_ignore_ascii_case("</quote>")
 }
 
 fn gallery_close(line: &str) -> bool {
@@ -324,6 +369,8 @@ fn images_in_line(line: &str, mut f: impl FnMut(usize, usize, &str)) {
 }
 
 /// Every image file used in the page text and its galleries, in order (code skipped).
+/// (For health reports, M10.)
+#[allow(dead_code)]
 pub fn images(body: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut in_gallery = false;
@@ -339,7 +386,7 @@ pub fn images(body: &str) -> Vec<String> {
                     out.push(file.to_string());
                 }
             }
-        } else if gallery_open(line) {
+        } else if gallery_open(line).is_some() {
             in_gallery = true;
         } else {
             images_in_line(line, |_, _, inner| {
@@ -351,6 +398,45 @@ pub fn images(body: &str) -> Vec<String> {
         }
     });
     out
+}
+
+/// Is `[[File:…|…|spoiler|…]]` (its inside) marked as a spoiler?
+fn image_is_spoiler(inner: &str) -> bool {
+    // Option words sit between `|`s before the caption; links in the caption can't say "spoiler" on their own.
+    inner.split('|').skip(1).any(|p| p.trim_end_matches('\\').trim().eq_ignore_ascii_case("spoiler"))
+}
+
+/// The first image in the text that isn't a spoiler (hover cards show it).
+pub fn first_shown_image(body: &str) -> Option<String> {
+    let mut found: Option<String> = None;
+    let mut gallery: Option<bool> = None;
+    text_lines(body, |_, _, line| {
+        if found.is_some() {
+            return;
+        }
+        if let Some(spoiler) = gallery {
+            if gallery_close(line) {
+                gallery = None;
+            } else if !spoiler && !line.trim().is_empty() {
+                let t = line.trim();
+                let t = if is_file_name(t) { &t[5..] } else { t };
+                let file = t.split('|').next().unwrap_or("").trim();
+                if !file.is_empty() {
+                    found = Some(file.to_string());
+                }
+            }
+        } else if let Some(spoiler) = gallery_open(line) {
+            gallery = Some(spoiler);
+        } else {
+            images_in_line(line, |_, _, inner| {
+                let file = image_file(inner);
+                if found.is_none() && !file.is_empty() && !image_is_spoiler(inner) {
+                    found = Some(file);
+                }
+            });
+        }
+    });
+    found
 }
 
 /// A line without its images (for hover previews).
@@ -461,6 +547,12 @@ pub fn plain_inline(text: &str, footnotes: &HashSet<String>) -> String {
                         i += n;
                     }
                 }
+            }
+            '|' if spoiler_at(text, i).is_some() => {
+                // `||hidden||` shows its text (the markers go).
+                let end = spoiler_at(text, i).unwrap();
+                out.push_str(&plain_inline(&text[i + 2..end - 2], footnotes));
+                i = end;
             }
             '*' | '~' => i += 1,
             '_' => {
@@ -602,21 +694,43 @@ fn first_paragraph<'a>(lines: impl Iterator<Item = &'a str>, mut stop: impl FnMu
             cut = l.start;
         }
     }
+    // Nor inside a spoiler: half a spoiler would show its text.
+    let mut i = 0;
+    while let Some(p) = text[i..cut].find("||") {
+        let at = i + p;
+        match spoiler_at(&text, at) {
+            Some(end) if end > cut => {
+                cut = at;
+                break;
+            }
+            Some(end) => i = end,
+            None => i = at + 1,
+        }
+    }
     format!("{}…", text[..cut].trim_end())
 }
 
-/// Lines outside code and galleries, without their images (for previews).
+/// Lines outside code, galleries and quote boxes, without their images (for previews).
 fn code_free_lines(body: &str) -> Vec<(usize, String)> {
     let mut v = Vec::new();
     let mut in_gallery = false;
+    let mut in_quote = false;
     text_lines(body, |n, off, _| {
         let line = body[off..].split('\n').next().unwrap_or("").trim_end_matches('\r');
         if in_gallery {
             in_gallery = !gallery_close(line);
             return;
         }
-        if gallery_open(line) {
+        if in_quote {
+            in_quote = !quote_close(line);
+            return;
+        }
+        if gallery_open(line).is_some() {
             in_gallery = true;
+            return;
+        }
+        if quote_open(line) {
+            in_quote = true;
             return;
         }
         let stripped = strip_images(line);
@@ -725,6 +839,40 @@ mod tests {
         assert_eq!(summary("[[File:A.png|right|Cap]]\nFirst text."), "First text.");
         assert_eq!(summary("Some [[File:A.png|x [[B]]]] text."), "Some  text.");
         assert_eq!(summary("<gallery>\nA.png|Cap\n</gallery>\n\nAfter."), "After.");
+    }
+
+    #[test]
+    fn spoilers_found_like_the_renderer() {
+        fn ends(t: &str) -> Option<&str> {
+            spoiler_at(t, 0).map(|e| &t[..e])
+        }
+        assert_eq!(ends("||a|| b"), Some("||a||"));
+        assert_eq!(ends("||a b [[C|d]]|| e ||f||"), Some("||a b [[C|d]]||"));
+        assert_eq!(ends("|||a||"), None);
+        assert_eq!(ends("||a\nb||"), None);
+        assert_eq!(ends("||a\\|| b||"), Some("||a\\|| b||"));
+        assert_eq!(ends("|| a||"), None);
+        assert_eq!(ends("||é||"), Some("||é||"));
+    }
+
+    #[test]
+    fn previews_keep_spoilers_whole_and_skip_quotes() {
+        let long = format!("{} ||the hidden end of a long text|| after", "word ".repeat(117));
+        let s = summary(&long);
+        assert!(s.ends_with("word…") && !s.contains("||"), "{s}");
+        assert_eq!(summary("<quote>\nQuoted [[A]].\n<by>[[B]]</by>\n</quote>\n\nFirst text."), "First text.");
+        // Links in quote boxes still count.
+        let pages: Vec<String> = parse_links("<quote>\nQuoted [[A]].\n<by>[[B]]</by>\n</quote>").into_iter().map(|l| l.page).collect();
+        assert_eq!(pages, ["A", "B"]);
+    }
+
+    #[test]
+    fn hover_image_skips_spoilers() {
+        assert_eq!(first_shown_image("[[File:A.png|right|medium|spoiler|Cap]] [[File:B.png|left]]"), Some("B.png".into()));
+        assert_eq!(first_shown_image("<gallery spoiler>\nA.png\n</gallery>\n<gallery>\nC.png|x\n</gallery>"), Some("C.png".into()));
+        assert_eq!(first_shown_image("[[File:A.png|Spoiler [[B]] here]]"), Some("A.png".into()));
+        assert_eq!(first_shown_image("text"), None);
+        assert_eq!(images("<gallery spoiler>\nA.png\n</gallery>"), ["A.png"]);
     }
 
     #[test]

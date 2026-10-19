@@ -3,7 +3,7 @@
 // another project.
 import { useEffect, useMemo, useState } from "react";
 import { api, errorText, type ApplyResult, type ApplySummary, type ProjectInfo, type Template } from "./api";
-import { newTemplateId } from "./infobox";
+import { isLayout, newTemplateId } from "./infobox";
 import { displayGroup } from "./tree";
 import { norm } from "./wikilinks";
 
@@ -261,7 +261,7 @@ export function CopyTemplatesDialog({
                     onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, include: e.target.checked } : x)))}
                   />
                   <span>{r.template.name}</span>
-                  <span className="muted">{plural(r.template.fields.filter((f) => f.type !== "heading").length, "field")}</span>
+                  <span className="muted">{plural(r.template.fields.filter((f) => !isLayout(f.type)).length, "field")}</span>
                 </label>
                 {r.include && (problems[i] || r.name !== r.template.name) && (
                   <div className="copy-rename">

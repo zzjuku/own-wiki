@@ -4,7 +4,7 @@
   line-height: 1.5;
   color: var(--text);
   background: var(--bg);
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 * {

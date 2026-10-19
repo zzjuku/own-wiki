@@ -157,6 +157,7 @@ Juku's answers (2026-10-20) are noted as (Juku).
 
 - Not in M7: spoiler levels per book (see Open items), embeds with parameters, embeds in infobox fields.
 - Checkpoint for Juku partway: always light, Contents panel, separator, Divider, quote box, spoilers everywhere incl. infobox toggle, images and Reveal all. Then: embeds.
+- **Progress (2026-10-20, checkpoint):** done and handed to Juku: always light (incl. title bar), Contents panel 190 px, Separator line button, Divider field (+ Add divider in templates and the Infobox tab), quote box (`<quote>` … `<by>` … `<source>` … `</quote>`, Quote box button and dialog), spoilers everywhere (Spoiler button + Cmd+Shift+S in all editors, per-field Spoiler toggle in the Infobox tab, spoiler images `|spoiler|` and `<gallery spoiler>`, Reveal spoilers button, global eye switch in the sidebar). Left: embeds, speed tests, diff review, Windows installer check. Open: Contents width and the look of spoilers/quote box at the checkpoint.
 - Done when: new features have Playwright UI tests and pass with the unit and Rust tests; screenshots check the new and changed screens; a page with 50 embeds opens without noticeable delay, renaming a page embedded on 1,000 pages finishes within a few seconds, a 5,000-page project still reopens in under 1 s after the index change; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
 
 ### How every milestone is written

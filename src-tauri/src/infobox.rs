@@ -15,6 +15,7 @@
 //!     type: date
 //!     options: { ranges: true }
 //!     value: { start: { year: 250, qualifier: c }, end: present }
+//!     spoiler: true             # pages only: the value is hidden until clicked
 //!   hidden:                     # values of fields that were removed, kept until restored or discarded
 //!   - label: Old field
 //!     type: text
@@ -33,7 +34,7 @@ use crate::wikilinks::{norm, parse_links, rewrite_links};
 // Field types (all of them are listed for reference; the Rust side only
 // needs to treat some specially).
 #[allow(dead_code)]
-pub const ALL_KINDS: &[&str] = &[TEXT, LONG_TEXT, NUMBER, YES_NO, CHOICE, LIST, LINK, LINKS, LINKED_FROM, DATE, IMAGE, HEADING];
+pub const ALL_KINDS: &[&str] = &[TEXT, LONG_TEXT, NUMBER, YES_NO, CHOICE, LIST, LINK, LINKS, LINKED_FROM, DATE, IMAGE, HEADING, DIVIDER];
 pub const TEXT: &str = "text";
 pub const LONG_TEXT: &str = "longtext";
 pub const NUMBER: &str = "number";
@@ -46,6 +47,8 @@ pub const LINKED_FROM: &str = "linkedfrom";
 pub const DATE: &str = "date";
 pub const IMAGE: &str = "image";
 pub const HEADING: &str = "heading";
+/// A thin line in the box with an optional label (the field's label); no value.
+pub const DIVIDER: &str = "divider";
 
 fn default_kind() -> String {
     TEXT.into()
@@ -83,6 +86,11 @@ pub struct Field {
 impl Field {
     fn has_value(&self) -> bool {
         self.value.as_ref().is_some_and(|v| !is_empty_value(v))
+    }
+
+    /// The page hides this field's value as a spoiler (`spoiler: true`, kept in `extra`).
+    pub fn is_spoiler(&self) -> bool {
+        self.extra.get("spoiler").and_then(Value::as_bool).unwrap_or(false)
     }
 
     fn definition_eq(&self, other: &Field) -> bool {
@@ -219,11 +227,12 @@ pub fn field_links(ib: &Infobox) -> Vec<FieldLink> {
     out
 }
 
-/// The file (inside `assets/`) of the first image field with an image.
+/// The file (inside `assets/`) of the first image field with an image that
+/// isn't a spoiler (hover cards show it).
 pub fn first_image(ib: &Infobox) -> Option<String> {
     ib.fields
         .iter()
-        .filter(|f| f.kind == IMAGE)
+        .filter(|f| f.kind == IMAGE && !f.is_spoiler())
         .filter_map(|f| f.value.as_ref()?.get("file")?.as_str())
         .map(str::trim)
         .find(|s| !s.is_empty())
@@ -462,6 +471,15 @@ mod tests {
         assert_eq!(ib.template.as_deref(), Some("t1"));
         assert_eq!(ib.color.as_deref(), Some("#123456"));
         assert_eq!(ib.fields, t.fields);
+    }
+
+    #[test]
+    fn first_image_skips_spoiler_fields() {
+        let mut a = field(Some("a"), "Picture A", IMAGE, Some(serde_json::json!({ "file": "a.png" })));
+        a.extra.insert("spoiler".into(), Value::Bool(true));
+        let b = field(Some("b"), "Picture B", IMAGE, Some(serde_json::json!({ "file": "b.png" })));
+        let ib = Infobox { template: None, color: None, own_color: false, fields: vec![a, b], hidden: vec![], extra: Map::new() };
+        assert_eq!(first_image(&ib), Some("b.png".into()));
     }
 
     #[test]

@@ -21,7 +21,7 @@ use crate::tree::{GroupInfo, PageInfo, is_page_file};
 use crate::wikilinks::{self, Heading};
 
 const CACHE_FILE: &str = "link-index.json";
-const CACHE_VERSION: u32 = 4;
+const CACHE_VERSION: u32 = 5;
 /// The cache is rewritten at most this often for small changes (a stale
 /// cache only costs re-reading the changed files at the next open).
 const CACHE_SAVE_INTERVAL: Duration = Duration::from_secs(10);
@@ -118,7 +118,7 @@ pub fn read_entry(path: &Path, file_name: &str) -> Option<Entry> {
         summary: wikilinks::summary(&body),
         template: infobox.as_ref().and_then(|ib| ib.template.clone()),
         field_links: infobox.as_ref().map(field_links).unwrap_or_default(),
-        image: infobox.as_ref().and_then(first_image).or_else(|| wikilinks::images(&body).into_iter().next()),
+        image: infobox.as_ref().and_then(first_image).or_else(|| wikilinks::first_shown_image(&body)),
         categories: meta_categories(&fm),
         sort: meta_sort(&fm),
     })

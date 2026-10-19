@@ -3,6 +3,7 @@
 // Nobody types this: the Image and Gallery buttons, drag and drop, paste and
 // the Edit image popup write it. The Rust side (src-tauri/src/wikilinks.rs)
 // finds the same images and the links in their captions.
+import { blockAround } from "./quotes";
 import { isFileName } from "./wikilinks";
 
 export type ImagePos = "right" | "left" | "center" | "full";
@@ -13,8 +14,10 @@ export interface TextImage {
   file: string;
   pos: ImagePos;
   size: ImageSize;
-  /** Inline Markdown (bold, italic, [[links]]). */
+  /** Inline Markdown (bold, italic, [[links]], ||spoilers||). */
   caption: string;
+  /** Blurred (and its caption hidden) until clicked. */
+  spoiler?: boolean;
 }
 
 export interface GalleryItem {
@@ -101,7 +104,9 @@ export function parseImage(inner: string): TextImage {
     const word = part.trim().toLowerCase();
     if (POS_WORDS[word]) img.pos = POS_WORDS[word];
     else if (SIZE_WORDS[word]) img.size = SIZE_WORDS[word];
-    else img.caption = part.trim();
+    else if (word === "spoiler") img.spoiler = true;
+    // A `|` in the caption is stored as `&#124;` (so `||spoilers||` work there too).
+    else img.caption = part.trim().replace(/&#124;/g, "|");
   }
   return img;
 }
@@ -156,14 +161,17 @@ function cleanCaption(caption: string, inTable: boolean): string {
 export function imageSource(img: TextImage, inTable = false): string {
   const pipe = inTable ? "\\|" : "|";
   const caption = cleanCaption(img.caption, inTable);
-  return `[[File:${img.file.trim()}${pipe}${img.pos}${pipe}${img.size}${caption ? pipe + caption : ""}]]`;
+  const spoiler = img.spoiler ? `${pipe}spoiler` : "";
+  return `[[File:${img.file.trim()}${pipe}${img.pos}${pipe}${img.size}${spoiler}${caption ? pipe + caption : ""}]]`;
 }
 
 export const newImage = (file: string): TextImage => ({ file, pos: "right", size: "medium", caption: "" });
 
 // ---- galleries ----
 
-export const GALLERY_OPEN = /^ {0,3}<gallery>[ \t]*$/i;
+export const GALLERY_OPEN = /^ {0,3}<gallery(\s+spoiler)?>[ \t]*$/i;
+/** A whole gallery at the start of the text: m[1] "spoiler", m[2] its lines. */
+export const GALLERY = /^ {0,3}<gallery(\s+spoiler)?>[ \t]*(?:\n([\s\S]*?))?\n {0,3}<\/gallery>[ \t]*(?:\n+|$)/i;
 export const GALLERY_CLOSE = /^ {0,3}<\/gallery>[ \t]*$/i;
 
 /** The images of a gallery, from the lines between its tags. */
@@ -180,28 +188,13 @@ export function parseGallery(lines: string[]): GalleryItem[] {
   return items;
 }
 
-export function gallerySource(items: GalleryItem[]): string {
+export function gallerySource(items: GalleryItem[], spoiler = false): string {
   const lines = items.map((i) => {
     const caption = i.caption.replace(/\s*\r?\n\s*/g, " ").trim();
     return caption ? `${i.file}|${caption}` : i.file;
   });
-  return ["<gallery>", ...lines, "</gallery>"].join("\n");
+  return [spoiler ? "<gallery spoiler>" : "<gallery>", ...lines, "</gallery>"].join("\n");
 }
 
 /** The gallery whose lines include line `n` (0-based) of `lines`: its first and last line. */
-export function galleryAround(lines: string[], n: number): { start: number; end: number } | null {
-  let start = -1;
-  for (let i = n; i >= 0; i--) {
-    if (GALLERY_CLOSE.test(lines[i]) && i !== n) return null;
-    if (GALLERY_OPEN.test(lines[i])) {
-      start = i;
-      break;
-    }
-  }
-  if (start < 0) return null;
-  for (let i = start + 1; i < lines.length; i++) {
-    if (GALLERY_OPEN.test(lines[i])) return null;
-    if (GALLERY_CLOSE.test(lines[i])) return i >= n ? { start, end: i } : null;
-  }
-  return null;
-}
+export const galleryAround = (lines: string[], n: number) => blockAround(lines, n, GALLERY_OPEN, GALLERY_CLOSE);

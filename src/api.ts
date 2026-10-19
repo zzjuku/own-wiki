@@ -89,7 +89,8 @@ export type FieldKind =
   | "linkedfrom"
   | "date"
   | "image"
-  | "heading";
+  | "heading"
+  | "divider";
 
 /** A field definition, and on pages its value. See src-tauri/src/infobox.rs. */
 export interface Field {
@@ -101,6 +102,8 @@ export interface Field {
   /** choices (choice), twoWay (link, links), from (linkedfrom), ranges (date). */
   options?: FieldOptions;
   value?: unknown;
+  /** Pages only: the value is hidden as a spoiler until clicked. */
+  spoiler?: boolean;
   [extra: string]: unknown;
 }
 

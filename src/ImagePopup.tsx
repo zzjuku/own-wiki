@@ -118,6 +118,10 @@ export function ImagePopup({ image, pageId, at, change, remove, close }: Props) 
           ))}
         </div>
       </div>
+      <label className="check image-spoiler">
+        <input type="checkbox" checked={!!img.spoiler} onChange={(e) => set({ spoiler: e.target.checked || undefined })} />
+        <span>Spoiler: blurred until clicked</span>
+      </label>
       {error && <p className="link-missing">{error}</p>}
       <div className="link-actions">
         <button type="button" onClick={() => void replace()}>

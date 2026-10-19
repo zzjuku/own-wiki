@@ -17,7 +17,8 @@ import { IS_MAC } from "./QuickOpen";
 import { editedLink, shownText, type WikiLink } from "./wikilinks";
 import { toggleHeading, toggleInline, toggleList } from "./formatting";
 import { PagePicker } from "./QuickOpen";
-import { highlight, Icon, popupTheme } from "./SplitEditor";
+import { highlight, Icon, popupTheme, spoilerMarks } from "./editorTheme";
+import { toggleSpoiler } from "./spoilers";
 import { useWiki } from "./wiki";
 import { categoryOf } from "./categories";
 
@@ -87,6 +88,7 @@ export function MiniEditor({ value, onChange, multiline, placeholder, pageId, to
       { key: "Mod-b", run: cmd(toggleInline("bold")) },
       { key: "Mod-i", run: cmd(toggleInline("italic")) },
       { key: "Mod-Shift-x", run: cmd(toggleInline("strike")) },
+      { key: "Mod-Shift-s", run: cmd(toggleSpoiler), preventDefault: true },
       { key: "Mod-Shift-z", run: redo, preventDefault: true },
       {
         key: "Mod-k",
@@ -118,6 +120,7 @@ export function MiniEditor({ value, onChange, multiline, placeholder, pageId, to
       editorLinks,
       autocompletion({ override: [linkCompletions], icons: false, maxRenderedOptions: 30 }),
       syntaxHighlighting(highlight),
+      spoilerMarks,
       miniTheme,
       popupTheme,
       placeholder ? placeholderExt(placeholder) : [],
@@ -225,6 +228,9 @@ export function MiniEditor({ value, onChange, multiline, placeholder, pageId, to
           <button type="button" className="tool" title="Italic" onClick={() => run(toggleInline("italic"))}>
             <i>I</i>
           </button>
+          <button type="button" className="tool" title={`Spoiler: hidden until clicked (${MOD}⇧S)`} aria-label="Spoiler" onClick={() => run(toggleSpoiler)}>
+            <Icon name="spoiler" />
+          </button>
           <button type="button" className="tool" title="Bulleted list" onClick={() => run(toggleList(false))}>
             • List
           </button>
@@ -242,6 +248,15 @@ export function MiniEditor({ value, onChange, multiline, placeholder, pageId, to
             </button>
             <button type="button" className="tool" title={`Italic (${MOD}I)`} aria-label="Italic" onClick={() => run(toggleInline("italic"))}>
               <i>I</i>
+            </button>
+            <button
+              type="button"
+              className="tool"
+              title={`Spoiler: hidden until clicked (${MOD}${IS_MAC ? "⇧" : "Shift+"}S) — select words first`}
+              aria-label="Spoiler"
+              onClick={() => run(toggleSpoiler)}
+            >
+              <Icon name="spoiler" />
             </button>
             <button
               type="button"

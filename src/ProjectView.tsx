@@ -11,6 +11,8 @@ import { useReportError } from "./notify";
 import { PageView } from "./PageView";
 import { IS_MAC, isQuickOpenKey, QuickOpen, QUICK_OPEN_KEYS } from "./QuickOpen";
 import { DEFAULT_FRAME, WikiContext, type FollowTarget, type Wiki } from "./wiki";
+import { Icon } from "./editorTheme";
+import { useGlobalReveal } from "./spoilers";
 import { Sidebar, type MenuItem } from "./Sidebar";
 import { TemplatesView, useTemplates } from "./TemplatesView";
 import {
@@ -107,6 +109,8 @@ export function ProjectView({ project, onBack }: Props) {
   const [imageFrame, setImageFrameState] = useState<Frame>(DEFAULT_FRAME);
   const [settings, setSettings] = useState<ProjectSettings>({ hideCategoryBox: false });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Show every spoiler everywhere (this computer only).
+  const [revealAll, setRevealAll] = useGlobalReveal();
   useEffect(() => {
     api.getImageFrame(project.id).then(setImageFrameState, () => {});
     api.getProjectSettings(project.id).then(setSettings, () => {});
@@ -685,7 +689,7 @@ export function ProjectView({ project, onBack }: Props) {
 
   return (
     <WikiContext.Provider value={wiki}>
-    <div className="project">
+    <div className={`project ${revealAll ? "reveal-spoilers" : ""}`}>
       <aside className="sidebar">
         <div className="sidebar-top">
           <button className="plain back" onClick={back}>
@@ -730,6 +734,15 @@ export function ProjectView({ project, onBack }: Props) {
           >
             {project.name}
           </h1>
+          <button
+            className={`plain nav spoiler-switch ${revealAll ? "active" : ""}`}
+            title={revealAll ? "Spoilers are shown everywhere. Click to hide them again." : "Show all spoilers everywhere (remembered on this computer)"}
+            aria-label="Show all spoilers"
+            aria-pressed={revealAll}
+            onClick={() => setRevealAll(!revealAll)}
+          >
+            <Icon name={revealAll ? "eye" : "spoiler"} />
+          </button>
           <button className="plain nav" title="Project settings" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
             <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <circle cx="8" cy="8" r="2.2" className="stroke" />
@@ -740,6 +753,11 @@ export function ProjectView({ project, onBack }: Props) {
             </svg>
           </button>
         </div>
+        {revealAll && (
+          <button className="spoilers-shown" title="Click to hide spoilers again" onClick={() => setRevealAll(false)}>
+            Spoilers shown everywhere · Hide
+          </button>
+        )}
         <div className="row">
           <button
             className="primary grow"

@@ -5,10 +5,9 @@ import { autocompletion } from "@codemirror/autocomplete";
 import { EditorState, Prec, type Extension, type StateCommand } from "@codemirror/state";
 import { EditorView, drawSelection, keymap, placeholder, type Command } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { syntaxHighlighting } from "@codemirror/language";
 import { deleteMarkupBackward, insertNewlineContinueMarkupCommand, markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { search, searchKeymap } from "@codemirror/search";
-import { tags as t } from "@lezer/highlight";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   activeFormats,
@@ -32,7 +31,11 @@ import { LinkPopup } from "./LinkPopup";
 import { chooseTextImages, ImagePopup } from "./ImagePopup";
 import { GalleryDialog } from "./GalleryDialog";
 import { useFileDrop } from "./dropFiles";
-import { galleryAround, gallerySource, hasExtension, imageSource, newImage, parseGallery, TEXT_IMAGE_EXTENSIONS, type GalleryItem, type TextImage } from "./images";
+import { GALLERY_OPEN, galleryAround, gallerySource, hasExtension, imageSource, newImage, parseGallery, TEXT_IMAGE_EXTENSIONS, type GalleryItem, type TextImage } from "./images";
+import { highlight, Icon, popupTheme, spoilerMarks, theme } from "./editorTheme";
+import { parseQuote, quoteAround, quoteSource, type Quote } from "./quotes";
+import { QuoteDialog } from "./QuoteDialog";
+import { toggleSpoiler } from "./spoilers";
 import { useReportError } from "./notify";
 import { categoryOf } from "./categories";
 import { editedLink, shownText, type WikiLink } from "./wikilinks";
@@ -88,11 +91,13 @@ const TOOLS: (Tool | "|")[] = [
   { id: "bold", label: <b>B</b>, title: `Bold (${MOD}B)`, run: cmd(toggleInline("bold")), active: (f) => f.bold },
   { id: "italic", label: <i>I</i>, title: `Italic (${MOD}I)`, run: cmd(toggleInline("italic")), active: (f) => f.italic },
   { id: "strike", label: <s>S</s>, title: `Strikethrough (${MOD}${SHIFT}X)`, run: cmd(toggleInline("strike")), active: (f) => f.strike },
+  { id: "spoiler", label: <Icon name="spoiler" />, title: `Spoiler: hidden until clicked (${MOD}${SHIFT}S)`, run: cmd(toggleSpoiler) },
   "|",
   { id: "bullet", label: <Icon name="bullet" />, title: `Bulleted list (${MOD}${SHIFT}8)`, run: cmd(toggleList(false)), active: (f) => f.bullet },
   { id: "ordered", label: <Icon name="ordered" />, title: `Numbered list (${MOD}${SHIFT}7)`, run: cmd(toggleList(true)), active: (f) => f.ordered },
-  { id: "quote", label: <Icon name="quote" />, title: "Quote", run: cmd(toggleQuote()), active: (f) => f.quote },
-  { id: "divider", label: <Icon name="divider" />, title: "Divider line", run: cmd(insertDivider) },
+  { id: "quote", label: <Icon name="quote" />, title: "Indented quote", run: cmd(toggleQuote()), active: (f) => f.quote },
+  { id: "quotebox", label: <Icon name="quotebox" />, title: "Quote box (quote, by, source)", run: () => true },
+  { id: "divider", label: <Icon name="divider" />, title: "Separator line", run: cmd(insertDivider) },
   "|",
   { id: "table", label: <Icon name="table" />, title: "Insert table", run: () => true },
   { id: "footnote", label: <Icon name="footnote" />, title: "Footnote", run: cmd(insertFootnote) },
@@ -147,6 +152,7 @@ const formatKeymap = [
   { key: "Mod-b", run: cmd(toggleInline("bold")) },
   { key: "Mod-i", run: cmd(toggleInline("italic")) },
   { key: "Mod-Shift-x", run: cmd(toggleInline("strike")) },
+  { key: "Mod-Shift-s", run: cmd(toggleSpoiler), preventDefault: true },
   { key: "Mod-Alt-1", run: cmd(toggleHeading(2)) },
   { key: "Mod-Alt-2", run: cmd(toggleHeading(3)) },
   { key: "Mod-Alt-3", run: cmd(toggleHeading(4)) },
@@ -162,62 +168,6 @@ const formatKeymap = [
   // Tab outside a list does nothing (rather than leaving the editor).
   { key: "Tab", run: () => true, shift: () => true },
 ];
-
-export const highlight = HighlightStyle.define([
-  { tag: t.heading1, fontSize: "1.55em", fontWeight: "700" },
-  { tag: t.heading2, fontSize: "1.4em", fontWeight: "700" },
-  { tag: t.heading3, fontSize: "1.22em", fontWeight: "700" },
-  { tag: t.heading4, fontSize: "1.1em", fontWeight: "700" },
-  { tag: [t.heading5, t.heading6], fontWeight: "700" },
-  { tag: t.strong, fontWeight: "700" },
-  { tag: t.emphasis, fontStyle: "italic" },
-  { tag: t.strikethrough, textDecoration: "line-through" },
-  { tag: [t.link, t.url], color: "var(--link)" },
-  { tag: t.quote, color: "var(--editor-quote)" },
-  { tag: [t.processingInstruction, t.contentSeparator, t.meta], color: "var(--editor-mark)" },
-  { tag: t.monospace, fontFamily: "var(--font-mono)" },
-]);
-
-export const theme = EditorView.theme({
-  "&": { height: "100%", fontSize: "var(--editor-font-size)", color: "var(--text)", backgroundColor: "var(--bg)" },
-  "&.cm-focused": { outline: "none" },
-  ".cm-scroller": { fontFamily: "var(--font-body)", lineHeight: "1.6" },
-  ".cm-content": { padding: "var(--editor-padding)", caretColor: "var(--text)" },
-  ".cm-line": { padding: "0" },
-  ".cm-cursor": { borderLeftColor: "var(--text)" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
-    backgroundColor: "var(--selection) !important",
-  },
-  ".cm-placeholder": { color: "var(--muted)" },
-});
-
-/** Link suggestions (also used by the small field editors). */
-export const popupTheme = EditorView.theme({
-  // Link suggestions
-  ".cm-tooltip": {
-    backgroundColor: "var(--bg)",
-    color: "var(--text)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius)",
-    boxShadow: "var(--shadow)",
-    overflow: "hidden",
-  },
-  ".cm-tooltip.cm-tooltip-autocomplete > ul": {
-    fontFamily: "var(--font-ui)",
-    fontSize: "var(--text-md)",
-    maxHeight: "18em",
-    minWidth: "260px",
-    maxWidth: "min(560px, 80vw)",
-  },
-  ".cm-tooltip.cm-tooltip-autocomplete > ul > li": { padding: "4px 10px", lineHeight: "1.4" },
-  ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-text)",
-  },
-  ".cm-completionDetail": { color: "var(--muted)", fontStyle: "normal", marginLeft: "1.2em", fontSize: "var(--text-sm)" },
-  ".cm-tooltip-autocomplete li[aria-selected] .cm-completionDetail": { color: "inherit", opacity: "0.8" },
-  ".cm-completionMatchedText": { textDecoration: "none", fontWeight: "600" },
-});
 
 const SPLIT_KEY = "ownwiki.editorSplit";
 const PREVIEW_KEY = "ownwiki.previewHidden";
@@ -268,7 +218,9 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
   const imagePopupRef = useRef(imagePopup);
   imagePopupRef.current = imagePopup;
   // The gallery dialog: a new gallery, or the one on lines `range` (0-based).
-  const [gallery, setGallery] = useState<{ range: { start: number; end: number } | null; items: GalleryItem[] } | null>(null);
+  const [gallery, setGallery] = useState<{ range: { start: number; end: number } | null; items: GalleryItem[]; spoiler: boolean } | null>(null);
+  // The quote box dialog: a new quote box, or the one on lines `range`.
+  const [quote, setQuote] = useState<{ range: { start: number; end: number } | null; quote: Quote } | null>(null);
   const insertImagesRef = useRef<(files: string[], at?: number) => void>(() => {});
   const pasteImagesRef = useRef<(files: File[]) => void>(() => {});
   const openLinkPickerRef = useRef(() => {});
@@ -316,6 +268,7 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
       editorLinks,
       autocompletion({ override: [linkCompletions], icons: false, maxRenderedOptions: 50 }),
       syntaxHighlighting(highlight),
+      spoilerMarks,
       search({ top: true }),
       placeholder("Start writing…"),
       EditorState.phrases.of({
@@ -385,8 +338,14 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
             if (ip && (sel.head < ip.from || sel.head > ip.to)) setImagePopup(null);
             if (clicked && sel.empty) {
               const lines = u.state.doc.toString().split("\n");
-              const range = galleryAround(lines, u.state.doc.lineAt(sel.head).number - 1);
-              if (range) setGallery({ range, items: parseGallery(lines.slice(range.start + 1, range.end)) });
+              const n = u.state.doc.lineAt(sel.head).number - 1;
+              const range = galleryAround(lines, n);
+              if (range) {
+                const spoiler = !!GALLERY_OPEN.exec(lines[range.start])?.[1];
+                setGallery({ range, items: parseGallery(lines.slice(range.start + 1, range.end)), spoiler });
+              }
+              const q = range ? null : quoteAround(lines, n);
+              if (q) setQuote({ range: q, quote: parseQuote(lines.slice(q.start + 1, q.end)) });
             }
           }
         }
@@ -507,23 +466,35 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
     tab === "text",
   );
 
-  /** Writes the gallery dialog's images into the text (new or replacing the edited gallery). */
-  function saveGallery(items: GalleryItem[] | null) {
+  /** Puts a block (gallery, quote box) into the text: new at the cursor,
+   * or replacing the lines `range`; `null` removes the block on `range`. */
+  function writeBlock(range: { start: number; end: number } | null, source: string | null) {
     const view = viewRef.current;
-    const g = gallery;
-    setGallery(null);
-    if (!view || !g) return;
-    if (!g.range) {
-      if (items) cmd(insertBlock(gallerySource(items)))(view);
+    if (!view) return;
+    if (!range) {
+      if (source) cmd(insertBlock(source))(view);
     } else {
       const doc = view.state.doc;
-      const from = doc.line(g.range.start + 1).from;
-      let to = doc.line(g.range.end + 1).to;
-      if (!items && to < doc.length) to++; // removing: take its line break too
-      const insert = items ? gallerySource(items) : "";
-      view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length }, userEvent: "input.gallery", scrollIntoView: true });
+      const from = doc.line(range.start + 1).from;
+      let to = doc.line(range.end + 1).to;
+      if (source === null && to < doc.length) to++; // removing: take its line break too
+      const insert = source ?? "";
+      view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length }, userEvent: "input.block", scrollIntoView: true });
     }
     view.focus();
+  }
+
+  /** Writes the gallery dialog's images into the text (new or replacing the edited gallery). */
+  function saveGallery(items: GalleryItem[] | null, spoiler = false) {
+    const g = gallery;
+    setGallery(null);
+    if (g) writeBlock(g.range, items ? gallerySource(items, spoiler) : null);
+  }
+
+  function saveQuote(q: Quote | null) {
+    const open = quote;
+    setQuote(null);
+    if (open) writeBlock(open.range, q ? quoteSource(q) : null);
   }
 
   const textHtml = useMemo(() => renderPage(text, { lineAnchors: true, links }).html, [text, links]);
@@ -660,8 +631,10 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
                     : tool.id === "image"
                       ? void chooseImages()
                       : tool.id === "gallery"
-                        ? setGallery({ range: null, items: [] })
-                        : run(tool.run)
+                        ? setGallery({ range: null, items: [], spoiler: false })
+                        : tool.id === "quotebox"
+                          ? setQuote({ range: null, quote: { text: "", by: "", source: "" } })
+                          : run(tool.run)
               }
             >
               {tool.label}
@@ -809,10 +782,25 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
         <GalleryDialog
           pageId={pageId}
           initial={gallery.range ? gallery.items : undefined}
-          save={(items) => saveGallery(items)}
+          initialSpoiler={gallery.spoiler}
+          save={(items, spoiler) => saveGallery(items, spoiler)}
           remove={gallery.range ? () => saveGallery(null) : undefined}
           close={() => {
             setGallery(null);
+            viewRef.current?.focus();
+          }}
+        />
+      )}
+
+      {quote && (
+        <QuoteDialog
+          pageId={pageId}
+          initial={quote.quote}
+          isNew={!quote.range}
+          save={saveQuote}
+          remove={quote.range ? () => saveQuote(null) : undefined}
+          close={() => {
+            setQuote(null);
             viewRef.current?.focus();
           }}
         />
@@ -849,62 +837,5 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
         />
       )}
     </div>
-  );
-}
-
-const ICONS: Record<string, ReactNode> = {
-  bullet: (
-    <>
-      <circle cx="3" cy="4" r="1.3" />
-      <circle cx="3" cy="8" r="1.3" />
-      <circle cx="3" cy="12" r="1.3" />
-      <path d="M6.5 4h8M6.5 8h8M6.5 12h8" className="stroke" />
-    </>
-  ),
-  ordered: (
-    <>
-      <text x="0.6" y="5.6" fontSize="5.4" fontWeight="700">1</text>
-      <text x="0.6" y="13.6" fontSize="5.4" fontWeight="700">2</text>
-      <path d="M6.5 4h8M6.5 8h8M6.5 12h8" className="stroke" />
-    </>
-  ),
-  quote: <path d="M2.5 9.5c0-3 1.3-5 4-5.5M2.5 9.5h3v3h-3zM9 9.5c0-3 1.3-5 4-5.5M9 9.5h3v3H9z" className="stroke" />,
-  divider: <path d="M1.5 8h13M4 4h8M4 12h8" className="stroke thin" />,
-  table: (
-    <path
-      d="M2 3h12v10H2zM2 6.4h12M2 9.7h12M6 3v10M10 3v10"
-      className="stroke thin"
-    />
-  ),
-  footnote: (
-    <>
-      <path d="M2 12.5h7" className="stroke thin" />
-      <text x="9.6" y="7.4" fontSize="7" fontWeight="700">1</text>
-      <path d="M2 9h5" className="stroke thin" />
-    </>
-  ),
-  link: (
-    <path
-      d="M6.8 9.2a3 3 0 0 0 4.3 0l2.2-2.2a3 3 0 0 0-4.3-4.3l-1 1M9.2 6.8a3 3 0 0 0-4.3 0L2.7 9a3 3 0 0 0 4.3 4.3l1-1"
-      className="stroke"
-    />
-  ),
-  image: (
-    <>
-      <path d="M2 3h12v10H2z" className="stroke thin" />
-      <path d="m2.5 12 3.5-4 2.5 2.5 2-2 3 3.5" className="stroke thin" />
-      <circle cx="10.8" cy="5.8" r="1.2" />
-    </>
-  ),
-  gallery: <path d="M1.5 2.5h5.5v5H1.5zM9 2.5h5.5v5H9zM1.5 9h5.5v5H1.5zM9 9h5.5v5H9z" className="stroke thin" />,
-  undo: <path d="M5 3.5 2 6.5l3 3M2.5 6.5h7a4 4 0 0 1 0 8H7" className="stroke" />,
-  redo: <path d="m11 3.5 3 3-3 3M13.5 6.5h-7a4 4 0 0 0 0 8H9" className="stroke" />,
-};
-
-export function Icon({ name }: { name: string }) {
-  return (
-    <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-      {ICONS[name]}
-    </svg>
   );
 }
