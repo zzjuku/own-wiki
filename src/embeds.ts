@@ -1,6 +1,7 @@
 // Embeds: the content of another page shown inside this one (navboxes, item
 // cards, stat blocks), always its current content, never a copy. Looks
-// seamless; a small "open page" link shows on hover. Links inside an embed
+// seamless (a small "open page" link shows on hover), or as a collapsible box
+// with the page's title as a bar (AWOIAF navbox style). Links inside an embed
 // don't count as the host's links (the host's file only holds `{{Page}}`).
 // Embeds inside embeds work up to EMBED_DEPTH levels; loops and self-embeds
 // show a warning box. Syntax: src/embedSyntax.ts.
@@ -93,8 +94,18 @@ function embedHtml(call: EmbedCall, links: LinkContext, env: EmbedEnv | null, st
   } else {
     content = box(src.infobox) + render(src.body, { tocBox: false, links }, env, inner, counter).html;
   }
-  const open = `<a class="wikilink embed-open" href="#" data-page="${escapeHtml(id)}" data-target="${escapeHtml(title)}"${call.section ? ` data-section="${escapeHtml(call.section)}"` : ""}>${escapeHtml(title)} ↗</a>`;
-  return `<div class="embed" data-embed="${escapeHtml(id)}">${open}${ownIds(content, `e${++counter.n}-`)}</div>`;
+  const link = (cls: string, text: string) =>
+    `<a class="wikilink ${cls}" href="#" data-page="${escapeHtml(id)}" data-target="${escapeHtml(title)}"${call.section ? ` data-section="${escapeHtml(call.section)}"` : ""}>${text}</a>`;
+  const own = ownIds(content, `e${++counter.n}-`);
+  if (call.box) {
+    // Clicking the bar shows or hides the box; the title opens the page.
+    return (
+      `<details class="embed embed-box" data-embed="${escapeHtml(id)}"${call.box === "open" ? " open" : ""}>` +
+      `<summary class="embed-box-title">${link("embed-box-link", escapeHtml(title))}<span class="embed-box-toggle"></span></summary>` +
+      `<div class="embed-box-body">${own}</div></details>`
+    );
+  }
+  return `<div class="embed" data-embed="${escapeHtml(id)}">${link("embed-open", `${escapeHtml(title)} ↗`)}${own}</div>`;
 }
 
 /** Embedded HTML mustn't reuse the host's ids: headings lose theirs (they

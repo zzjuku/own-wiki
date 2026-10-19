@@ -1,6 +1,8 @@
 // Embed syntax: a line holding only `{{Page}}` (the whole page: infobox and
 // text), `{{Page#Section}}` (one section) or `{{Page|infobox}}` (only the
-// infobox). `[[ ]]` stays for links. Nobody types this: the Embed button and
+// infobox). Options after `|`: `infobox`, and `collapsible` or `collapsed`
+// (a box with a title bar and show/hide, starting open or closed), e.g.
+// `{{Page#Section|collapsed}}`. `[[ ]]` stays for links. Nobody types this: the Embed button and
 // the embed popup write it. The Rust side (src-tauri/src/wikilinks.rs,
 // `embed_line`) reads the same lines for the link index and renames.
 import { categoryOf } from "./categories";
@@ -12,6 +14,8 @@ export interface EmbedCall {
   section: string | null;
   /** Only the infobox. */
   infobox: boolean;
+  /** A collapsible box (AWOIAF navbox style), starting open or closed; null: seamless. */
+  box: "open" | "closed" | null;
 }
 
 /** A whole embed line at the start of the text (m[1]: what's inside the braces). */
@@ -21,16 +25,18 @@ export const EMBED_LINE = /^ {0,3}\{\{([^{}\n]+)\}\}[ \t]*$/;
 
 /** The inside of `{{…}}`; null when it isn't an embed. */
 export function parseEmbed(inner: string): EmbedCall | null {
-  const bar = inner.indexOf("|");
-  const target = bar < 0 ? inner : inner.slice(0, bar);
-  const option = bar < 0 ? null : inner.slice(bar + 1).trim().toLowerCase();
-  if (option !== null && option !== "infobox") return null;
+  const [target, ...rest] = inner.split("|");
+  const options = rest.map((o) => o.trim().toLowerCase());
+  if (options.some((o) => !OPTIONS.includes(o))) return null;
   const hash = target.indexOf("#");
   const page = (hash < 0 ? target : target.slice(0, hash)).trim();
   const section = hash < 0 ? null : target.slice(hash + 1).trim() || null;
   if (!page || isFileName(page) || categoryOf(page) !== null) return null;
-  return { page, section, infobox: option === "infobox" };
+  const box = options.includes("collapsed") ? "closed" : options.includes("collapsible") ? "open" : null;
+  return { page, section, infobox: options.includes("infobox"), box };
 }
+
+const OPTIONS = ["infobox", "collapsible", "collapsed"];
 
 /** The embed on a source line, if it is one. */
 export function embedOnLine(line: string): EmbedCall | null {
@@ -41,8 +47,9 @@ export function embedOnLine(line: string): EmbedCall | null {
 /** The source of an embed. */
 export function embedSource(e: EmbedCall): string {
   const page = e.page.replace(/[{}|#\n]/g, "").trim();
-  if (e.infobox) return `{{${page}|infobox}}`;
-  return e.section ? `{{${page}#${e.section.replace(/[{}|\n]/g, "").trim()}}}` : `{{${page}}}`;
+  const section = !e.infobox && e.section ? `#${e.section.replace(/[{}|\n]/g, "").trim()}` : "";
+  const options = [e.infobox ? "|infobox" : "", e.box === "closed" ? "|collapsed" : e.box === "open" ? "|collapsible" : ""].join("");
+  return `{{${page}${section}${options}}}`;
 }
 
 /** Pages a text embeds (as typed), skipping fenced code. */

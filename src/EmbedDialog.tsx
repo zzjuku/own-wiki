@@ -21,6 +21,7 @@ export function EmbedDialog({ initial, save, close }: Props) {
   const [mode, setMode] = useState<Mode>(initial?.infobox ? "infobox" : initial?.section ? "section" : "page");
   const [section, setSection] = useState(initial?.section ?? "");
   const [sections, setSections] = useState<Heading[]>([]);
+  const [box, setBox] = useState<EmbedCall["box"]>(initial?.box ?? null);
   const target = wiki.names.resolve(page);
 
   useEffect(() => {
@@ -45,7 +46,7 @@ export function EmbedDialog({ initial, save, close }: Props) {
         aria-label={initial ? "Change embed" : "Embed a page"}
         onSubmit={(e) => {
           e.preventDefault();
-          if (ok) save({ page: page.trim(), section: mode === "section" ? section.trim() : null, infobox: mode === "infobox" });
+          if (ok) save({ page: page.trim(), section: mode === "section" ? section.trim() : null, infobox: mode === "infobox", box });
         }}
         onKeyDown={(e) => e.key === "Escape" && close()}
       >
@@ -84,6 +85,23 @@ export function EmbedDialog({ initial, save, close }: Props) {
             <span>Infobox only</span>
           </label>
         </fieldset>
+        <fieldset className="embed-modes">
+          <legend>Look</legend>
+          <label className="check">
+            <input type="radio" name="look" checked={box === null} onChange={() => setBox(null)} />
+            <span>Seamless: part of the page</span>
+          </label>
+          <label className="check">
+            <input type="radio" name="look" checked={box !== null} onChange={() => setBox("open")} />
+            <span>Collapsible box with a title bar (show / hide)</span>
+          </label>
+          {box !== null && (
+            <select className="embed-section" aria-label="Box starts" value={box} onChange={(e) => setBox(e.target.value as "open" | "closed")}>
+              <option value="open">Starts open</option>
+              <option value="closed">Starts closed</option>
+            </select>
+          )}
+        </fieldset>
         <div className="dialog-actions">
           <button type="button" onClick={close}>
             Cancel
@@ -115,7 +133,9 @@ export function EmbedPopup({
 }) {
   const wiki = useWiki();
   const exists = !!wiki.names.resolve(call.page);
-  const what = call.infobox ? "its infobox" : call.section ? `section “${call.section}”` : "the whole page";
+  const what =
+    (call.infobox ? "its infobox" : call.section ? `section “${call.section}”` : "the whole page") +
+    (call.box === "closed" ? ", in a box that starts closed" : call.box === "open" ? ", in a collapsible box" : "");
   return (
     <div
       className="link-popup embed-popup"

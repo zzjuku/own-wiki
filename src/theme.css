@@ -87,6 +87,10 @@
   --spoiler-label-text: #ffffff;
   --quote-mark: #b0b5bb;
   --embed-hover: rgb(47 95 208 / 0.05);
+  --navbox-bg: var(--infobox-bg);
+  --navbox-border: var(--infobox-border);
+  --navbox-title-bg: var(--infobox-header-bg);
+  --navbox-title-text: var(--infobox-header-text);
 
   /* Fonts */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;

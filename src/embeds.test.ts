@@ -27,13 +27,17 @@ const doc = (src: string, e: EmbedEnv | null = env()) => new DOMParser().parseFr
 
 describe("embed syntax", () => {
   it("reads and writes the three kinds", () => {
-    expect(parseEmbed("Page A")).toEqual({ page: "Page A", section: null, infobox: false });
-    expect(parseEmbed(" Page A # Part one ")).toEqual({ page: "Page A", section: "Part one", infobox: false });
-    expect(parseEmbed("Page A|Infobox")).toEqual({ page: "Page A", section: null, infobox: true });
+    expect(parseEmbed("Page A")).toEqual({ page: "Page A", section: null, infobox: false, box: null });
+    expect(parseEmbed(" Page A # Part one ")).toEqual({ page: "Page A", section: "Part one", infobox: false, box: null });
+    expect(parseEmbed("Page A|Infobox")).toEqual({ page: "Page A", section: null, infobox: true, box: null });
+    expect(parseEmbed("Page A#S|collapsed")).toEqual({ page: "Page A", section: "S", infobox: false, box: "closed" });
+    expect(parseEmbed("Page A|infobox|collapsible")?.box).toBe("open");
     expect(parseEmbed("Page A|other")).toBeNull();
     expect(parseEmbed("Category:X")).toBeNull();
-    expect(embedSource({ page: "Page A", section: "Part one", infobox: false })).toBe("{{Page A#Part one}}");
-    expect(embedSource({ page: "Page A", section: null, infobox: true })).toBe("{{Page A|infobox}}");
+    expect(embedSource({ page: "Page A", section: "Part one", infobox: false, box: null })).toBe("{{Page A#Part one}}");
+    expect(embedSource({ page: "Page A", section: null, infobox: true, box: null })).toBe("{{Page A|infobox}}");
+    expect(embedSource({ page: "Page A", section: "S", infobox: false, box: "closed" })).toBe("{{Page A#S|collapsed}}");
+    expect(embedSource({ page: "Page A", section: null, infobox: true, box: "open" })).toBe("{{Page A|infobox|collapsible}}");
     expect(embedOnLine("  {{Page A}} ")?.page).toBe("Page A");
     expect(embedOnLine("text {{Page A}}")).toBeNull();
     expect(embedTargets("{{A}}\n```\n{{B}}\n```\n{{C#x}}")).toEqual(["A", "C"]);
@@ -88,6 +92,14 @@ describe("embeds", () => {
     expect(deep.querySelector(".embed-warning")?.textContent).toContain("5 levels");
   });
 
+  it("can be a collapsible box with a title bar", () => {
+    const closed = doc("{{Page A|collapsed}}").querySelector("details.embed-box")!;
+    expect(closed.hasAttribute("open")).toBe(false);
+    expect(closed.querySelector("summary a.wikilink")?.getAttribute("data-page")).toBe("A.md");
+    expect(closed.querySelector(".embed-box-body")?.textContent).toContain("Text of A");
+    expect(doc("{{Page A#Part two|collapsible}}").querySelector("details.embed-box")?.hasAttribute("open")).toBe(true);
+  });
+
   it("shows a red box for a missing page and waits for content", () => {
     const m = doc("{{Page Z}}").querySelector("a.embed-missing")!;
     expect(m.classList.contains("new")).toBe(true);
@@ -96,7 +108,7 @@ describe("embeds", () => {
   });
 
   it("is plain text without the Markdown (no slot left behind)", () => {
-    expect(renderPage("{{Page A}}").embeds).toEqual([{ page: "Page A", section: null, infobox: false }]);
+    expect(renderPage("{{Page A}}").embeds).toEqual([{ page: "Page A", section: null, infobox: false, box: null }]);
     expect(doc("{{Page A}}", null).querySelector(".embed-slot")).toBeNull();
   });
 });

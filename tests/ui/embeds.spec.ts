@@ -90,6 +90,29 @@ test("Embed button, popup: change and remove; renaming updates embeds", async ({
   await expect.poll(async () => (await storedPage(page, "Page D.md"))?.body).toBe("\n");
 });
 
+test("a collapsible box: title bar, show and hide", async ({ page }) => {
+  await openProject(page, data());
+  await page.getByRole("tree", { name: "Pages" }).getByRole("button", { name: "Host page", exact: true }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.locator(".cm-line", { hasText: "{{Page A}}" }).click();
+  await page.getByRole("dialog", { name: "Embed" }).getByRole("button", { name: "Change…" }).click();
+  const change = page.getByRole("dialog", { name: "Change embed" });
+  await change.getByLabel("Collapsible box with a title bar (show / hide)").check();
+  await change.getByLabel("Box starts").selectOption("closed");
+  await change.getByRole("button", { name: "Save" }).click();
+  await expect.poll(async () => (await storedPage(page, "Host.md"))?.body).toContain("{{Page A|collapsed}}");
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  const box = text(page).locator("details.embed-box");
+  await expect(box.locator(".embed-box-body")).toBeHidden();
+  await box.locator(".embed-box-toggle").click();
+  await expect(box.locator(".embed-box-body")).toBeVisible();
+  await expect(box.locator(".embed-box-body")).toContainText("Links to Page B");
+  await shot(page, "embed-box");
+  // The title opens the page.
+  await box.locator("summary").getByRole("link", { name: "Page A" }).click();
+  await expect(page.getByRole("heading", { name: "Page A", level: 1 })).toBeVisible();
+});
+
 test("a page with 50 embeds opens quickly", async ({ page }) => {
   const sources = Array.from({ length: 50 }, (_, i) => ({
     id: `Source ${i}.md`,

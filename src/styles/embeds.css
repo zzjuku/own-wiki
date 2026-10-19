@@ -34,6 +34,52 @@
   box-shadow: none;
   background: none;
 }
+/* Collapsible box (AWOIAF navbox): framed, the page's title as a bar,
+ * "show" / "hide" at its right. */
+.markdown details.embed-box {
+  margin: 1em 0;
+  border: 1px solid var(--navbox-border);
+  background: var(--navbox-bg);
+}
+.markdown details.embed-box:hover {
+  box-shadow: none;
+  background: var(--navbox-bg);
+}
+.markdown .embed-box-title {
+  position: relative;
+  display: block;
+  padding: 3px 4.5em;
+  background: var(--navbox-title-bg);
+  color: var(--navbox-title-text);
+  text-align: center;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+.markdown .embed-box-title::-webkit-details-marker {
+  display: none;
+}
+.markdown .embed-box-title a.wikilink {
+  color: inherit;
+}
+.markdown .embed-box-toggle {
+  position: absolute;
+  right: 8px;
+  top: 3px;
+  font-weight: 400;
+  font-size: 0.85em;
+  color: var(--link);
+}
+.markdown .embed-box-toggle::before {
+  content: "[show]";
+}
+.markdown details[open] > .embed-box-title .embed-box-toggle::before {
+  content: "[hide]";
+}
+.markdown .embed-box-body {
+  display: flow-root;
+  padding: 4px 10px;
+}
 .markdown .embed-loading {
   min-height: 2em;
 }

@@ -75,6 +75,8 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--spoiler-label-bg` / `--spoiler-label-text` | The "Spoiler" label on hidden images |
 | `--quote-mark` | The large quotation marks of quote boxes |
 | `--embed-hover` | Faint highlight of an embedded page under the mouse |
+| `--navbox-bg` / `--navbox-border` | Collapsible embed boxes (infobox colours by default) |
+| `--navbox-title-bg` / `--navbox-title-text` | Their title bar |
 
 ## Fonts and sizes
 | Variable | Used for |

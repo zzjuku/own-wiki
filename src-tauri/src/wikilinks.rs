@@ -270,7 +270,8 @@ pub struct Embed {
     pub page_end: usize,
     pub page: String,
     pub section: Option<String>,
-    /// `{{Page|infobox}}`: only the infobox.
+    /// `{{Page|infobox}}`: only the infobox. (`|collapsible` / `|collapsed`
+    /// only change the look, so they aren't kept here.)
     pub infobox: bool,
     /// 0-based line number.
     pub line: usize,
@@ -287,15 +288,16 @@ fn embed_line(line: &str, base: usize, line_no: usize) -> Option<Embed> {
     if inner.is_empty() || inner.contains(['{', '}']) {
         return None;
     }
-    let (target, option) = match inner.find('|') {
-        Some(p) => (&inner[..p], Some(inner[p + 1..].trim())),
-        None => (inner, None),
-    };
-    let infobox = match option {
-        None => false,
-        Some(o) if o.eq_ignore_ascii_case("infobox") => true,
-        Some(_) => return None,
-    };
+    let mut parts = inner.split('|');
+    let target = parts.next().unwrap_or("");
+    let mut infobox = false;
+    for option in parts.map(|o| o.trim().to_ascii_lowercase()) {
+        match option.as_str() {
+            "infobox" => infobox = true,
+            "collapsible" | "collapsed" => {}
+            _ => return None,
+        }
+    }
     let (page_raw, section) = match target.find('#') {
         Some(h) => {
             let s = target[h + 1..].trim();
@@ -739,7 +741,7 @@ mod tests {
 
     #[test]
     fn embeds_found_and_renamed() {
-        let body = "{{Page A}}\n  {{ page a #Sec}}\n{{Page A|infobox}}\nText {{Page A}} inline\n{{Page A|other}}\n```\n{{Page A}}\n```\n{{Category:X}}";
+        let body = "{{Page A}}\n  {{ page a #Sec|collapsed}}\n{{Page A|infobox|collapsible}}\nText {{Page A}} inline\n{{Page A|other}}\n```\n{{Page A}}\n```\n{{Category:X}}";
         let e = parse_embeds(body);
         let got: Vec<_> = e.iter().map(|e| (e.page.as_str(), e.section.as_deref(), e.infobox, e.line)).collect();
         assert_eq!(got, [("Page A", None, false, 0), ("page a", Some("Sec"), false, 1), ("Page A", None, true, 2)]);
