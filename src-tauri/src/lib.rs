@@ -10,6 +10,7 @@ mod projects;
 mod relink;
 mod settings;
 mod templating;
+mod textimages;
 mod tree;
 mod wikilinks;
 
@@ -340,6 +341,16 @@ fn backlinks(
 }
 
 #[tauri::command(async)]
+fn embedded_in(state: State<'_, AppState>, project: String, id: String) -> AppResult<Vec<relink::EmbedHost>> {
+    state.with_index(&project, false, |_, idx| relink::embedded_in(idx, &id))
+}
+
+#[tauri::command(async)]
+fn embed_sources(state: State<'_, AppState>, project: String, ids: Vec<String>) -> AppResult<Vec<relink::EmbedSource>> {
+    state.with_index(&project, false, |library, idx| relink::embed_sources(library, &project, idx, &ids))
+}
+
+#[tauri::command(async)]
 fn link_count(state: State<'_, AppState>, project: String, name: String) -> AppResult<LinkCount> {
     state.with_index(&project, false, |_, idx| Ok(relink::link_count(idx, &name)))
 }
@@ -524,6 +535,8 @@ pub fn run() {
             link_preview,
             backlinks,
             link_count,
+            embedded_in,
+            embed_sources,
             save_infobox,
             get_templates,
             set_templates,

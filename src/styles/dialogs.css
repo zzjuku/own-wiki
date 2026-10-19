@@ -48,7 +48,8 @@
   padding: 8px 10px;
   word-break: break-all;
 }
-.field select {
+.field select,
+.embed-modes select {
   font: inherit;
   font-size: var(--text-base);
   color: var(--text);

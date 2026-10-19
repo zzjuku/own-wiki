@@ -67,17 +67,26 @@ const spoilerMatcher = new MatchDecorator({
   decoration: Decoration.mark({ class: "cm-spoiler" }),
 });
 
-export const spoilerMarks = ViewPlugin.fromClass(
-  class {
-    marks: DecorationSet;
-    constructor(view: EditorView) {
-      this.marks = spoilerMatcher.createDeco(view);
-    }
-    update(u: ViewUpdate) {
-      this.marks = spoilerMatcher.updateDeco(u, this.marks);
-    }
-  },
-  { decorations: (v) => v.marks },
+/** Marks text matching `matcher` in the editor. */
+const marksOf = (matcher: MatchDecorator) =>
+  ViewPlugin.fromClass(
+    class {
+      marks: DecorationSet;
+      constructor(view: EditorView) {
+        this.marks = matcher.createDeco(view);
+      }
+      update(u: ViewUpdate) {
+        this.marks = matcher.updateDeco(u, this.marks);
+      }
+    },
+    { decorations: (v) => v.marks },
+  );
+
+export const spoilerMarks = marksOf(spoilerMatcher);
+
+/** Embed lines (`{{Page}}`) look like a chip, so they stand out from the text. */
+export const embedMarks = marksOf(
+  new MatchDecorator({ regexp: /^ {0,3}\{\{[^{}\n]+\}\}[ \t]*$/g, decoration: Decoration.mark({ class: "cm-embed" }) }),
 );
 
 const ICONS: Record<string, ReactNode> = {
@@ -107,6 +116,12 @@ const ICONS: Record<string, ReactNode> = {
     <>
       <path d="M1.5 8s2.4-4.2 6.5-4.2S14.5 8 14.5 8 12.1 12.2 8 12.2 1.5 8 1.5 8Z" className="stroke thin" />
       <circle cx="8" cy="8" r="2" />
+    </>
+  ),
+  embed: (
+    <>
+      <path d="M1.5 2.5h13v11h-13z" className="stroke thin" />
+      <path d="M4 5.5h8M4 8h8M4 10.5h5" className="stroke thin" />
     </>
   ),
   quotebox: (

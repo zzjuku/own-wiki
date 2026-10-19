@@ -3,6 +3,7 @@ import { Marked, type Token, type Tokens, type TokensList } from "marked";
 import type { LinkTarget } from "./names";
 import { categoryOf } from "./categories";
 import { FULL_PX, GALLERY, GALLERY_PX, imageAtStart, parseGallery, parseImage, SIZE_PX, type TextImage } from "./images";
+import { EMBED_BLOCK, parseEmbed, type EmbedCall } from "./embedSyntax";
 import { parseQuote, QUOTE_BLOCK } from "./quotes";
 import { SPOILER_AT_START } from "./spoilers";
 import { linkAtStart, shownText, type WikiLink } from "./wikilinks";
@@ -30,6 +31,9 @@ export interface TocEntry {
 export interface Rendered {
   html: string;
   toc: TocEntry[];
+  /** Embeds in the text, in order: `<div class="embed-slot" data-slot="N">`
+   * marks where embed N goes (filled in by src/embeds.ts). */
+  embeds: EmbedCall[];
 }
 
 /** Markdown of a single paragraph or line (hover cards, "What links here"). */
@@ -83,12 +87,13 @@ interface RenderState {
   links: LinkContext | null;
   /** The heading being rendered: its spoilers share keys with its Contents entry. */
   heading: { id: string; n: number } | null;
+  embeds: EmbedCall[];
 }
 
 let state: RenderState = freshState(new Set());
 
 function freshState(defined: Set<string>, links: LinkContext | null = null): RenderState {
-  return { usedIds: new Map(), headings: [], defined, numbers: new Map(), refCount: new Map(), notes: new Map(), links, heading: null };
+  return { usedIds: new Map(), headings: [], defined, numbers: new Map(), refCount: new Map(), notes: new Map(), links, heading: null, embeds: [] };
 }
 
 /** Section anchor: lower-case, spaces -> "-", repeats get "-2", "-3"… These
@@ -294,6 +299,22 @@ md.use({
       },
     },
     {
+      // {{Page}}, {{Page#Section}}, {{Page|infobox}} on a line of their own
+      name: "embed",
+      level: "block",
+      start: (src: string) => src.match(/^ {0,3}\{\{/m)?.index,
+      tokenizer(src: string) {
+        const m = EMBED_BLOCK.exec(src);
+        const call = m && parseEmbed(m[1]);
+        if (!call) return undefined;
+        return { type: "embed", raw: m![0], call };
+      },
+      renderer(token) {
+        state.embeds.push(token.call as EmbedCall);
+        return `<div class="embed-slot" data-slot="${state.embeds.length - 1}"></div>\n`;
+      },
+    },
+    {
       // ||hidden text||
       name: "spoiler",
       level: "inline",
@@ -441,7 +462,7 @@ export function renderPage(
   const toc = state.headings.length >= TOC_MIN_HEADINGS ? buildToc(state.headings) : [];
   html = html.replace(TOC_MARK, withBox && toc.length ? tocBox(toc) : "");
   // SANITIZE_DOM would drop heading ids such as "title" or "links".
-  return { html: DOMPurify.sanitize(html, PURIFY), toc };
+  return { html: DOMPurify.sanitize(html, PURIFY), toc, embeds: state.embeds };
 }
 
 /** One line of Markdown (bold, italic, [[links]]) -> safe inline HTML, for infobox values. */
@@ -500,7 +521,7 @@ export function plainText(source: string): string {
   const parts: string[] = [];
   const walk = (tokens: Token[]) => {
     for (const t of tokens) {
-      if (["html", "space", "hr", "def", "footnoteRef", "wikiImage", "gallery"].includes(t.type)) continue;
+      if (["html", "space", "hr", "def", "footnoteRef", "wikiImage", "gallery", "embed"].includes(t.type)) continue;
       if (t.type === "quoteBox") {
         for (const p of [...(t.paras as Token[][]), t.by as Token[], t.source as Token[]]) {
           walk(p);
@@ -527,6 +548,36 @@ export function plainText(source: string): string {
   state = freshState(definedLabels(source));
   walk(md.lexer(source));
   return parts.join("").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The Markdown of one section of `source` (found like `[[Page#Section]]`
+ * finds it): what follows its heading up to the next heading of the same or a
+ * higher level, plus the notes it uses. Null if there's no such section.
+ */
+export function sectionSource(source: string, section: string): string | null {
+  state = freshState(definedLabels(source));
+  const tokens = md.lexer(source);
+  const want = slugify(section);
+  let start = -1;
+  let level = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type !== "heading") continue;
+    if (start >= 0 && t.depth <= level) return withNotes(tokens.slice(start, i));
+    if (start < 0 && uniqueId(slugify(inlineText(t.tokens).trim())) === want) {
+      start = i + 1;
+      level = t.depth;
+    }
+  }
+  return start < 0 ? null : withNotes(tokens.slice(start));
+
+  function withNotes(part: Token[]): string {
+    const text = part.filter((t) => t.type !== "footnoteDef").map((t) => t.raw).join("").replace(/^\s+/, "");
+    const used = new Set([...text.matchAll(/\[\^([^\]\s]+)\]/g)].map((m) => m[1]));
+    const notes = tokens.filter((t) => t.type === "footnoteDef" && used.has(t.label as string)).map((t) => t.raw.trimEnd());
+    return notes.length ? `${text.trimEnd()}\n\n${notes.join("\n")}\n` : text;
+  }
 }
 
 export function countWords(text: string): number {

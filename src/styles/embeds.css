@@ -1,0 +1,96 @@
+/* ---- M7: embeds ---- */
+
+/* Seamless: no frame. On hover a faint outline shows what is embedded, and
+ * an "open page" link appears at its top right. */
+.markdown .embed {
+  display: flow-root;
+  position: relative;
+  border-radius: 2px;
+}
+.markdown .embed:hover {
+  box-shadow: 0 0 0 6px var(--embed-hover);
+  background: var(--embed-hover);
+}
+.markdown .embed > .embed-open {
+  position: absolute;
+  z-index: 3;
+  top: -14px;
+  right: -6px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font: var(--text-xs) var(--font-ui);
+  text-decoration: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s;
+}
+.markdown .embed:hover > .embed-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.markdown .embed .embed:hover {
+  box-shadow: none;
+  background: none;
+}
+.markdown .embed-loading {
+  min-height: 2em;
+}
+.markdown a.embed-missing {
+  display: block;
+  margin: 0.6em 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--link-new);
+  border-radius: var(--radius);
+  color: var(--link-new);
+  text-decoration: none;
+}
+.markdown a.embed-missing:hover {
+  background: var(--embed-hover);
+}
+.markdown .embed-warning {
+  margin: 0.6em 0;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font: var(--text-sm) var(--font-ui);
+}
+
+/* Source editor: embed lines look like a chip. */
+.cm-embed {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  color: var(--link);
+}
+
+.embed-dialog {
+  width: min(480px, 92vw);
+}
+.embed-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  border: none;
+}
+.embed-modes legend {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.embed-section {
+  margin: 0 0 2px 24px;
+  max-width: calc(100% - 24px);
+}
+.embed-popup-text {
+  margin: 0;
+}
+.backlinks-sub {
+  margin: 14px 0 6px;
+  font-size: var(--text-md);
+}

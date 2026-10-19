@@ -74,6 +74,7 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--spoiler-blur` | How strongly hidden images and galleries are blurred |
 | `--spoiler-label-bg` / `--spoiler-label-text` | The "Spoiler" label on hidden images |
 | `--quote-mark` | The large quotation marks of quote boxes |
+| `--embed-hover` | Faint highlight of an embedded page under the mouse |
 
 ## Fonts and sizes
 | Variable | Used for |

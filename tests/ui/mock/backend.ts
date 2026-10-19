@@ -40,6 +40,8 @@ class CommandError {
 const lc = (s: string) => s.toLowerCase();
 const parent = (id: string) => (id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : "");
 const LINK = /\[\[([^\]|#]*)(#[^\]|]*)?(\|[^\]]*)?\]\]/g;
+/** `{{Page…}}` lines: indent, page, the rest (`#Section`, `|infobox`). */
+const EMBED = /^( {0,3})\{\{([^{}|#\n]+)([^{}\n]*)\}\}[ \t]*$/gm;
 
 function fullPage(p: MockPage): Required<MockPage> {
   return { aliases: [], body: "", infobox: null, categories: [], sort: null, ...p };
@@ -176,6 +178,12 @@ export function createBackend(fixture: Fixture) {
           pagesChanged.add(other.id);
           return `[[${title}${section}${text}]]`;
         });
+        other.body = other.body.replace(EMBED, (all, indent: string, target: string, rest: string) => {
+          if (lc(target.trim()) !== lc(old)) return all;
+          links++;
+          pagesChanged.add(other.id);
+          return `${indent}{{${title}${rest}}}`;
+        });
       }
       p.pages.delete(id);
       const newId = (parent(id) ? `${parent(id)}/` : "") + `${title}.md`;
@@ -291,6 +299,35 @@ export function createBackend(fixture: Fixture) {
       return { title: pg.title, group: parent(pg.id), text, section: null, image: null };
     },
     backlinks: ({ project, id }) => backlinks(proj(project), page(proj(project), id).title, false),
+    embedded_in: ({ project, id }) => {
+      const p = proj(project);
+      const names = [page(p, id).title, ...page(p, id).aliases].map(lc);
+      return [...p.pages.values()]
+        .filter((pg) => pg.id !== id && [...pg.body.matchAll(EMBED)].some((m) => names.includes(lc(m[2].trim()))))
+        .map((pg) => ({ id: pg.id, title: pg.title, group: parent(pg.id), category: false }));
+    },
+    embed_sources: ({ project, ids }) => {
+      const p = proj(project);
+      const seen = new Set<string>();
+      let level: string[] = ids;
+      for (let d = 0; d < 5; d++) {
+        const next: string[] = [];
+        for (const id of level) {
+          const pg = p.pages.get(id);
+          if (!pg || seen.has(id)) continue;
+          seen.add(id);
+          for (const m of pg.body.matchAll(EMBED)) {
+            const t = [...p.pages.values()].find((x) => [x.title, ...x.aliases].map(lc).includes(lc(m[2].trim())));
+            if (t) next.push(t.id);
+          }
+        }
+        level = next;
+      }
+      return [...seen].map((id) => {
+        const pg = page(p, id);
+        return { id, title: pg.title, body: pg.body, infobox: pg.infobox };
+      });
+    },
     link_count: ({ project, name }) => {
       const b = backlinks(proj(project), name, false);
       return { links: b.reduce((n, x) => n + x.lines.length + x.fields.length, 0), pages: b.length };

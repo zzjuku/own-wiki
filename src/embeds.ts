@@ -1,0 +1,138 @@
+// Embeds: the content of another page shown inside this one (navboxes, item
+// cards, stat blocks), always its current content, never a copy. Looks
+// seamless; a small "open page" link shows on hover. Links inside an embed
+// don't count as the host's links (the host's file only holds `{{Page}}`).
+// Embeds inside embeds work up to EMBED_DEPTH levels; loops and self-embeds
+// show a warning box. Syntax: src/embedSyntax.ts.
+import { useEffect, useMemo, useState } from "react";
+import { api, type Frame, type Infobox } from "./api";
+import type { EmbedCall } from "./embedSyntax";
+import { embedTargets } from "./embedSyntax";
+import { infoboxHtml } from "./infobox";
+import { renderPage, sectionSource, type LinkContext, type Rendered } from "./markdown";
+import { frameFor, useWiki } from "./wiki";
+
+/** Embeds go this many levels deep (as EMBED_DEPTH in src-tauri/src/relink.rs). */
+export const EMBED_DEPTH = 5;
+
+export interface EmbedSource {
+  id: string;
+  title: string;
+  body: string;
+  infobox: Infobox | null;
+}
+
+/** What rendering embeds needs: the embedded pages' content and the host. */
+export interface EmbedEnv {
+  project: string;
+  /** Embedded pages by id (loaded by useEmbedEnv); a missing one is still loading. */
+  sources: Map<string, EmbedSource>;
+  /** The page (or "category:Name") the embeds are shown in. */
+  hostId: string;
+  frame: (templateId: string | null | undefined) => Frame;
+}
+
+function escapeHtml(s: string) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+}
+
+const SLOT = /<div class="embed-slot" data-slot="(\d+)"><\/div>/g;
+
+/** renderPage, with each embed's content put in its place. */
+export function renderWithEmbeds(
+  source: string,
+  opts: { lineAnchors?: boolean; tocBox?: boolean; links: LinkContext },
+  env: EmbedEnv | null,
+): Rendered {
+  const counter = { n: 0 };
+  return render(source, opts, env, env ? [env.hostId] : [], counter);
+}
+
+function render(
+  source: string,
+  opts: { lineAnchors?: boolean; tocBox?: boolean; links: LinkContext },
+  env: EmbedEnv | null,
+  stack: string[],
+  counter: { n: number },
+): Rendered {
+  const r = renderPage(source, opts);
+  if (!r.embeds.length) return r;
+  const calls = r.embeds;
+  const html = r.html.replace(SLOT, (_, n: string) => embedHtml(calls[Number(n)], opts.links, env, stack, counter));
+  return { ...r, html };
+}
+
+const warning = (text: string) => `<div class="embed-warning" role="note">⚠ ${escapeHtml(text)}</div>`;
+
+/** One embed as HTML. */
+function embedHtml(call: EmbedCall, links: LinkContext, env: EmbedEnv | null, stack: string[], counter: { n: number }): string {
+  const target = links.resolve(call.page);
+  if (!target) {
+    return (
+      `<a class="wikilink new embed-missing" href="#" data-target="${escapeHtml(call.page)}">` +
+      `<strong>${escapeHtml(call.page)}</strong> doesn't exist yet. Click to create it.</a>`
+    );
+  }
+  const id = target.page.id;
+  const title = target.page.title;
+  if (stack.includes(id)) {
+    return warning(id === stack[0] ? `This page can't embed itself (${title}).` : `${title} isn't shown here: it would embed itself in a loop.`);
+  }
+  if (stack.length > EMBED_DEPTH) return warning(`${title} isn't shown here: embeds go only ${EMBED_DEPTH} levels deep.`);
+  const src = env?.sources.get(id);
+  if (!src) return `<div class="embed embed-loading" aria-busy="true"></div>`;
+
+  const inner = [...stack, id];
+  const box = (ib: Infobox | null) => infoboxHtml(ib, { project: env!.project, title: src.title, links, frame: env!.frame(ib?.template) });
+  let content: string;
+  if (call.infobox) {
+    content = box(src.infobox) || warning(`${title} has no infobox to show.`);
+  } else if (call.section) {
+    const text = sectionSource(src.body, call.section);
+    content = text === null ? warning(`${title} has no section “${call.section}”.`) : render(text, { tocBox: false, links }, env, inner, counter).html;
+  } else {
+    content = box(src.infobox) + render(src.body, { tocBox: false, links }, env, inner, counter).html;
+  }
+  const open = `<a class="wikilink embed-open" href="#" data-page="${escapeHtml(id)}" data-target="${escapeHtml(title)}"${call.section ? ` data-section="${escapeHtml(call.section)}"` : ""}>${escapeHtml(title)} ↗</a>`;
+  return `<div class="embed" data-embed="${escapeHtml(id)}">${open}${ownIds(content, `e${++counter.n}-`)}</div>`;
+}
+
+/** Embedded HTML mustn't reuse the host's ids: headings lose theirs (they
+ * aren't in the host's Contents), footnotes get a prefix, heading spoilers
+ * lose their shared keys. */
+function ownIds(html: string, prefix: string): string {
+  return html
+    .replace(/<(h[1-6]) id="[^"]*">/g, "<$1>")
+    .replace(/ data-sp="h:[^"]*"/g, "")
+    .replace(/(id|href)="(#?)(cite-(?:ref|note)-[^"]*)"/g, `$1="$2${prefix}$3"`);
+}
+
+/** Loads the pages `text` embeds (and what they embed), again whenever the
+ * embeds or the project's pages change. */
+export function useEmbedEnv(text: string, hostId: string): EmbedEnv | null {
+  const wiki = useWiki();
+  const ids = useMemo(() => {
+    const set = new Set<string>();
+    for (const name of embedTargets(text)) {
+      const t = wiki.names.resolve(name);
+      if (t) set.add(t.page.id);
+    }
+    return [...set].sort().join("\n");
+  }, [text, wiki.names]);
+  const [sources, setSources] = useState<Map<string, EmbedSource> | null>(null);
+  useEffect(() => {
+    if (!ids) return setSources(null);
+    let live = true;
+    api.embedSources(wiki.project, ids.split("\n")).then(
+      (list) => live && setSources(new Map(list.map((s) => [s.id, s]))),
+      () => live && setSources(new Map()),
+    );
+    return () => {
+      live = false;
+    };
+  }, [ids, wiki.project, wiki.names]);
+  return useMemo(
+    () => (ids ? { project: wiki.project, sources: sources ?? new Map(), hostId, frame: (t) => frameFor(wiki, t) } : null),
+    [ids, sources, wiki, hostId],
+  );
+}

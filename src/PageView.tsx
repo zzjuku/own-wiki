@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, type IncomingField, type Infobox, type Page } from "./api";
 import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
-import { renderPage } from "./markdown";
+import { renderWithEmbeds, useEmbedEnv } from "./embeds";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
 import { AliasEditor } from "./AliasEditor";
@@ -138,7 +138,8 @@ export function PageView(props: Props) {
   }, [project, pageId, wiki.names]);
   const onContentClick = useContentClick(pageId);
   // The read view shows the contents in the left panel, not in the text.
-  const rendered = useMemo(() => renderPage(body, { tocBox: false, links }), [body, links]);
+  const embedEnv = useEmbedEnv(editing ? "" : body, pageId);
+  const rendered = useMemo(() => renderWithEmbeds(body, { tocBox: false, links }, embedEnv), [body, links, embedEnv]);
   const shownTitle = props.title ?? page?.title ?? "";
   const boxHtml = useMemo(
     () => infoboxHtml(infobox, { project, title: shownTitle, links, incoming, frame: frameFor(wiki, infobox?.template) }),

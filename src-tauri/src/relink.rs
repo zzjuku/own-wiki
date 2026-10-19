@@ -18,13 +18,14 @@ fn entry<'a>(idx: &'a ProjectIndex, id: &str) -> AppResult<&'a crate::index::Ent
     idx.pages.get(id).ok_or_else(|| AppError::NotFound(format!("Page not found: {id}")))
 }
 
-/// Ids of pages with a link to `name`, and how many such links there are.
+/// Ids of pages with a link to `name` or an embed of it, and how many such
+/// links and embeds there are (what a rename rewrites).
 fn linking(idx: &ProjectIndex, name: &str) -> (Vec<String>, usize) {
     let n = norm(name);
     let mut ids = Vec::new();
     let mut count = 0;
     for (id, e) in &idx.pages {
-        let here = e.links.iter().filter(|l| !l.target.is_empty() && norm(&l.target) == n).count()
+        let here = e.links.iter().chain(&e.embeds).filter(|l| !l.target.is_empty() && norm(&l.target) == n).count()
             + e.field_links.iter().filter(|l| norm(&l.target) == n).count();
         if here > 0 {
             ids.push(id.clone());
@@ -266,6 +267,84 @@ pub fn incoming_fields(idx: &ProjectIndex, id: &str) -> AppResult<Vec<IncomingFi
     Ok(out)
 }
 
+/// A page or category page whose text embeds a page.
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EmbedHost {
+    /// Page id, or the category's name for category pages.
+    pub id: String,
+    pub title: String,
+    pub group: String,
+    pub category: bool,
+}
+
+/// Pages and category pages that embed page `id` (by title or alias), sorted by title.
+pub fn embedded_in(idx: &ProjectIndex, id: &str) -> AppResult<Vec<EmbedHost>> {
+    let target = entry(idx, id)?;
+    let names: Vec<String> = std::iter::once(&target.title).chain(&target.aliases).map(|n| norm(n)).collect();
+    let embeds = |e: &crate::index::Entry| e.embeds.iter().any(|l| names.contains(&norm(&l.target)));
+    let mut out: Vec<EmbedHost> = idx
+        .pages
+        .iter()
+        .filter(|(pid, e)| pid.as_str() != id && embeds(e))
+        .map(|(pid, e)| EmbedHost { id: pid.clone(), title: e.title.clone(), group: rel_parent(pid).to_string(), category: false })
+        .chain(idx.cats.values().filter(|e| embeds(e)).map(|e| EmbedHost {
+            id: e.title.clone(),
+            title: e.title.clone(),
+            group: String::new(),
+            category: true,
+        }))
+        .collect();
+    out.sort_by_key(|h| (h.category, h.title.to_lowercase()));
+    Ok(out)
+}
+
+/// What an embed shows of a page: its text and infobox.
+#[derive(Debug, Serialize)]
+pub struct EmbedSource {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub infobox: Option<crate::infobox::Infobox>,
+}
+
+/// Embeds go this many levels deep (an embed in an embed in …).
+pub const EMBED_DEPTH: usize = 5;
+/// At most this many pages are read for one page's embeds.
+const EMBED_PAGES: usize = 400;
+
+/// The pages `ids` embed (directly, and through their embeds up to
+/// [`EMBED_DEPTH`] levels), read from disk, so a page can show them.
+pub fn embed_sources(library: &Path, project: &str, idx: &ProjectIndex, ids: &[String]) -> AppResult<Vec<EmbedSource>> {
+    let mut by_name: std::collections::HashMap<String, &str> = std::collections::HashMap::new();
+    for (id, e) in &idx.pages {
+        for name in std::iter::once(&e.title).chain(&e.aliases) {
+            by_name.entry(norm(name)).or_insert(id);
+        }
+    }
+    let mut seen: Vec<String> = Vec::new();
+    let mut level: Vec<String> = ids.iter().filter(|id| idx.pages.contains_key(*id)).cloned().collect();
+    for _ in 0..EMBED_DEPTH {
+        let mut next = Vec::new();
+        for id in level {
+            if seen.contains(&id) || seen.len() >= EMBED_PAGES {
+                continue;
+            }
+            if let Some(e) = idx.pages.get(&id) {
+                next.extend(e.embeds.iter().filter_map(|l| by_name.get(&norm(&l.target)).map(|s| s.to_string())));
+            }
+            seen.push(id);
+        }
+        level = next;
+    }
+    let read = parallel(&seen, |id| pages::read_page(library, project, id));
+    Ok(read
+        .into_iter()
+        .flatten()
+        .map(|p| EmbedSource { id: p.id, title: p.title, body: p.body, infobox: p.infobox })
+        .collect())
+}
+
 pub fn sections(idx: &ProjectIndex, id: &str) -> AppResult<Vec<Heading>> {
     Ok(entry(idx, id)?.headings.clone())
 }
@@ -410,6 +489,57 @@ mod tests {
         assert_eq!((pv.text.as_str(), pv.section), ("Opening text.", None));
         let s: Vec<_> = sections(&idx, "A.md").unwrap().into_iter().map(|h| h.anchor).collect();
         assert_eq!(s, ["early-life", "early-life-2"]);
+    }
+
+    #[test]
+    fn embeds_list_rename_and_sources() {
+        let (lib, p, mut idx) = setup(&[
+            ("Src.md", "---\ntitle: Src\naliases: [Nick]\ninfobox:\n  fields:\n  - label: F\n    type: text\n    value: v\n---\nSource text.\n{{Deep}}\n"),
+            ("Deep.md", "Deep text.\n{{Src}}\n"),
+            ("A.md", "{{Src}}\n\n{{Nick#S}}\n"),
+            ("B.md", "{{Src|infobox}} and [[Src]]\n{{Src|infobox}}\n"),
+            ("C.md", "Nothing.\n"),
+        ]);
+        let hosts: Vec<_> = embedded_in(&idx, "Src.md").unwrap().into_iter().map(|h| h.id).collect();
+        assert_eq!(hosts, ["A.md", "B.md", "Deep.md"]);
+        // Sources: the embedded pages and what they embed, each once.
+        let mut got: Vec<_> = embed_sources(lib.path(), &p, &idx, &["Src.md".into()]).unwrap().into_iter().map(|s| (s.id, s.infobox.is_some())).collect();
+        got.sort();
+        assert_eq!(got, [("Deep.md".to_string(), false), ("Src.md".to_string(), true)]);
+        // Embeds count for renames (not those through an alias).
+        assert_eq!(link_count(&idx, "Src"), LinkCount { links: 4, pages: 3 });
+        let r = rename_with_links(lib.path(), &p, &mut idx, "Src.md", "New", false, false).unwrap();
+        assert_eq!((r.links, r.pages), (4, 3));
+        assert_eq!(read(lib.path(), &p, "A.md"), "{{New}}\n\n{{Nick#S}}\n");
+        assert_eq!(read(lib.path(), &p, "B.md"), "{{Src|infobox}} and [[New]]\n{{New|infobox}}\n");
+        assert_eq!(embedded_in(&idx, "New.md").unwrap().len(), 3);
+    }
+
+    /// Speed check from the M7 spec: a page embedded on 1,000 pages is renamed
+    /// within a few seconds. Run with `cargo test --release -- --ignored --nocapture embed_rename`.
+    #[test]
+    #[ignore]
+    fn embed_rename_speed() {
+        use std::time::Instant;
+        let (lib, p, _) = setup(&[]);
+        let dir = lib.path().join(&p);
+        fs::write(dir.join("pages/Box.md"), "Navbox text [[Page 1]].\n").unwrap();
+        for i in 0..5000 {
+            let embed = if i < 1000 { "{{Box}}\n\n" } else { "" };
+            fs::write(dir.join(format!("pages/Page {i}.md")), format!("{embed}Text of page {i} with [[Page {}]].\n", (i + 1) % 5000)).unwrap();
+        }
+        let mut idx = ProjectIndex::open(&dir).unwrap();
+        drop(idx);
+        let t = Instant::now();
+        idx = ProjectIndex::open(&dir).unwrap();
+        let reopen = t.elapsed();
+        let t = Instant::now();
+        let r = rename_with_links(lib.path(), &p, &mut idx, "Box.md", "Navbox", false, false).unwrap();
+        let rename = t.elapsed();
+        println!("reopen: {reopen:?}; rename with {} embeds in {} pages: {rename:?}", r.links, r.pages);
+        assert_eq!(r.pages, 1000);
+        assert!(reopen.as_millis() < 1000, "reopen too slow");
+        assert!(rename.as_secs() < 5, "rename too slow");
     }
 
     /// Speed check from the M4 spec. Run with

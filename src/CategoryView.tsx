@@ -8,7 +8,7 @@ import { Backlinks } from "./Backlinks";
 import { fileMembers } from "./categories";
 import { CategoryChips } from "./CategoryChips";
 import { useDialogs } from "./dialogs";
-import { renderPage } from "./markdown";
+import { renderWithEmbeds, useEmbedEnv } from "./embeds";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
 import { SplitEditor } from "./SplitEditor";
@@ -126,7 +126,8 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted }
   const links = useLinkContext(undefined, data?.name ?? name);
   const onContentClick = useContentClick();
   const text = editing ? (latest.current ?? "") : (data?.text ?? "");
-  const html = useMemo(() => (text.trim() ? renderPage(text, { tocBox: false, links }).html : ""), [text, links]);
+  const embedEnv = useEmbedEnv(editing ? "" : text, `category:${data?.name ?? name}`);
+  const html = useMemo(() => (text.trim() ? renderWithEmbeds(text, { tocBox: false, links }, embedEnv).html : ""), [text, links, embedEnv]);
   const readRef = useRef<HTMLDivElement>(null);
   const { onClick: revealOne } = useSpoilerReveal(readRef);
   const groups = useMemo(() => fileMembers(data?.pages ?? []), [data]);

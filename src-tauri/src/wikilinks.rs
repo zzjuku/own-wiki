@@ -8,6 +8,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::textimages::{gallery_close, gallery_open, quote_close, quote_open, strip_images};
+
 /// A `[[link]]` found in a page body. Positions are byte offsets in the body.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Link {
@@ -128,7 +130,7 @@ fn fence(line: &str) -> Option<(char, usize)> {
 
 /// Calls `f(line_number, line_start_offset, line)` for every line that isn't
 /// inside a fenced code block (fence lines included as code).
-fn text_lines(body: &str, mut f: impl FnMut(usize, usize, &str)) {
+pub(crate) fn text_lines(body: &str, mut f: impl FnMut(usize, usize, &str)) {
     let mut open: Option<(char, usize)> = None;
     let mut offset = 0;
     for (n, raw) in body.split_inclusive('\n').enumerate() {
@@ -234,25 +236,86 @@ pub fn parse_links(body: &str) -> Vec<Link> {
     out
 }
 
-/// Points every link to `old` (compared with [`norm`]) at `new`: the page
-/// part is replaced, everything else (section, shown text, `\|`) is kept.
-/// Returns the new body and how many links changed.
+/// Points every link and embed to `old` (compared with [`norm`]) at `new`:
+/// the page part is replaced, everything else (section, shown text, `\|`,
+/// `|infobox`) is kept. Returns the new body and how many changed.
 pub fn rewrite_links(body: &str, old: &str, new: &str) -> (String, usize) {
     let old = norm(old);
+    let mut spans: Vec<(usize, usize)> = parse_links(body)
+        .into_iter()
+        .filter(|l| !l.page.is_empty() && norm(&l.page) == old)
+        .map(|l| (l.page_start, l.page_end))
+        .chain(parse_embeds(body).into_iter().filter(|e| norm(&e.page) == old).map(|e| (e.page_start, e.page_end)))
+        .collect();
+    spans.sort_unstable();
     let mut out = String::with_capacity(body.len() + 64);
     let mut last = 0;
-    let mut count = 0;
-    for link in parse_links(body) {
-        if link.page.is_empty() || norm(&link.page) != old {
-            continue;
-        }
-        out.push_str(&body[last..link.page_start]);
+    for &(start, end) in &spans {
+        out.push_str(&body[last..start]);
         out.push_str(new);
-        last = link.page_end;
-        count += 1;
+        last = end;
     }
     out.push_str(&body[last..]);
-    (out, count)
+    (out, spans.len())
+}
+
+// ---- embeds: a line holding only {{Page}}, {{Page#Section}} or {{Page|infobox}} ----
+
+/// An embed (the content of another page shown in this one). Must match
+/// `EMBED_LINE` in src/embeds.ts.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Embed {
+    /// The page part (trimmed), byte offsets in the body.
+    pub page_start: usize,
+    pub page_end: usize,
+    pub page: String,
+    pub section: Option<String>,
+    /// `{{Page|infobox}}`: only the infobox.
+    pub infobox: bool,
+    /// 0-based line number.
+    pub line: usize,
+}
+
+/// The embed a line consists of, if any (`base`: the line's offset).
+fn embed_line(line: &str, base: usize, line_no: usize) -> Option<Embed> {
+    let indent = line.len() - line.trim_start_matches(' ').len();
+    if indent > 3 {
+        return None;
+    }
+    let t = line[indent..].trim_end();
+    let inner = t.strip_prefix("{{")?.strip_suffix("}}")?;
+    if inner.is_empty() || inner.contains(['{', '}']) {
+        return None;
+    }
+    let (target, option) = match inner.find('|') {
+        Some(p) => (&inner[..p], Some(inner[p + 1..].trim())),
+        None => (inner, None),
+    };
+    let infobox = match option {
+        None => false,
+        Some(o) if o.eq_ignore_ascii_case("infobox") => true,
+        Some(_) => return None,
+    };
+    let (page_raw, section) = match target.find('#') {
+        Some(h) => {
+            let s = target[h + 1..].trim();
+            (&target[..h], (!s.is_empty()).then(|| s.to_string()))
+        }
+        None => (target, None),
+    };
+    let page = page_raw.trim();
+    if page.is_empty() || is_file_name(page) || category_of(page).is_some() {
+        return None;
+    }
+    let page_start = base + indent + 2 + (page_raw.len() - page_raw.trim_start().len());
+    Some(Embed { page_start, page_end: page_start + page.len(), page: page.to_string(), section, infobox, line: line_no })
+}
+
+/// Every embed in a page body, in order. Code is skipped.
+pub fn parse_embeds(body: &str) -> Vec<Embed> {
+    let mut out = Vec::new();
+    text_lines(body, |n, off, line| out.extend(embed_line(line, off, n)));
+    out
 }
 
 /// The category a link target names (`Category:Name` -> "name", compared
@@ -280,175 +343,6 @@ pub fn rewrite_category_links(body: &str, old: &str, new: &str) -> (String, usiz
     }
     out.push_str(&body[last..]);
     (out, count)
-}
-
-// ---- images: [[File:Name.png|right|medium|Caption]] and <gallery> blocks ----
-
-/// An image starting at `line[i..]`: the end (exclusive) and the inside of
-/// the brackets. The caption may contain `[[links]]`.
-pub fn image_at(line: &str, i: usize) -> Option<(usize, &str)> {
-    let inner_start = i + 2;
-    if !line[i..].starts_with("[[") || !is_file_name(line.get(inner_start..)?) {
-        return None;
-    }
-    let b = line.as_bytes();
-    let mut depth = 1;
-    let mut j = inner_start;
-    while j + 1 < b.len() {
-        if b[j] == b'[' && b[j + 1] == b'[' {
-            depth += 1;
-            j += 2;
-        } else if b[j] == b']' && b[j + 1] == b']' {
-            depth -= 1;
-            j += 2;
-            if depth == 0 {
-                return Some((j, &line[inner_start..j - 2]));
-            }
-        } else {
-            j += 1;
-        }
-    }
-    None
-}
-
-/// The file name inside `File:Name.png|…`.
-fn image_file(inner: &str) -> String {
-    let name = inner.get(5..).unwrap_or("");
-    let end = name.find('|').unwrap_or(name.len());
-    name[..end].trim_end_matches('\\').trim().to_string()
-}
-
-/// `<gallery>`, or `<gallery spoiler>` (blurred until clicked): Some(spoiler).
-fn gallery_open(line: &str) -> Option<bool> {
-    let t = line.trim().to_ascii_lowercase();
-    let inner = t.strip_prefix("<gallery")?.strip_suffix('>')?;
-    match inner.trim() {
-        "" if inner.is_empty() => Some(false),
-        "spoiler" if inner.starts_with(char::is_whitespace) => Some(true),
-        _ => None,
-    }
-}
-
-fn quote_open(line: &str) -> bool {
-    line.trim().eq_ignore_ascii_case("<quote>")
-}
-
-fn quote_close(line: &str) -> bool {
-    line.trim().eq_ignore_ascii_case("</quote>")
-}
-
-fn gallery_close(line: &str) -> bool {
-    line.trim().eq_ignore_ascii_case("</gallery>")
-}
-
-/// Image starts in a line of text, skipping code spans.
-fn images_in_line(line: &str, mut f: impl FnMut(usize, usize, &str)) {
-    let b = line.as_bytes();
-    let mut i = 0;
-    while i < b.len() {
-        match b[i] {
-            b'\\' => i += 2,
-            b'`' => {
-                let n = b[i..].iter().take_while(|&&c| c == b'`').count();
-                let ticks = &line[i..i + n];
-                i = match line[i + n..].find(ticks) {
-                    Some(end) => i + n + end + n,
-                    None => i + n,
-                };
-            }
-            b'[' => match image_at(line, i) {
-                Some((end, inner)) => {
-                    f(i, end, inner);
-                    i = end;
-                }
-                None => i += 1,
-            },
-            _ => i += 1,
-        }
-    }
-}
-
-/// Every image file used in the page text and its galleries, in order (code skipped).
-/// (For health reports, M10.)
-#[allow(dead_code)]
-pub fn images(body: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut in_gallery = false;
-    text_lines(body, |_, _, line| {
-        if in_gallery {
-            if gallery_close(line) {
-                in_gallery = false;
-            } else if !line.trim().is_empty() {
-                let t = line.trim();
-                let t = if is_file_name(t) { &t[5..] } else { t };
-                let file = t.split('|').next().unwrap_or("").trim();
-                if !file.is_empty() {
-                    out.push(file.to_string());
-                }
-            }
-        } else if gallery_open(line).is_some() {
-            in_gallery = true;
-        } else {
-            images_in_line(line, |_, _, inner| {
-                let file = image_file(inner);
-                if !file.is_empty() {
-                    out.push(file);
-                }
-            });
-        }
-    });
-    out
-}
-
-/// Is `[[File:…|…|spoiler|…]]` (its inside) marked as a spoiler?
-fn image_is_spoiler(inner: &str) -> bool {
-    // Option words sit between `|`s before the caption; links in the caption can't say "spoiler" on their own.
-    inner.split('|').skip(1).any(|p| p.trim_end_matches('\\').trim().eq_ignore_ascii_case("spoiler"))
-}
-
-/// The first image in the text that isn't a spoiler (hover cards show it).
-pub fn first_shown_image(body: &str) -> Option<String> {
-    let mut found: Option<String> = None;
-    let mut gallery: Option<bool> = None;
-    text_lines(body, |_, _, line| {
-        if found.is_some() {
-            return;
-        }
-        if let Some(spoiler) = gallery {
-            if gallery_close(line) {
-                gallery = None;
-            } else if !spoiler && !line.trim().is_empty() {
-                let t = line.trim();
-                let t = if is_file_name(t) { &t[5..] } else { t };
-                let file = t.split('|').next().unwrap_or("").trim();
-                if !file.is_empty() {
-                    found = Some(file.to_string());
-                }
-            }
-        } else if let Some(spoiler) = gallery_open(line) {
-            gallery = Some(spoiler);
-        } else {
-            images_in_line(line, |_, _, inner| {
-                let file = image_file(inner);
-                if found.is_none() && !file.is_empty() && !image_is_spoiler(inner) {
-                    found = Some(file);
-                }
-            });
-        }
-    });
-    found
-}
-
-/// A line without its images (for hover previews).
-fn strip_images(line: &str) -> String {
-    let mut out = String::new();
-    let mut last = 0;
-    images_in_line(line, |start, end, _| {
-        out.push_str(&line[last..start]);
-        last = end;
-    });
-    out.push_str(&line[last..]);
-    out
 }
 
 // ---- headings and section anchors ----
@@ -662,6 +556,7 @@ fn is_prose(line: &str) -> bool {
     let list = t.starts_with(['-', '*', '+']) && t[1..].starts_with([' ', '\t'])
         || t.find(['.', ')']).is_some_and(|p| p > 0 && t[..p].bytes().all(|c| c.is_ascii_digit()) && t[p + 1..].starts_with([' ', '\t']));
     !(atx_heading(line).is_some()
+        || embed_line(line, 0, 0).is_some()
         || list
         || t.starts_with(['>', '|'])
         || t.starts_with("<!--")
@@ -767,6 +662,7 @@ pub fn section_summary(body: &str, anchor: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::textimages::{first_shown_image, images};
     use serde_json::Value;
 
     fn cases() -> Value {
@@ -839,6 +735,20 @@ mod tests {
         assert_eq!(summary("[[File:A.png|right|Cap]]\nFirst text."), "First text.");
         assert_eq!(summary("Some [[File:A.png|x [[B]]]] text."), "Some  text.");
         assert_eq!(summary("<gallery>\nA.png|Cap\n</gallery>\n\nAfter."), "After.");
+    }
+
+    #[test]
+    fn embeds_found_and_renamed() {
+        let body = "{{Page A}}\n  {{ page a #Sec}}\n{{Page A|infobox}}\nText {{Page A}} inline\n{{Page A|other}}\n```\n{{Page A}}\n```\n{{Category:X}}";
+        let e = parse_embeds(body);
+        let got: Vec<_> = e.iter().map(|e| (e.page.as_str(), e.section.as_deref(), e.infobox, e.line)).collect();
+        assert_eq!(got, [("Page A", None, false, 0), ("page a", Some("Sec"), false, 1), ("Page A", None, true, 2)]);
+        assert_eq!(&body[e[1].page_start..e[1].page_end], "page a");
+        let (out, n) = rewrite_links("[[Page A]] and\n{{Page A#S}}\n{{Page A|infobox}}", "page a", "Page Z");
+        assert_eq!((out.as_str(), n), ("[[Page Z]] and\n{{Page Z#S}}\n{{Page Z|infobox}}", 3));
+        // Embeds aren't links, and an embed line isn't an opening paragraph.
+        assert!(parse_links("{{Page A}}").is_empty());
+        assert_eq!(summary("{{Page A}}\n\nFirst text."), "First text.");
     }
 
     #[test]

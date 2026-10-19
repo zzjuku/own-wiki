@@ -1,7 +1,7 @@
 // "What links here": every page that links to the open page, with the lines
 // that contain the links. Clicking an entry opens that page.
 import { useEffect, useMemo, useState } from "react";
-import { api, errorText, type Backlink } from "./api";
+import { api, errorText, type Backlink, type EmbedHost } from "./api";
 import { renderSnippet } from "./markdown";
 import { compareNames, displayGroup } from "./tree";
 import { useWiki } from "./wiki";
@@ -35,7 +35,14 @@ function cleanLine(line: string): string {
 export function Backlinks({ pageId, category, title, close }: Props) {
   const wiki = useWiki();
   const [list, setList] = useState<Backlink[] | null>(null);
+  const [embeds, setEmbeds] = useState<EmbedHost[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Pages that embed this one are listed apart: an embed isn't a link.
+  useEffect(() => {
+    if (pageId === undefined) return;
+    api.embeddedIn(wiki.project, pageId).then(setEmbeds, () => {});
+  }, [wiki.project, pageId]);
 
   useEffect(() => {
     const load = category !== undefined ? api.categoryBacklinks(wiki.project, category, true) : api.backlinks(wiki.project, pageId ?? "", true);
@@ -98,6 +105,30 @@ export function Backlinks({ pageId, category, title, close }: Props) {
               </li>
             ))}
           </ul>
+        )}
+        {embeds.length > 0 && (
+          <>
+            <h3 className="backlinks-sub">Embedded in ({embeds.length})</h3>
+            <ul className="backlink-list">
+              {embeds.map((h) => (
+                <li key={`${h.category}:${h.id}`}>
+                  <button
+                    className="plain backlink"
+                    onClick={() => {
+                      close();
+                      if (h.category) wiki.openCategory(h.id);
+                      else wiki.follow({ pageId: h.id });
+                    }}
+                  >
+                    <span className="backlink-head">
+                      <span className="backlink-title">{h.category ? `Category: ${h.title}` : h.title}</span>
+                      {h.group && <span className="backlink-group">{displayGroup(h.group)}</span>}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
         <div className="dialog-actions">
           <button type="button" className="primary" autoFocus onClick={close}>

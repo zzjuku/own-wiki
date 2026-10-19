@@ -21,7 +21,7 @@ use crate::tree::{GroupInfo, PageInfo, is_page_file};
 use crate::wikilinks::{self, Heading};
 
 const CACHE_FILE: &str = "link-index.json";
-const CACHE_VERSION: u32 = 5;
+const CACHE_VERSION: u32 = 6;
 /// The cache is rewritten at most this often for small changes (a stale
 /// cache only costs re-reading the changed files at the next open).
 const CACHE_SAVE_INTERVAL: Duration = Duration::from_secs(10);
@@ -53,6 +53,9 @@ pub struct Entry {
     /// Id of the template the page's infobox came from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template: Option<String>,
+    /// Embedded pages (`{{Page}}` lines); `section` unused.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub embeds: Vec<LinkRef>,
     /// Links in infobox fields.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub field_links: Vec<FieldLink>,
@@ -116,9 +119,13 @@ pub fn read_entry(path: &Path, file_name: &str) -> Option<Entry> {
             .map(|l| LinkRef { target: l.page, section: l.section, line: l.line as u32 })
             .collect(),
         summary: wikilinks::summary(&body),
+        embeds: wikilinks::parse_embeds(&body)
+            .into_iter()
+            .map(|e| LinkRef { target: e.page, section: None, line: e.line as u32 })
+            .collect(),
         template: infobox.as_ref().and_then(|ib| ib.template.clone()),
         field_links: infobox.as_ref().map(field_links).unwrap_or_default(),
-        image: infobox.as_ref().and_then(first_image).or_else(|| wikilinks::first_shown_image(&body)),
+        image: infobox.as_ref().and_then(first_image).or_else(|| crate::textimages::first_shown_image(&body)),
         categories: meta_categories(&fm),
         sort: meta_sort(&fm),
     })

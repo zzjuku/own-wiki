@@ -12,7 +12,6 @@ import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   activeFormats,
   indentListItem,
-  insertBlock,
   insertDivider,
   insertFootnote,
   insertTable,
@@ -29,17 +28,16 @@ import { InfoboxForm } from "./InfoboxForm";
 import { editorLinks, imageRangeAt, insertLink, linkCompletions, linkRangeAt, setLinkEnv, wikiLinkSyntax, type LinkEnv } from "./editorLinks";
 import { LinkPopup } from "./LinkPopup";
 import { chooseTextImages, ImagePopup } from "./ImagePopup";
-import { GalleryDialog } from "./GalleryDialog";
 import { useFileDrop } from "./dropFiles";
-import { GALLERY_OPEN, galleryAround, gallerySource, hasExtension, imageSource, newImage, parseGallery, TEXT_IMAGE_EXTENSIONS, type GalleryItem, type TextImage } from "./images";
-import { highlight, Icon, popupTheme, spoilerMarks, theme } from "./editorTheme";
-import { parseQuote, quoteAround, quoteSource, type Quote } from "./quotes";
-import { QuoteDialog } from "./QuoteDialog";
+import { hasExtension, imageSource, newImage, TEXT_IMAGE_EXTENSIONS, type TextImage } from "./images";
+import { useBlockDialogs } from "./BlockDialogs";
+import { embedMarks, highlight, Icon, popupTheme, spoilerMarks, theme } from "./editorTheme";
 import { toggleSpoiler } from "./spoilers";
 import { useReportError } from "./notify";
 import { categoryOf } from "./categories";
 import { editedLink, shownText, type WikiLink } from "./wikilinks";
-import { countWords, plainText, renderPage } from "./markdown";
+import { countWords, plainText } from "./markdown";
+import { renderWithEmbeds, useEmbedEnv } from "./embeds";
 import { htmlToMarkdown } from "./paste";
 import { TableDialog } from "./TableDialog";
 import { IS_MAC, PagePicker } from "./QuickOpen";
@@ -102,6 +100,7 @@ const TOOLS: (Tool | "|")[] = [
   { id: "table", label: <Icon name="table" />, title: "Insert table", run: () => true },
   { id: "footnote", label: <Icon name="footnote" />, title: "Footnote", run: cmd(insertFootnote) },
   { id: "link", label: <Icon name="link" />, title: `Link to a page (${MOD}K)`, run: () => true },
+  { id: "embed", label: <Icon name="embed" />, title: "Embed a page (its current content shows here)", run: () => true },
   { id: "image", label: <Icon name="image" />, title: "Insert image (you can also drop or paste images)", run: () => true },
   { id: "gallery", label: <Icon name="gallery" />, title: "Insert gallery", run: () => true },
 ];
@@ -217,10 +216,6 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
   const [imagePopup, setImagePopup] = useState<{ from: number; to: number; image: TextImage; at: { left: number; top: number } } | null>(null);
   const imagePopupRef = useRef(imagePopup);
   imagePopupRef.current = imagePopup;
-  // The gallery dialog: a new gallery, or the one on lines `range` (0-based).
-  const [gallery, setGallery] = useState<{ range: { start: number; end: number } | null; items: GalleryItem[]; spoiler: boolean } | null>(null);
-  // The quote box dialog: a new quote box, or the one on lines `range`.
-  const [quote, setQuote] = useState<{ range: { start: number; end: number } | null; quote: Quote } | null>(null);
   const insertImagesRef = useRef<(files: string[], at?: number) => void>(() => {});
   const pasteImagesRef = useRef<(files: File[]) => void>(() => {});
   const openLinkPickerRef = useRef(() => {});
@@ -269,6 +264,7 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
       autocompletion({ override: [linkCompletions], icons: false, maxRenderedOptions: 50 }),
       syntaxHighlighting(highlight),
       spoilerMarks,
+      embedMarks,
       search({ top: true }),
       placeholder("Start writing…"),
       EditorState.phrases.of({
@@ -313,6 +309,7 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
         // the Edit image popup, clicking a gallery the gallery dialog;
         // moving away or typing closes the popups.
         if (u.docChanged && popupRef.current) setPopup(null);
+        if (u.docChanged) blocksRef.current.closePopup();
         if (u.docChanged && imagePopupRef.current && !u.transactions.some((t) => t.isUserEvent("input.image"))) setImagePopup(null);
         if (u.selectionSet && !u.docChanged) {
           const sel = u.state.selection.main;
@@ -336,17 +333,7 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
             if (popupRef.current && (sel.head < popupRef.current.from || sel.head > popupRef.current.to)) setPopup(null);
             const ip = imagePopupRef.current;
             if (ip && (sel.head < ip.from || sel.head > ip.to)) setImagePopup(null);
-            if (clicked && sel.empty) {
-              const lines = u.state.doc.toString().split("\n");
-              const n = u.state.doc.lineAt(sel.head).number - 1;
-              const range = galleryAround(lines, n);
-              if (range) {
-                const spoiler = !!GALLERY_OPEN.exec(lines[range.start])?.[1];
-                setGallery({ range, items: parseGallery(lines.slice(range.start + 1, range.end)), spoiler });
-              }
-              const q = range ? null : quoteAround(lines, n);
-              if (q) setQuote({ range: q, quote: parseQuote(lines.slice(q.start + 1, q.end)) });
-            }
+            if (clicked && sel.empty) blocksRef.current.clicked(u.view, u.state.doc.lineAt(sel.head).number - 1);
           }
         }
         if (u.docChanged || u.selectionSet) {
@@ -367,6 +354,7 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
       requestAnimationFrame(syncScroll);
       if (popupRef.current) setPopup(null);
       if (imagePopupRef.current) setImagePopup(null);
+      blocksRef.current.closePopup();
     };
     view.scrollDOM.addEventListener("scroll", onScroll);
     return () => {
@@ -403,6 +391,11 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
   useEffect(() => {
     viewRef.current?.dispatch({ effects: setLinkEnv.of(env) });
   }, [env]);
+
+  // Galleries, quote boxes and embeds: their dialogs and the embed popup.
+  const blocks = useBlockDialogs(viewRef, pageId, (call) => env.open({ page: call.page, section: call.section, label: null, suffix: "" }));
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
 
   /** Inserts images at `at` (default: replacing the selection); a single one opens its popup. */
   insertImagesRef.current = (files, at) => {
@@ -466,38 +459,8 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
     tab === "text",
   );
 
-  /** Puts a block (gallery, quote box) into the text: new at the cursor,
-   * or replacing the lines `range`; `null` removes the block on `range`. */
-  function writeBlock(range: { start: number; end: number } | null, source: string | null) {
-    const view = viewRef.current;
-    if (!view) return;
-    if (!range) {
-      if (source) cmd(insertBlock(source))(view);
-    } else {
-      const doc = view.state.doc;
-      const from = doc.line(range.start + 1).from;
-      let to = doc.line(range.end + 1).to;
-      if (source === null && to < doc.length) to++; // removing: take its line break too
-      const insert = source ?? "";
-      view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length }, userEvent: "input.block", scrollIntoView: true });
-    }
-    view.focus();
-  }
-
-  /** Writes the gallery dialog's images into the text (new or replacing the edited gallery). */
-  function saveGallery(items: GalleryItem[] | null, spoiler = false) {
-    const g = gallery;
-    setGallery(null);
-    if (g) writeBlock(g.range, items ? gallerySource(items, spoiler) : null);
-  }
-
-  function saveQuote(q: Quote | null) {
-    const open = quote;
-    setQuote(null);
-    if (open) writeBlock(open.range, q ? quoteSource(q) : null);
-  }
-
-  const textHtml = useMemo(() => renderPage(text, { lineAnchors: true, links }).html, [text, links]);
+  const embedEnv = useEmbedEnv(text, currentCategory !== undefined ? `category:${currentCategory}` : pageId);
+  const textHtml = useMemo(() => renderWithEmbeds(text, { lineAnchors: true, links }, embedEnv).html, [text, links, embedEnv]);
   const boxHtml = useMemo(
     () => infoboxHtml(infobox, { project: wiki.project, title, links, incoming, showEmpty: true, frame: frameFor(wiki, infobox?.template) }),
     [infobox, wiki, title, links, incoming],
@@ -630,11 +593,9 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
                     ? openLinkPickerRef.current()
                     : tool.id === "image"
                       ? void chooseImages()
-                      : tool.id === "gallery"
-                        ? setGallery({ range: null, items: [], spoiler: false })
-                        : tool.id === "quotebox"
-                          ? setQuote({ range: null, quote: { text: "", by: "", source: "" } })
-                          : run(tool.run)
+                      : tool.id === "gallery" || tool.id === "embed" || tool.id === "quotebox"
+                        ? blocks.open(tool.id)
+                        : run(tool.run)
               }
             >
               {tool.label}
@@ -778,33 +739,8 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
         />
       )}
 
-      {gallery && (
-        <GalleryDialog
-          pageId={pageId}
-          initial={gallery.range ? gallery.items : undefined}
-          initialSpoiler={gallery.spoiler}
-          save={(items, spoiler) => saveGallery(items, spoiler)}
-          remove={gallery.range ? () => saveGallery(null) : undefined}
-          close={() => {
-            setGallery(null);
-            viewRef.current?.focus();
-          }}
-        />
-      )}
 
-      {quote && (
-        <QuoteDialog
-          pageId={pageId}
-          initial={quote.quote}
-          isNew={!quote.range}
-          save={saveQuote}
-          remove={quote.range ? () => saveQuote(null) : undefined}
-          close={() => {
-            setQuote(null);
-            viewRef.current?.focus();
-          }}
-        />
-      )}
+      {blocks.elements}
 
       {linkPicker && (
         <PagePicker

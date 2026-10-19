@@ -64,6 +64,15 @@ export interface Backlink {
   fields: string[];
 }
 
+/** A page or category page whose text embeds a page. */
+export interface EmbedHost {
+  /** Page id, or the category's name. */
+  id: string;
+  title: string;
+  group: string;
+  category: boolean;
+}
+
 export interface RenameResult {
   page: PageInfo;
   links: number;
@@ -298,6 +307,10 @@ export const api = {
   backlinks: (project: string, id: string, context: boolean) =>
     invoke<Backlink[]>("backlinks", { project, id, context }),
   linkCount: (project: string, name: string) => invoke<LinkCount>("link_count", { project, name }),
+  embeddedIn: (project: string, id: string) => invoke<EmbedHost[]>("embedded_in", { project, id }),
+  /** The pages `ids` embed, and what those embed (up to 5 levels). */
+  embedSources: (project: string, ids: string[]) =>
+    invoke<{ id: string; title: string; body: string; infobox: Infobox | null }[]>("embed_sources", { project, ids }),
 
   createGroup: (project: string, parent: string, name: string, allowLong: boolean) =>
     invoke<GroupInfo>("create_group", { project, parent, name, allowLong }),
