@@ -116,7 +116,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M9 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. Until M9 is done, Juku uses **only one computer** for real content.
 - **M10 Health reports.**
 - **M11 Graph view.**
-- **M12 Themes:** colours, fonts (body and headings), text size, line spacing, page width.
+- **M12 Themes:** colours, fonts (body and headings), text size, line spacing, page width; look of embed boxes (frame, background, colours) per theme.
 - **M13 Interactive maps.**
 - **M14 Calendars & timelines.**
 - **M15 Family trees** (builds on M8 Relations).
@@ -225,7 +225,7 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - M8: `linkedfrom` fields and the reserved `twoWay`/`from` options.
 - M9: search in infobox fields and aliases; live reload of files changed outside the app.
 - M10: unlinked mentions, broken section links (incl. renamed headings), unused images, hidden template values.
-- M12: editing theme colours (variables already in place, incl. infobox colours).
+- M12: editing theme colours (variables already in place, incl. infobox and embed colours); embed box look (frame, background, colours) editable per theme (Juku, 2026-10-20).
 - M13: map location fields; SVG maps.
 - M14: calculated fields (e.g. age); eras and month numbers mapped to real calendars without a data migration.
 - Later / undecided: hover card rework to look more like AWOIAF's (e.g. bigger picture, wider card; details to define), Obsidian-style inline live preview, page history/undo of edits, image file pages ("File:" pages with description), group overview pages (Open items). Not planned: categories driven by field values, automatic linking of plain words.
@@ -248,3 +248,4 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - 2026-10-20 technical (M7): spoiler rule `||text||` = first character not `|` or a space, shortest text up to `||` not ending in `\`, one line only (TS `SPOILER_AT_START`, Rust `spoiler_at`); in table rows `\|\|`. Spoiler images `[[File:…|spoiler|…]]`, `<gallery spoiler>`; infobox fields `spoiler: true`; `|` in image captions now reads back from `&#124;`. Quote box block: `<quote>` text lines, optional `<by>…</by>` and `<source>…</source>` lines, `</quote>`. Embeds: a line holding only `{{Page}}`, `{{Page#Section}}` or `{{Page|infobox}}`; the link index keeps embeds apart from links (cache version 6); renames rewrite embeds like links; embed content comes from the new `embed_sources` command (Rust follows embeds up to 5 levels), "Embedded in" from `embedded_in`. Embedded headings lose their ids and footnote ids get a prefix, so they don't clash with the host's. Divider field type `divider` (no value; label optional).
 - 2026-10-20 (planning): M7 defined. Spoilers: infobox fields get a per-field Spoiler toggle for all types; images and galleries in text can be spoilers; the editor preview shows spoilers revealed but marked; a revealed spoiler stays revealed until the page is left; titles, categories and the existence of links are never hidden; spoiler-hidden values stay hidden where they reappear (M8 reverse fields etc.). Embeds: whole page, one section or infobox only; seamless look; links inside embeds don't count for the host, the source lists "Embedded in"; up to 5 levels; syntax `{{Page}}` (Claude). Quote box AWOIAF style; Contents panel narrower. Spoiler levels per book added to Open items.
 - 2026-10-20 (planning): AWOIAF-style rework of the hover cards moved to a later version (listed under "Later / undecided"); the current M4/M6 hover cards stay as they are.
+- 2026-10-20 (planning): embed boxes get their own look per theme (frame/box appearance, background, colours), added to M12 Themes.
