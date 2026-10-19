@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.12, 2026-10-19)
+# Own WIKI — Spec (v0.13, 2026-10-20)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes. Detailed scopes and decisions of finished milestones are in `docs/history.md`.
 
-Status: M1–M6 done; M7 next (to be defined); roadmap M7–M17 drafted.
+Status: M1–M6 done; M7 defined (2026-10-20), next to build; roadmap M8–M17 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -60,6 +60,8 @@ A blank, local desktop program for building personal wikis for fictional stories
 - **Inline**, Discord-style: `||hidden text||`. The text stays hidden until clicked to reveal.
 - Spoilers stay hidden everywhere their text appears: page text, infobox fields, hover previews, embeds and search results.
 - "Reveal all spoilers" exists both per page and as a global switch for everywhere (2026-10-19). Per page: lasts until the page is left. Global switch: stays on until switched off, remembered per computer (browser local storage, never synced).
+- Every infobox field on a page can be hidden as a whole with a **Spoiler** toggle, whatever its type (2026-10-20). Images and galleries in page text can be spoilers (blurred until clicked).
+- Never hidden: page titles, aliases, category names, the sidebar, and the fact that one page links to another. A value hidden as a spoiler stays hidden wherever it shows up again (reverse fields in M8, search in M9, timelines, trees…).
 
 ### 7. Working mode
 - Juku doesn't need to understand or maintain the code. Claude builds, tests, and documents. Explanations stay short and user-facing.
@@ -110,7 +112,7 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M7 Spoilers & embeds**, plus small additions (2026-10-19): AWOIAF-style quote box; separator line in text (toolbar button) and Divider infobox field with optional label; thinner Contents box; app always light.
 
 **After v1 start**
-- **M8 Relations** (2026-10-19, pulled forward from Family trees): reverse fields that fill themselves (children from parent fields), two-way fields (spouse), automatic page lists at the bottom of pages (e.g. chapters that take place at a place).
+- **M8 Relations** (2026-10-19, pulled forward from Family trees): reverse fields that fill themselves (children from parent fields), two-way fields (spouse), automatic page lists at the bottom of pages (e.g. chapters that take place at a place). A field hidden as a spoiler stays hidden in the reverse field and page lists it fills (2026-10-20).
 - **M9 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. Until M9 is done, Juku uses **only one computer** for real content.
 - **M10 Health reports.**
 - **M11 Graph view.**
@@ -120,6 +122,42 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M15 Family trees** (builds on M8 Relations).
 - **M16 Solar system map** (later version, scope to be defined).
 - **M17 Export:** zip, static HTML site.
+
+### M7 — Spoilers & embeds, plus small additions (defined 2026-10-20)
+Juku's answers (2026-10-20) are noted as (Juku).
+
+**Spoilers**
+- `||text||` hides text until it's clicked. A **Spoiler** toolbar button (Cmd+Shift+S) wraps the selection, in the editor and in infobox text fields; Juku never types `||`.
+- Hidden everywhere their text appears: page text, headings (incl. the Contents panel), tables, footnotes, captions (images, galleries, infobox images), quote boxes, infobox text / long text / list fields, category page text, hover cards and the link index's previews, What links here context lines, embeds.
+- (Juku) **Images and galleries in page text** can be spoilers: blurred until clicked (Edit image popup / gallery dialog: "Spoiler").
+- (Juku) **Infobox fields:** each field on a page has a **Spoiler** toggle that hides its whole value until clicked, for every type (choice, date, page link, image, yes/no…). Stored on the page's field (`spoiler: true`); templates can't set it.
+- Never hidden: page titles, aliases, category names, the sidebar, and the fact that one page links to another.
+- (Juku) Clicking a hidden spoiler reveals it until the page is left; a link inside isn't followed by that click. Hover cards never reveal.
+- Revealed spoilers keep a faint background so they stay recognisable.
+- (Juku) The **editor preview** shows spoilers revealed but marked.
+- **Reveal all:** button in the page header (until the page is left) and a global eye switch (stays on until switched off, per computer, never synced); while it's on, a visible marker shows it.
+- Spoiler colours are theme variables.
+
+**Embeds**
+- An **Embed** toolbar button: pick a page (autocomplete), then (Juku) what to show: **whole page** (infobox + text), **one section**, or **infobox only**. Stored as `{{Page}}`, `{{Page#Section}}`, `{{Page|infobox}}` (Claude's choice; `[[ ]]` stays links only). Clicking an embed in the source opens a popup: Open, Change, Remove.
+- An embed always shows the source page's current content; never a copy.
+- (Juku) Look: **seamless**, no frame; a small "open page" link appears on hover.
+- (Juku) Links inside an embed **don't count as links of the host page** (backlinks, later health reports and graph ignore them; they still show red when missing). The source page's What links here lists **Embedded in** separately.
+- Renaming the source page updates its embeds (incl. section embeds). A missing page shows a red box; clicking creates it.
+- Embeds inside embeds work up to 5 levels; loops and self-embeds are blocked and show a small warning box instead.
+- Headings inside an embed aren't in the host's Contents panel; the embedded page's categories don't carry over; spoilers stay spoilers and the host's Reveal all covers them.
+- Embeds work in page text and category page text, not in infobox fields. No parameters.
+
+**Small additions**
+- (Juku) **Quote box**, AWOIAF style: centred, large quotation marks, "— By, Source" right-aligned underneath. A **Quote** toolbar button opens a dialog: Quote (bold, italic, links, spoilers), By (optional; text or a page link), Source (optional). Clicking a quote box in the source reopens the dialog. Stored as a block in the page text (format Claude's choice).
+- **Separator line:** toolbar button inserting a thin horizontal line, with the spacing handled so it never turns the line above into a heading.
+- **Divider** infobox field type: a thin line with an optional label, no value. Available in templates and as a page's own field; Apply to existing pages treats it like any field.
+- (Juku) **Contents panel** in the read view becomes narrower than today's 230 px; exact width settled at the checkpoint.
+- **App always light** on Mac and Windows, incl. the window title bar; the system's dark mode is ignored.
+
+- Not in M7: spoiler levels per book (see Open items), embeds with parameters, embeds in infobox fields.
+- Checkpoint for Juku partway: always light, Contents panel, separator, Divider, quote box, spoilers everywhere incl. infobox toggle, images and Reveal all. Then: embeds.
+- Done when: new features have Playwright UI tests and pass with the unit and Rust tests; screenshots check the new and changed screens; a page with 50 embeds opens without noticeable delay, renaming a page embedded on 1,000 pages finishes within a few seconds, a 5,000-page project still reopens in under 1 s after the index change; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
 
 ### How every milestone is written
 - **Done when** always includes: new features have automated UI tests (Playwright smoke tests in `tests/ui/`) and pass with the Rust and unit tests; screenshots check how new or changed screens look; speed targets only if the milestone touches loading, the index, search or big lists; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
@@ -196,6 +234,7 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - **Group overview pages** (a page per group listing its contents, maybe with own text): wanted later; overlaps with category pages (M6, which can have own text), decide where it fits after M6.
 - Visual references (beyond Wikipedia/AWOIAF/Chronicler: what exactly he likes about them)
 - App name
+- **Spoiler levels per book** ("reveal up to Book 2"): proposed by Claude 2026-10-20, undecided; the `||` format can be extended later without changing existing spoilers.
 
 
 ## Decision log
@@ -205,3 +244,4 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - 2026-10-19 (planning): Juku's list of small additions placed. M7 gains an AWOIAF-style quote box (inserted by hand), a separator line in text + Divider infobox field (optional label), a thinner Contents box, and the app is always light on Mac and Windows (replaces "follows the system"). Automatic relation fields pulled forward from Family trees into a new **M8 Relations** (calculated from the link index, never written into other files; parents → children, two-way for spouse), together with automatic page lists such as "Chapters that take place at …". Themes (now M12) also set fonts (body, headings), text size, line spacing and page width; fonts are copied into the project. Later milestones renumbered +1 (old M8 → M9 … M16 → M17); `docs/history.md` keeps the old numbers. Edit/read hotkey already exists (Cmd+E).
 - 2026-10-19 (planning): "Reveal all spoilers" works both per page and globally (everywhere).
 - 2026-10-19 (planning, Claude decided at Juku's request): per-page reveal lasts until the page is left; the global switch stays on until switched off, remembered per computer.
+- 2026-10-20 (planning): M7 defined. Spoilers: infobox fields get a per-field Spoiler toggle for all types; images and galleries in text can be spoilers; the editor preview shows spoilers revealed but marked; a revealed spoiler stays revealed until the page is left; titles, categories and the existence of links are never hidden; spoiler-hidden values stay hidden where they reappear (M8 reverse fields etc.). Embeds: whole page, one section or infobox only; seamless look; links inside embeds don't count for the host, the source lists "Embedded in"; up to 5 levels; syntax `{{Page}}` (Claude). Quote box AWOIAF style; Contents panel narrower. Spoiler levels per book added to Open items.
