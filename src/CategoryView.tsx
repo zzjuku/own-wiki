@@ -128,7 +128,7 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted }
   const text = editing ? (latest.current ?? "") : (data?.text ?? "");
   const html = useMemo(() => (text.trim() ? renderPage(text, { tocBox: false, links }).html : ""), [text, links]);
   const readRef = useRef<HTMLDivElement>(null);
-  const revealOne = useSpoilerReveal(readRef);
+  const { onClick: revealOne } = useSpoilerReveal(readRef);
   const groups = useMemo(() => fileMembers(data?.pages ?? []), [data]);
 
   async function saveParents(next: string[]) {

@@ -83,10 +83,16 @@ test("a heading spoiler reveals together with its Contents entry", async ({ page
 
 test("Reveal spoilers on the page and the global switch", async ({ page }) => {
   await openProject(page, data());
+  // One revealed by clicking: Hide spoilers hides it again too.
+  const field = text(page).locator(".infobox-value .spoiler");
+  await field.click();
+  expect(await hidden(field)).toBe(false);
   await page.getByRole("button", { name: "Reveal spoilers" }).click();
   expect(await hidden(text(page).locator("p .spoiler").first())).toBe(false);
   await page.getByRole("button", { name: "Hide spoilers" }).click();
   expect(await hidden(text(page).locator("p .spoiler").first())).toBe(true);
+  expect(await hidden(field)).toBe(true);
+  await expect(text(page).locator(".spoiler.revealed")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Show all spoilers" }).click();
   await expect(page.getByRole("button", { name: /Spoilers shown everywhere/ })).toBeVisible();

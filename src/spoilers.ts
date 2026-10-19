@@ -122,14 +122,18 @@ function apply(root: Element, revealed: Set<string>) {
 /**
  * Clicking a hidden spoiler inside `ref` reveals it (and doesn't follow a
  * link in it). Remembered while the component lives, i.e. until the page is
- * left, also when the page re-renders.
+ * left, also when the page re-renders. `hideAll` hides every one again.
  */
 export function useSpoilerReveal(ref: RefObject<HTMLElement | null>) {
   const revealed = useRef(new Set<string>());
   useLayoutEffect(() => {
     if (ref.current) apply(ref.current, revealed.current);
   });
-  return useCallback(
+  const hideAll = useCallback(() => {
+    revealed.current.clear();
+    ref.current?.querySelectorAll(".spoiler.revealed").forEach((el) => el.classList.remove("revealed"));
+  }, [ref]);
+  const onClick = useCallback(
     (e: React.MouseEvent) => {
       const root = ref.current;
       const el = (e.target as Element).closest<HTMLElement>(".spoiler");
@@ -141,6 +145,7 @@ export function useSpoilerReveal(ref: RefObject<HTMLElement | null>) {
     },
     [ref],
   );
+  return { onClick, hideAll };
 }
 
 function loadGlobal(): boolean {

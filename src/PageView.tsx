@@ -145,7 +145,7 @@ export function PageView(props: Props) {
     [infobox, project, shownTitle, links, incoming, wiki],
   );
   const readRef = useRef<HTMLDivElement>(null);
-  const revealOne = useSpoilerReveal(readRef);
+  const spoilers = useSpoilerReveal(readRef);
   // "Reveal spoilers" in the header: all of this page's, until the page is left.
   const [revealAll, setRevealAll] = useState(false);
   const pageHasSpoilers = useMemo(() => hasSpoilers(boxHtml) || hasSpoilers(rendered.html), [boxHtml, rendered.html]);
@@ -222,7 +222,11 @@ export function PageView(props: Props) {
             className={`reveal-button ${revealAll ? "active" : ""}`}
             aria-pressed={revealAll}
             title={revealAll ? "Hide this page's spoilers again" : "Show all spoilers on this page (until you leave it)"}
-            onClick={() => setRevealAll(!revealAll)}
+            onClick={() => {
+              // Hiding also hides the spoilers revealed one by one.
+              if (revealAll) spoilers.hideAll();
+              setRevealAll(!revealAll);
+            }}
           >
             {revealAll ? "Hide spoilers" : "Reveal spoilers"}
           </button>
@@ -299,7 +303,7 @@ export function PageView(props: Props) {
           }
         />
       ) : body.trim() || boxHtml ? (
-        <div className="read-view" ref={readRef} onClickCapture={revealOne}>
+        <div className="read-view" ref={readRef} onClickCapture={spoilers.onClick}>
           {rendered.toc.length > 0 && (
             <TocPanel toc={rendered.toc} scrollRef={readRef} storageKey={`ownwiki.tocFolded.${project}/${pageId}`} />
           )}
