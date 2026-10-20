@@ -4,6 +4,7 @@
 import type {
   Backlink, CategoryInfo, Field, Infobox, PageInfo, ProjectSettings, Template,
 } from "../../../src/api";
+import type { ThemeData } from "../../../src/themes/engine";
 
 export interface MockPage {
   id: string;
@@ -18,7 +19,19 @@ export interface MockPage {
 export interface Fixture {
   /** null = no library folder chosen yet (welcome screen). */
   libraryPath?: string | null;
-  projects?: { id: string; name: string; mainPage?: string | null; pages?: MockPage[]; templates?: Template[]; groups?: string[] }[];
+  projects?: {
+    id: string;
+    name: string;
+    mainPage?: string | null;
+    pages?: MockPage[];
+    templates?: Template[];
+    groups?: string[];
+    settings?: ProjectSettings;
+    themes?: Record<string, ThemeData>;
+  }[];
+  /** App-wide themes by folder name, and the chosen one ("app:<id>"). */
+  themes?: Record<string, ThemeData>;
+  appTheme?: string | null;
 }
 
 interface Project {
@@ -31,6 +44,7 @@ interface Project {
   catTexts: Map<string, { name: string; text: string; parents: string[] }>;
   settings: ProjectSettings;
   frame: { width: number; height: number };
+  themes: Map<string, ThemeData>;
 }
 
 class CommandError {
@@ -55,7 +69,8 @@ export function createBackend(fixture: Fixture) {
       id: f.id, name: f.name, mainPage: f.mainPage ?? null,
       pages: new Map((f.pages ?? []).map((pg) => [pg.id, fullPage(pg)])),
       groups: new Set(f.groups ?? []), templates: f.templates ?? [],
-      catTexts: new Map(), settings: { hideCategoryBox: false }, frame: { width: 250, height: 300 },
+      catTexts: new Map(), settings: f.settings ?? { hideCategoryBox: false }, frame: { width: 250, height: 300 },
+      themes: new Map(Object.entries(f.themes ?? {})),
     };
     projects.set(p.id, p);
     return p;
@@ -63,6 +78,18 @@ export function createBackend(fixture: Fixture) {
   (fixture.projects ?? []).forEach(addProject);
   /** Last file path the open-file dialog returns. */
   let nextOpen: string | null = null;
+  const appThemes = new Map<string, ThemeData>(Object.entries(fixture.themes ?? {}));
+  let appTheme: string | null = fixture.appTheme ?? null;
+  const themeStore = (project: string | null) => (project ? proj(project).themes : appThemes);
+  const theme = (store: Map<string, ThemeData>, id: string) => {
+    const t = store.get(id);
+    if (!t) throw new CommandError("notFound", `Theme not found: ${id}`);
+    return t;
+  };
+  const themeFree = (store: Map<string, ThemeData>, name: string, except?: string) => {
+    if ([...store].some(([id, t]) => id !== except && lc(t.name) === lc(name.trim())))
+      throw new CommandError("exists", `A theme named "${name.trim()}" already exists here.`);
+  };
 
   const proj = (id: string) => {
     const p = projects.get(id);
@@ -354,6 +381,43 @@ export function createBackend(fixture: Fixture) {
     },
     delete_group: ({ project, id }) => void proj(project).groups.delete(id),
 
+    // Themes
+    list_themes: ({ project }) =>
+      [...themeStore(project)].map(([id, t]) => ({ id, name: t.name })).sort((a, b) => a.name.localeCompare(b.name)),
+    read_theme: ({ project, id }) => JSON.parse(JSON.stringify(theme(themeStore(project), id))),
+    create_theme: ({ project, name, data }) => {
+      const store = themeStore(project);
+      themeFree(store, name);
+      const id = name.trim();
+      store.set(id, { ...data, name: id });
+      return { id, name: id };
+    },
+    save_theme: ({ project, id, data }) => {
+      const store = themeStore(project);
+      store.set(id, { ...data, name: theme(store, id).name });
+    },
+    rename_theme: ({ project, id, name }) => {
+      const store = themeStore(project);
+      const t = theme(store, id);
+      themeFree(store, name, id);
+      store.delete(id);
+      store.set(name.trim(), { ...t, name: name.trim() });
+      return { id: name.trim(), name: name.trim() };
+    },
+    delete_theme: ({ project, id }) => void themeStore(project).delete(id),
+    get_app_theme: () => appTheme,
+    set_app_theme: ({ choice }) => void (appTheme = choice),
+    import_font: ({ path }) => {
+      const file = path.split("/").pop();
+      return { family: file.replace(/\.[^.]+$/, "").split("-")[0], file, weight: "400", style: "normal" };
+    },
+    installed_fonts: () => ["Font A", "Font B"],
+    copy_installed_font: ({ family }) => [
+      { family, file: `${family} Regular.ttf`, weight: "400", style: "normal" },
+      { family, file: `${family} Bold.ttf`, weight: "700", style: "normal" },
+    ],
+    font_data: () => new ArrayBuffer(0),
+
     // Plugins
     "plugin:dialog|open": () => nextOpen,
     "plugin:clipboard-manager|read_text": () => "",
@@ -362,6 +426,10 @@ export function createBackend(fixture: Fixture) {
 
   return {
     projects,
+    appThemes,
+    get appTheme() {
+      return appTheme;
+    },
     setNextOpen: (path: string | null) => void (nextOpen = path),
     handle(cmd: string, args: any): unknown {
       const fn = commands[cmd];

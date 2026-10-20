@@ -38,7 +38,8 @@
  * "show" / "hide" at its right. */
 .markdown details.embed-box {
   margin: 1em 0;
-  border: 1px solid var(--navbox-border);
+  border: var(--navbox-border-width) var(--navbox-border-style) var(--navbox-border);
+  border-radius: var(--navbox-radius);
   background: var(--navbox-bg);
 }
 .markdown details.embed-box:hover {
@@ -55,6 +56,13 @@
   font-weight: 700;
   cursor: pointer;
   list-style: none;
+}
+.markdown .embed-box-title {
+  --inner-radius: max(0px, calc(var(--navbox-radius) - var(--navbox-border-width)));
+  border-radius: var(--inner-radius) var(--inner-radius) 0 0;
+}
+.markdown details.embed-box:not([open]) > .embed-box-title {
+  border-radius: var(--inner-radius);
 }
 .markdown .embed-box-title::-webkit-details-marker {
   display: none;

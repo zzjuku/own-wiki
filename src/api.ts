@@ -1,5 +1,6 @@
 // Thin typed wrappers around the Rust commands in src-tauri/src/lib.rs.
 import { invoke } from "@tauri-apps/api/core";
+import type { ThemeData, ThemeFont } from "./themes/engine";
 
 export interface Settings {
   libraryPath: string | null;
@@ -128,6 +129,14 @@ export interface FieldOptions {
 export interface ProjectSettings {
   /** Pages don't show the categories box at the bottom. */
   hideCategoryBox: boolean;
+  /** The project's own theme ("builtin:<id>" or "project:<folder>"); null = the app theme. */
+  theme?: string | null;
+}
+
+export interface ThemeInfo {
+  /** Folder name. */
+  id: string;
+  name: string;
 }
 
 /** Width and height of the frame infobox images sit in (CSS pixels). */
@@ -311,6 +320,25 @@ export const api = {
   /** The pages `ids` embed, and what those embed (up to 5 levels). */
   embedSources: (project: string, ids: string[]) =>
     invoke<{ id: string; title: string; body: string; infobox: Infobox | null }[]>("embed_sources", { project, ids }),
+
+  // Themes (M8). `project` null = the app-wide themes in the library folder.
+  listThemes: (project: string | null) => invoke<ThemeInfo[]>("list_themes", { project }),
+  readTheme: (project: string | null, id: string) => invoke<ThemeData>("read_theme", { project, id }),
+  /** `from`: the stored theme being copied (its font files come along). */
+  createTheme: (project: string | null, name: string, data: ThemeData, from: { project: string | null; id: string } | null) =>
+    invoke<ThemeInfo>("create_theme", { project, name, data, from }),
+  saveTheme: (project: string | null, id: string, data: ThemeData) => invoke<void>("save_theme", { project, id, data }),
+  renameTheme: (project: string | null, id: string, name: string) => invoke<ThemeInfo>("rename_theme", { project, id, name }),
+  deleteTheme: (project: string | null, id: string) => invoke<void>("delete_theme", { project, id }),
+  /** The app-wide theme in use ("builtin:default", "app:<folder>"). */
+  getAppTheme: () => invoke<string | null>("get_app_theme"),
+  setAppTheme: (choice: string | null) => invoke<void>("set_app_theme", { choice }),
+  importFont: (project: string | null, id: string, path: string) => invoke<ThemeFont>("import_font", { project, id, path }),
+  /** Family names of the fonts installed on this computer. */
+  installedFonts: () => invoke<string[]>("installed_fonts"),
+  copyInstalledFont: (project: string | null, id: string, family: string) =>
+    invoke<ThemeFont[]>("copy_installed_font", { project, id, family }),
+  fontData: (project: string | null, id: string, file: string) => invoke<ArrayBuffer>("font_data", { project, id, file }),
 
   createGroup: (project: string, parent: string, name: string, allowLong: boolean) =>
     invoke<GroupInfo>("create_group", { project, parent, name, allowLong }),

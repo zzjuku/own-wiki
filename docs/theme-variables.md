@@ -1,6 +1,8 @@
 # Theme variables
 
-The contract for themes (M8). Defaults live in [`src/theme.css`](../src/theme.css), always light (the system's dark mode is ignored since M7). A theme sets any of these variables; anything it leaves out keeps the default. Keep this list and `theme.css` in sync.
+The contract for themes (M8). Defaults live in [`src/theme.css`](../src/theme.css), always light (the system's dark mode is ignored since M7). A theme sets any of these variables; anything it leaves out keeps the default. Keep this list, `theme.css` and the editor's list in `src/themes/vars.ts` in sync.
+
+How themes use them (M8, `src/themes/engine.ts`): a theme file stores only the variables it sets. A default written as another variable (`var(--bg)`) follows that variable. Some colours are computed from a main setting when the theme changes that setting (e.g. hover and border colours from the background, text on the accent, tooltip text); the rules are in `RULES` in `engine.ts`. A theme that sets nothing looks exactly like the defaults.
 
 Rule: the app's CSS uses no colour or font of its own. Every colour and font comes from a variable below, as do the type scale and the main layout sizes. Small fixed spacings inside controls (button padding, icon sizes, gaps of a few pixels) are not themeable.
 
@@ -77,6 +79,12 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--embed-hover` | Faint highlight of an embedded page under the mouse |
 | `--navbox-bg` / `--navbox-border` | Collapsible embed boxes (infobox colours by default) |
 | `--navbox-title-bg` / `--navbox-title-text` | Their title bar |
+| `--navbox-border-width` / `--navbox-border-style` / `--navbox-radius` | Their frame: width, style (solid, dashed, dotted, double, none), corner rounding (M8) |
+
+## Tooltips (M8)
+| Variable | Used for |
+|---|---|
+| `--tooltip-bg` / `--tooltip-text` | App-styled tooltips on buttons and controls |
 
 ## Fonts and sizes
 | Variable | Used for |

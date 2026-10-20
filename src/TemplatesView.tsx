@@ -4,7 +4,7 @@
 // one never changes existing pages (see SPEC.md, M5).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type Field, type FieldKind, type Frame, type PageInfo, type Template } from "./api";
-import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
+import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
 import { Chips, ColorPicker, DragHandle, moveItem, useReorder } from "./controls";
 import { useDialogs } from "./dialogs";
 import { infoboxHtml, instantiate, isLayout, KINDS, newFieldKey, newFieldLabel, newTemplateId } from "./infobox";
@@ -17,13 +17,6 @@ import { norm } from "./wikilinks";
 
 /** Field types offered (Linked from is postponed; see SPEC.md, Open items). */
 export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "links", "date", "image", "heading", "divider"];
-
-const STATUS_TEXT: Record<SaveStatus, string> = {
-  saved: "Saved",
-  unsaved: "Editing…",
-  saving: "Saving…",
-  error: "Not saved",
-};
 
 /** The project's templates, saved a moment after each change. */
 export function useTemplates(project: string) {

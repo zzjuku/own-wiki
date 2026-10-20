@@ -1,0 +1,24 @@
+/* ---- M8: app-styled tooltips (src/Tooltip.tsx) ---- */
+.app-tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 320px;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-text);
+  box-shadow: var(--shadow);
+  font: var(--text-xs) / 1.4 var(--font-ui);
+  white-space: pre-line;
+  pointer-events: none;
+  transform: translate(-50%, 0);
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+.app-tooltip.above {
+  transform: translate(-50%, -100%);
+}
+.app-tooltip.visible {
+  opacity: 1;
+  transition-duration: 0.12s;
+}

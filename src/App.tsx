@@ -7,12 +7,15 @@ import { DialogProvider } from "./dialogs";
 import { NotifyProvider, useReportError } from "./notify";
 import { Library } from "./Library";
 import { ProjectView } from "./ProjectView";
+import { ThemeProvider } from "./themes/runtime";
+import { Tooltips } from "./Tooltip";
 
 export default function App() {
   return (
     <NotifyProvider>
       <DialogProvider>
         <Main />
+        <Tooltips />
       </DialogProvider>
     </NotifyProvider>
   );
@@ -43,8 +46,9 @@ function Main() {
 
   if (!settings) return null;
 
+  let screen;
   if (!settings.libraryPath) {
-    return (
+    screen = (
       <div className="welcome">
         <h1>Own WIKI</h1>
         <p>Choose a library folder. All your projects are stored there as plain files.</p>
@@ -56,17 +60,10 @@ function Main() {
         </button>
       </div>
     );
+  } else if (project) {
+    screen = <ProjectView project={project} onBack={() => setProject(null)} />;
+  } else {
+    screen = <Library libraryPath={settings.libraryPath} onOpen={setProject} onChooseLibrary={chooseLibrary} />;
   }
-
-  if (project) {
-    return <ProjectView project={project} onBack={() => setProject(null)} />;
-  }
-
-  return (
-    <Library
-      libraryPath={settings.libraryPath}
-      onOpen={setProject}
-      onChooseLibrary={chooseLibrary}
-    />
-  );
+  return <ThemeProvider libraryPath={settings.libraryPath}>{screen}</ThemeProvider>;
 }

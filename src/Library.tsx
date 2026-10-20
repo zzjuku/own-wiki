@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, errorText, type ProjectInfo } from "./api";
 import { useDialogs } from "./dialogs";
+import { ThemesView } from "./themes/ThemesView";
 
 interface Props {
   libraryPath: string;
@@ -13,6 +14,7 @@ export function Library({ libraryPath, onOpen, onChooseLibrary }: Props) {
   const [projects, setProjects] = useState<ProjectInfo[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showThemes, setShowThemes] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -68,11 +70,22 @@ export function Library({ libraryPath, onOpen, onChooseLibrary }: Props) {
     });
   }
 
+  if (showThemes) {
+    return (
+      <div className="library library-themes">
+        <ThemesView project={null} onClose={() => setShowThemes(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="library">
       <header className="topbar">
         <h1>Own WIKI</h1>
         <div className="spacer" />
+        <button onClick={() => setShowThemes(true)} disabled={!!loadError}>
+          Themes
+        </button>
         <button onClick={() => setShowSettings(true)}>Settings</button>
       </header>
 

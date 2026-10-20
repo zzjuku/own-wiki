@@ -9,7 +9,8 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [react()],
   // Unit tests only; the UI tests in tests/ui run with Playwright (npm run test:ui).
-  test: { include: ["src/**/*.test.ts"] },
+  // theme.css is read as text by src/themes/vars.ts, so tests need its real content.
+  test: { include: ["src/**/*.test.ts"], css: { include: [/theme\.css/] } },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

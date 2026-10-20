@@ -36,6 +36,9 @@ struct ProjectFile {
     /// Pages don't show the categories box at the bottom.
     #[serde(rename = "hideCategoryBox", default, skip_serializing_if = "std::ops::Not::not")]
     hide_category_box: bool,
+    /// The project's own theme ("builtin:<id>" or "project:<folder>"); none = the app theme.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    theme: Option<String>,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -117,15 +120,20 @@ pub fn set_image_frame(dir: &Path, frame: Frame) -> AppResult<()> {
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSettings {
     pub hide_category_box: bool,
+    /// See [`ProjectFile::theme`].
+    #[serde(default)]
+    pub theme: Option<String>,
 }
 
 pub fn settings(dir: &Path) -> AppResult<ProjectSettings> {
-    Ok(ProjectSettings { hide_category_box: read_project_file(dir)?.hide_category_box })
+    let file = read_project_file(dir)?;
+    Ok(ProjectSettings { hide_category_box: file.hide_category_box, theme: file.theme })
 }
 
 pub fn set_settings(dir: &Path, s: &ProjectSettings) -> AppResult<()> {
     let mut file = read_project_file(dir)?;
     file.hide_category_box = s.hide_category_box;
+    file.theme = s.theme.clone().filter(|t| !t.trim().is_empty());
     write_project_file(dir, &file)
 }
 
@@ -194,6 +202,7 @@ pub fn list_projects(library: &Path) -> AppResult<Vec<ProjectInfo>> {
 pub fn create_project(library: &Path, name: &str) -> AppResult<ProjectInfo> {
     let name = name.trim();
     let id = to_file_name(name)?;
+    reserved(&id)?;
     if name_taken(library, &id)? {
         return Err(AppError::Exists(format!(
             "A project named \"{id}\" already exists."
@@ -213,6 +222,7 @@ pub fn create_project(library: &Path, name: &str) -> AppResult<ProjectInfo> {
             main_page: Some(MAIN_PAGE_TITLE.into()),
             infobox_image: None,
             hide_category_box: false,
+            theme: None,
             extra: Default::default(),
         },
     )?;
@@ -229,11 +239,20 @@ pub fn create_project(library: &Path, name: &str) -> AppResult<ProjectInfo> {
     })
 }
 
+/// The app-wide themes folder sits in the library too, so no project may use its name.
+fn reserved(id: &str) -> AppResult<()> {
+    if id.eq_ignore_ascii_case(crate::themes::APP_THEMES_DIR) {
+        return Err(AppError::Invalid(format!("\"{id}\" is used by the app for its themes. Please choose another name.")));
+    }
+    Ok(())
+}
+
 /// Renames the project and its folder.
 pub fn rename_project(library: &Path, id: &str, new_name: &str) -> AppResult<ProjectInfo> {
     let dir = project_dir(library, id)?;
     let new_name = new_name.trim();
     let new_id = to_file_name(new_name)?;
+    reserved(&new_id)?;
     let same_folder = new_id.to_lowercase() == id.to_lowercase();
     if !same_folder && name_taken(library, &new_id)? {
         return Err(AppError::Exists(format!(
@@ -266,9 +285,16 @@ mod tests {
         create_project(lib.path(), "Project A").unwrap();
         let dir = lib.path().join("Project A");
         assert!(!settings(&dir).unwrap().hide_category_box);
-        set_settings(&dir, &ProjectSettings { hide_category_box: true }).unwrap();
+        set_settings(&dir, &ProjectSettings { hide_category_box: true, theme: Some("project:Theme A".into()) }).unwrap();
         assert!(settings(&dir).unwrap().hide_category_box);
-        assert!(fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("\"hideCategoryBox\": true"));
+        assert_eq!(settings(&dir).unwrap().theme.as_deref(), Some("project:Theme A"));
+        let json = fs::read_to_string(dir.join(PROJECT_FILE)).unwrap();
+        assert!(json.contains("\"hideCategoryBox\": true") && json.contains("\"theme\": \"project:Theme A\""));
+        set_settings(&dir, &ProjectSettings { hide_category_box: false, theme: None }).unwrap();
+        assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("theme"));
+        // The app's themes folder name is not available for projects.
+        assert!(matches!(create_project(lib.path(), "_Themes"), Err(AppError::Invalid(_))));
+        assert!(matches!(rename_project(lib.path(), "Project A", "_themes"), Err(AppError::Invalid(_))));
         assert_eq!(main_page(&dir).as_deref(), Some(MAIN_PAGE_TITLE));
     }
 

@@ -11,10 +11,13 @@ import { useReportError } from "./notify";
 import { PageView } from "./PageView";
 import { IS_MAC, isQuickOpenKey, QuickOpen, QUICK_OPEN_KEYS } from "./QuickOpen";
 import { DEFAULT_FRAME, WikiContext, type FollowTarget, type Wiki } from "./wiki";
-import { Icon } from "./editorTheme";
 import { useGlobalReveal } from "./spoilers";
 import { Sidebar, type MenuItem } from "./Sidebar";
+import { SidebarHeader } from "./SidebarHeader";
 import { TemplatesView, useTemplates } from "./TemplatesView";
+import { ProjectSettingsDialog } from "./ProjectSettings";
+import { useThemes } from "./themes/runtime";
+import { ThemesView } from "./themes/ThemesView";
 import {
   allGroupsInOrder,
   buildIndex,
@@ -75,8 +78,6 @@ interface History {
 }
 
 const HISTORY_LIMIT = 200;
-const BACK_KEYS = IS_MAC ? "⌘[" : "Alt+←";
-const FORWARD_KEYS = IS_MAC ? "⌘]" : "Alt+→";
 
 /** Cmd+[ / Cmd+] on the Mac, Alt+Left / Alt+Right on Windows: -1 back, 1 forward, 0 neither. */
 function historyKey(e: KeyboardEvent): number {
@@ -105,7 +106,8 @@ export function ProjectView({ project, onBack }: Props) {
   const categories = useMemo(() => new CategoryIndex(categoryList), [categoryList]);
   // A category page, or the list of all categories, shown instead of a page.
   const [category, setCategory] = useState<string | null>(null);
-  const [categoriesOpen, setCategoriesOpen] = useState(false);
+  // A screen shown instead of a page: the categories list, Templates or Themes.
+  const [panel, setPanel] = useState<"categories" | "templates" | "themes" | null>(null);
   const [imageFrame, setImageFrameState] = useState<Frame>(DEFAULT_FRAME);
   const [settings, setSettings] = useState<ProjectSettings>({ hideCategoryBox: false });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -120,8 +122,12 @@ export function ProjectView({ project, onBack }: Props) {
     setSettings(next);
     api.setProjectSettings(project.id, next).catch(report);
   }
-  // The Templates screen is shown instead of a page.
-  const [templatesOpen, setTemplatesOpen] = useState(false);
+  // The project's own theme (if any) shows while the project is open.
+  const { setProject: setThemeProject } = useThemes();
+  useEffect(() => {
+    setThemeProject(project.id, settings.theme ?? null);
+  }, [project.id, settings.theme, setThemeProject]);
+  useEffect(() => () => setThemeProject(null, null), [setThemeProject]);
   const [templateSelected, setTemplateSelected] = useState<string | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [revealRow, setRevealRow] = useState<{ id: string } | null>(null);
@@ -201,9 +207,8 @@ export function ProjectView({ project, onBack }: Props) {
     edit = false,
     { section = null, via = null, record = true }: { section?: string | null; via?: string | null; record?: boolean } = {},
   ) {
-    if (id !== selected || templatesOpen || category || categoriesOpen) await flushAll();
-    setTemplatesOpen(false);
-    setCategoriesOpen(false);
+    if (id !== selected || panel || category) await flushAll();
+    setPanel(null);
     setCategory(null);
     record && remember(id);
     reveal(parentOf(id));
@@ -217,7 +222,7 @@ export function ProjectView({ project, onBack }: Props) {
   /** Where the user is now, as a history entry. */
   function place(): string | null {
     if (category) return catKey(category);
-    return selected && !templatesOpen && !categoriesOpen ? selected : null;
+    return selected && !panel ? selected : null;
   }
 
   /** Records the current place before going to `next`. */
@@ -230,8 +235,7 @@ export function ProjectView({ project, onBack }: Props) {
   async function openCategory(name: string, { record = true }: { record?: boolean } = {}) {
     await flushAll();
     if (record) remember(catKey(name));
-    setTemplatesOpen(false);
-    setCategoriesOpen(false);
+    setPanel(null);
     setEditing(false);
     setCategory(name);
   }
@@ -246,13 +250,13 @@ export function ProjectView({ project, onBack }: Props) {
     }
   }
 
-  async function openCategories() {
+  /** Shows the categories list, Templates or Themes instead of a page. */
+  async function openPanel(which: "categories" | "templates" | "themes") {
     await flushAll();
-    remember("");
-    setTemplatesOpen(false);
+    if (which === "categories") remember("");
     setCategory(null);
     setEditing(false);
-    setCategoriesOpen(true);
+    setPanel(which);
   }
 
   /** Back (-1) or forward (1) through visited pages, skipping deleted ones. */
@@ -679,85 +683,24 @@ export function ProjectView({ project, onBack }: Props) {
     [project.id, names, templates.templates, imageFrame, report, categories, reloadCategories, settings],
   );
 
-  async function openTemplates() {
-    await flushAll();
-    setEditing(false);
-    setCategory(null);
-    setCategoriesOpen(false);
-    setTemplatesOpen(true);
-  }
-
   return (
     <WikiContext.Provider value={wiki}>
     <div className={`project ${revealAll ? "reveal-spoilers" : ""}`}>
       <aside className="sidebar">
-        <div className="sidebar-top">
-          <button className="plain back" onClick={back}>
-            ← Projects
-          </button>
-          <div className="spacer" />
-          <div className="nav-buttons">
-            <button
-              className="plain nav"
-              title={mainPage ? `Main page: ${mainPage.title}` : "Main page (none set yet)"}
-              aria-label="Main page"
-              onClick={goHome}
-            >
-              <NavIcon name="home" />
-            </button>
-            <button
-              className="plain nav"
-              title={`Back (${BACK_KEYS})`}
-              aria-label="Back"
-              disabled={!history.back.length}
-              onClick={() => void go(-1)}
-            >
-              <NavIcon name="back" />
-            </button>
-            <button
-              className="plain nav"
-              title={`Forward (${FORWARD_KEYS})`}
-              aria-label="Forward"
-              disabled={!history.forward.length}
-              onClick={() => void go(1)}
-            >
-              <NavIcon name="forward" />
-            </button>
-          </div>
-        </div>
-        <div className="project-name-row">
-          <h1
-            className={`project-name ${selectedGroup === ROOT ? "selected" : ""}`}
-            title={`${project.name} — click to add new pages at the top level`}
-            data-drop={ROOT}
-            onClick={() => setSelectedGroup(ROOT)}
-          >
-            {project.name}
-          </h1>
-          <button
-            className={`plain nav spoiler-switch ${revealAll ? "active" : ""}`}
-            title={revealAll ? "Spoilers are shown everywhere. Click to hide them again." : "Show all spoilers everywhere (remembered on this computer)"}
-            aria-label="Show all spoilers"
-            aria-pressed={revealAll}
-            onClick={() => setRevealAll(!revealAll)}
-          >
-            <Icon name={revealAll ? "eye" : "spoiler"} />
-          </button>
-          <button className="plain nav" title="Project settings" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
-            <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <circle cx="8" cy="8" r="2.2" className="stroke" />
-              <path
-                d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"
-                className="stroke"
-              />
-            </svg>
-          </button>
-        </div>
-        {revealAll && (
-          <button className="spoilers-shown" title="Click to hide spoilers again" onClick={() => setRevealAll(false)}>
-            Spoilers shown everywhere · Hide
-          </button>
-        )}
+        <SidebarHeader
+          projectName={project.name}
+          mainPageTitle={mainPage?.title ?? null}
+          canBack={history.back.length > 0}
+          canForward={history.forward.length > 0}
+          onProjects={() => void back()}
+          onHome={goHome}
+          onGo={(step) => void go(step)}
+          topSelected={selectedGroup === ROOT}
+          onSelectTop={() => setSelectedGroup(ROOT)}
+          revealAll={revealAll}
+          setRevealAll={setRevealAll}
+          onSettings={() => setSettingsOpen(true)}
+        />
         <div className="row">
           <button
             className="primary grow"
@@ -781,20 +724,23 @@ export function ProjectView({ project, onBack }: Props) {
           <span>Find page…</span>
           <kbd>{QUICK_OPEN_KEYS}</kbd>
         </button>
-        <button className={`plain templates-button ${templatesOpen ? "selected" : ""}`} onClick={() => void openTemplates()}>
+        <button className={`plain templates-button ${panel === "templates" ? "selected" : ""}`} onClick={() => void openPanel("templates")}>
           Templates
           {templates.templates.length > 0 && <span className="count">{templates.templates.length}</span>}
         </button>
         <button
-          className={`plain templates-button ${categoriesOpen || category ? "selected" : ""}`}
-          onClick={() => void openCategories()}
+          className={`plain templates-button ${panel === "categories" || category ? "selected" : ""}`}
+          onClick={() => void openPanel("categories")}
         >
           Categories
           {categories.list.length > 0 && <span className="count">{categories.list.length}</span>}
         </button>
+        <button className={`plain templates-button ${panel === "themes" ? "selected" : ""}`} onClick={() => void openPanel("themes")}>
+          Themes
+        </button>
         <Sidebar
           rows={rows}
-          selected={templatesOpen || category || categoriesOpen ? null : selected}
+          selected={panel || category ? null : selected}
           selectedGroup={selectedGroup}
           onSelectGroup={setSelectedGroup}
           onSelectTop={() => setSelectedGroup(ROOT)}
@@ -809,7 +755,7 @@ export function ProjectView({ project, onBack }: Props) {
       </aside>
 
       <main className="content">
-        {categoriesOpen ? (
+        {panel === "categories" ? (
           <CategoriesList onOpen={(name) => void openCategory(name)} onCreate={(name) => void createCategory(name)} />
         ) : category ? (
           <CategoryView
@@ -825,11 +771,17 @@ export function ProjectView({ project, onBack }: Props) {
             }}
             onDeleted={() => {
               setCategory(null);
-              setCategoriesOpen(true);
+              setPanel("categories");
               void reload();
             }}
           />
-        ) : templatesOpen ? (
+        ) : panel === "themes" ? (
+          <ThemesView
+            project={project.id}
+            projectTheme={settings.theme ?? null}
+            onProjectTheme={(theme) => changeSettings({ ...settings, theme })}
+          />
+        ) : panel === "templates" ? (
           <TemplatesView
             project={project.id}
             state={templates}
@@ -869,29 +821,7 @@ export function ProjectView({ project, onBack }: Props) {
       <ImageViewer />
 
       {settingsOpen && (
-        <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && setSettingsOpen(false)}>
-          <div className="dialog" role="dialog" aria-label="Project settings" onKeyDown={(e) => e.key === "Escape" && setSettingsOpen(false)}>
-            <h2>Project settings</h2>
-            <p className="muted small-note">These settings are stored in the project, so they're the same on every computer.</p>
-            <label className="check settings-check">
-              <input
-                type="checkbox"
-                checked={!settings.hideCategoryBox}
-                onChange={(e) => changeSettings({ ...settings, hideCategoryBox: !e.target.checked })}
-              />
-              <span>Show the categories box at the bottom of pages</span>
-            </label>
-            <p className="hint">
-              When it's off, categories still work: add them in edit mode (the Categories line under the title), and category pages
-              and the Categories list stay as they are.
-            </p>
-            <div className="dialog-actions">
-              <button type="button" className="primary" autoFocus onClick={() => setSettingsOpen(false)}>
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
+        <ProjectSettingsDialog project={project.id} settings={settings} change={changeSettings} close={() => setSettingsOpen(false)} />
       )}
 
       {quickOpen && (
@@ -905,19 +835,5 @@ export function ProjectView({ project, onBack }: Props) {
       )}
     </div>
     </WikiContext.Provider>
-  );
-}
-
-const NAV_ICONS: Record<string, string> = {
-  home: "M2.5 7.5 8 3l5.5 4.5M4 6.5V13h3V9.5h2V13h3V6.5",
-  back: "M10 3.5 5.5 8l4.5 4.5",
-  forward: "M6 3.5 10.5 8 6 12.5",
-};
-
-function NavIcon({ name }: { name: string }) {
-  return (
-    <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-      <path d={NAV_ICONS[name]} className="stroke" />
-    </svg>
   );
 }

@@ -1,6 +1,7 @@
 // Templates and infoboxes in the page view: field types, values, and the
 // AWOIAF-style box (HTML) for the read view and the editor preview.
 // The file format is described in src-tauri/src/infobox.rs.
+import { readableOn } from "./themes/color";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Field, FieldKind, Frame, IncomingField, Infobox, Template } from "./api";
 import { renderInline, renderPage, slugify, spoilerHtml, type LinkContext } from "./markdown";
@@ -257,14 +258,7 @@ export function changeTemplate(ib: Infobox, t: Template): Infobox {
 
 /** Black or white text, whichever reads better on `color` ("#rrggbb"). */
 export function contrastText(color: string): string {
-  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color.trim());
-  if (!m) return "#202122";
-  const [r, g, b] = [m[1], m[2], m[3]].map((h) => {
-    const c = parseInt(h, 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return lum > 0.4 ? "#202122" : "#ffffff";
+  return readableOn(color) ?? "#202122";
 }
 
 export const isColor = (c: unknown): c is string => typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c.trim());

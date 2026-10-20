@@ -7,7 +7,9 @@
  * docs/theme-variables.md — keep both in sync.
  *
  * The app is always light (2026-10-19): the system's dark mode is ignored;
- * other looks come only from themes (M8).
+ * other looks come only from themes (M8). Themes (src/themes/) read these
+ * defaults from this file: a value that is another variable (`var(--x)`)
+ * follows that variable in every theme unless the theme sets it itself.
  */
 :root {
   /* App surfaces and text */
@@ -29,7 +31,7 @@
   --shadow: 0 10px 30px rgb(0 0 0 / 0.18);
   --backdrop: rgb(0 0 0 / 0.3);
   --sidebar-bg: var(--bg-soft);
-  --toolbar-bg: var(--bg-soft);
+  --toolbar-bg: var(--sidebar-bg);
 
   /* Editor (Markdown source side) */
   --editor-mark: #9a9995;
@@ -41,21 +43,21 @@
   --page-bg: var(--bg);
   --page-text: #202122;
   --heading-color: #000000;
-  --heading-rule: #a2a9b1;
+  --heading-rule: var(--infobox-border);
   --link: #3366cc;
   --link-new: #d73333;
   --quote-border: #c8ccd1;
   --quote-text: #54595d;
-  --code-bg: #f8f9fa;
-  --table-border: #a2a9b1;
-  --table-bg: #f8f9fa;
+  --code-bg: var(--infobox-bg);
+  --table-border: var(--infobox-border);
+  --table-bg: var(--infobox-bg);
   --table-header-bg: #eaecf0;
-  --toc-bg: #f8f9fa;
-  --toc-border: #a2a9b1;
-  --toc-number: #54595d;
+  --toc-bg: var(--infobox-bg);
+  --toc-border: var(--infobox-border);
+  --toc-number: var(--quote-text);
   --toc-active: #8a5a14;
-  --card-bg: var(--bg);
-  --card-border: #a2a9b1;
+  --card-bg: var(--page-bg);
+  --card-border: var(--infobox-border);
   --card-width: 340px;
 
   /* Infobox (M5) */
@@ -63,16 +65,16 @@
   --infobox-border: #a2a9b1;
   --infobox-header-bg: #cedff2;
   --infobox-header-text: #202122;
-  --infobox-label: #202122;
+  --infobox-label: var(--page-text);
   --infobox-width: 22em;
   --infobox-font-size: 88%;
   --infobox-padding: 0.2em 0.4em;
   --infobox-gap: 1.4em;
 
   /* Images in the text, galleries and the image viewer (M6) */
-  --thumb-bg: #f8f9fa;
-  --thumb-border: #c8ccd1;
-  --thumb-caption: #202122;
+  --thumb-bg: var(--infobox-bg);
+  --thumb-border: var(--quote-border);
+  --thumb-caption: var(--page-text);
   --thumb-gap: 1.4em;
   --viewer-bg: rgb(12 12 12 / 0.92);
   --viewer-text: #f2f2f0;
@@ -91,6 +93,13 @@
   --navbox-border: var(--infobox-border);
   --navbox-title-bg: var(--infobox-header-bg);
   --navbox-title-text: var(--infobox-header-text);
+  --navbox-border-width: 1px;
+  --navbox-border-style: solid;
+  --navbox-radius: 0px;
+
+  /* Tooltips (M8) */
+  --tooltip-bg: #2e2f31;
+  --tooltip-text: #ffffff;
 
   /* Fonts */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;

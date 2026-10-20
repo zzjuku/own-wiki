@@ -15,6 +15,8 @@ import "./styles/images.css";
 import "./styles/categories.css";
 import "./styles/spoilers.css";
 import "./styles/embeds.css";
+import "./styles/tooltips.css";
+import "./styles/themes.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

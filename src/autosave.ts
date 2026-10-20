@@ -4,6 +4,14 @@ export type SaveStatus = "saved" | "unsaved" | "saving" | "error";
 
 export const AUTOSAVE_DELAY_MS = 700;
 
+/** What the save status line says. */
+export const STATUS_TEXT: Record<SaveStatus, string> = {
+  saved: "Saved",
+  unsaved: "Editing…",
+  saving: "Saving…",
+  error: "Not saved",
+};
+
 export class Autosaver {
   private pending: string | null = null;
   private timer: ReturnType<typeof setTimeout> | undefined;

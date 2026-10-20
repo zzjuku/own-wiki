@@ -3,7 +3,7 @@
 // letter headings. Also the list of all categories (sidebar → Categories).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, type CategoryChange, type CategoryPage } from "./api";
-import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
+import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
 import { Backlinks } from "./Backlinks";
 import { fileMembers } from "./categories";
 import { CategoryChips } from "./CategoryChips";
@@ -16,7 +16,6 @@ import { useSpoilerReveal } from "./spoilers";
 import { displayGroup } from "./tree";
 import { useContentClick, useLinkContext, useWiki } from "./wiki";
 
-const STATUS_TEXT: Record<SaveStatus, string> = { saved: "Saved", unsaved: "Editing…", saving: "Saving…", error: "Not saved" };
 const SUB_KEY = "ownwiki.categorySubpages";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en")} ${n === 1 ? one : many}`;

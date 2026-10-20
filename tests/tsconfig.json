@@ -1,4 +1,8 @@
 {
   "extends": "../tsconfig.json",
-  "include": ["ui", "../playwright.config.ts"]
+  "include": [
+    "ui",
+    "../playwright.config.ts",
+    "../src/vite-env.d.ts"
+  ]
 }

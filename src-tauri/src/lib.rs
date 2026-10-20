@@ -1,6 +1,7 @@
 mod assets;
 mod categories;
 mod error;
+mod fonts;
 mod fsutil;
 mod groups;
 mod index;
@@ -11,6 +12,7 @@ mod relink;
 mod settings;
 mod templating;
 mod textimages;
+mod themes;
 mod tree;
 mod wikilinks;
 
@@ -33,6 +35,8 @@ use wikilinks::{Heading, norm};
 struct AppState {
     config_dir: PathBuf,
     settings: Mutex<Settings>,
+    /// Fonts installed on this computer, by family (read once, when first asked).
+    installed_fonts: Mutex<Option<std::collections::BTreeMap<String, Vec<fonts::InstalledFace>>>>,
     /// Link index of the open project (one at a time).
     index: Mutex<Option<ProjectIndex>>,
 }
@@ -469,6 +473,114 @@ fn category_preview(state: State<'_, AppState>, project: String, name: String) -
     state.with_index(&project, false, |_, idx| categories::preview(idx, &name))
 }
 
+// ---- Themes (M8) ----
+
+impl AppState {
+    /// The themes folder: the library's `_themes/` (`project` = None) or the project's `themes/`.
+    fn themes_dir(&self, project: Option<&str>) -> AppResult<PathBuf> {
+        let library = self.library()?;
+        Ok(match project {
+            None => library.join(themes::APP_THEMES_DIR),
+            Some(p) => projects::project_dir(&library, p)?.join(themes::PROJECT_THEMES_DIR),
+        })
+    }
+
+    fn theme_dir(&self, project: Option<&str>, id: &str) -> AppResult<PathBuf> {
+        themes::theme_dir(&self.themes_dir(project)?, id)
+    }
+}
+
+/// A stored theme: app-wide (`project` = None) or a project's own.
+#[derive(serde::Deserialize)]
+struct ThemeSource {
+    project: Option<String>,
+    id: String,
+}
+
+#[tauri::command]
+fn list_themes(state: State<AppState>, project: Option<String>) -> AppResult<Vec<themes::ThemeInfo>> {
+    themes::list(&state.themes_dir(project.as_deref())?)
+}
+
+#[tauri::command]
+fn read_theme(state: State<AppState>, project: Option<String>, id: String) -> AppResult<serde_json::Value> {
+    themes::read(&state.themes_dir(project.as_deref())?, &id)
+}
+
+/// `from`: the stored theme being copied, whose font files come along.
+#[tauri::command]
+fn create_theme(
+    state: State<AppState>,
+    project: Option<String>,
+    name: String,
+    data: serde_json::Value,
+    from: Option<ThemeSource>,
+) -> AppResult<themes::ThemeInfo> {
+    let fonts_from = from.map(|f| state.theme_dir(f.project.as_deref(), &f.id)).transpose()?;
+    themes::create(&state.themes_dir(project.as_deref())?, &name, data, fonts_from.as_deref())
+}
+
+#[tauri::command]
+fn save_theme(state: State<AppState>, project: Option<String>, id: String, data: serde_json::Value) -> AppResult<()> {
+    themes::save(&state.themes_dir(project.as_deref())?, &id, data)
+}
+
+#[tauri::command]
+fn rename_theme(state: State<AppState>, project: Option<String>, id: String, name: String) -> AppResult<themes::ThemeInfo> {
+    themes::rename(&state.themes_dir(project.as_deref())?, &id, &name)
+}
+
+#[tauri::command]
+fn delete_theme(state: State<AppState>, project: Option<String>, id: String) -> AppResult<()> {
+    themes::delete(&state.themes_dir(project.as_deref())?, &id)
+}
+
+/// The app-wide theme in use ("builtin:default", "app:<folder>"); None = Default.
+#[tauri::command]
+fn get_app_theme(state: State<AppState>) -> AppResult<Option<String>> {
+    Ok(themes::app_choice(&state.library()?))
+}
+
+#[tauri::command]
+fn set_app_theme(state: State<AppState>, choice: Option<String>) -> AppResult<()> {
+    themes::set_app_choice(&state.library()?, choice.as_deref())
+}
+
+#[tauri::command]
+fn import_font(state: State<AppState>, project: Option<String>, id: String, path: String) -> AppResult<fonts::FontFile> {
+    fonts::import(&state.theme_dir(project.as_deref(), &id)?, std::path::Path::new(&path))
+}
+
+/// Family names of the fonts installed on this computer (read once, off the main thread).
+#[tauri::command]
+async fn installed_fonts(state: State<'_, AppState>) -> AppResult<Vec<String>> {
+    let mut cache = state.installed_fonts.lock().unwrap();
+    let families = cache.get_or_insert_with(fonts::installed);
+    Ok(families.keys().cloned().collect())
+}
+
+#[tauri::command]
+async fn copy_installed_font(
+    state: State<'_, AppState>,
+    project: Option<String>,
+    id: String,
+    family: String,
+) -> AppResult<Vec<fonts::FontFile>> {
+    let theme = state.theme_dir(project.as_deref(), &id)?;
+    let faces = {
+        let mut cache = state.installed_fonts.lock().unwrap();
+        cache.get_or_insert_with(fonts::installed).get(&family).cloned()
+    };
+    let faces = faces.ok_or_else(|| AppError::NotFound(format!("The font \"{family}\" isn't installed on this computer.")))?;
+    fonts::copy_installed(&theme, &faces)
+}
+
+/// A theme's font file, as raw bytes.
+#[tauri::command]
+fn font_data(state: State<AppState>, project: Option<String>, id: String, file: String) -> AppResult<tauri::ipc::Response> {
+    Ok(tauri::ipc::Response::new(fonts::read(&state.theme_dir(project.as_deref(), &id)?, &file)?))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -507,6 +619,7 @@ pub fn run() {
             app.manage(AppState {
                 config_dir,
                 settings: Mutex::new(settings),
+                installed_fonts: Mutex::new(None),
                 index: Mutex::new(None),
             });
             Ok(())
@@ -559,6 +672,18 @@ pub fn run() {
             change_category,
             category_backlinks,
             category_preview,
+            list_themes,
+            read_theme,
+            create_theme,
+            save_theme,
+            rename_theme,
+            delete_theme,
+            get_app_theme,
+            set_app_theme,
+            import_font,
+            installed_fonts,
+            copy_installed_font,
+            font_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

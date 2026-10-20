@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, type IncomingField, type Infobox, type Page } from "./api";
-import { Autosaver, registerFlusher, type SaveStatus } from "./autosave";
+import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
 import { renderWithEmbeds, useEmbedEnv } from "./embeds";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
@@ -37,13 +37,6 @@ interface Props {
   /** How the page was reached: a section to scroll to, an alias it was linked by. */
   arrival: { section: string | null; via: string | null; key: number };
 }
-
-const STATUS_TEXT: Record<SaveStatus, string> = {
-  saved: "Saved",
-  unsaved: "Editing…",
-  saving: "Saving…",
-  error: "Not saved",
-};
 
 const STATUS_ORDER: SaveStatus[] = ["saved", "unsaved", "saving", "error"];
 /** The save state to show when text and infobox save separately. */

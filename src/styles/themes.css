@@ -1,0 +1,363 @@
+/* ---- M8: Themes screen (src/themes/ThemesView.tsx) ---- */
+.themes-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.themes-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.theme-notice {
+  margin: 10px 28px 0;
+  padding: 8px 14px;
+  font-size: var(--text-sm);
+}
+.theme-list {
+  width: 230px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px 20px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-soft);
+  overflow-y: auto;
+}
+.theme-list h3 {
+  margin: 14px 8px 4px;
+  font-size: var(--text-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.theme-list .empty {
+  margin: 2px 8px;
+}
+.theme-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  text-align: left;
+}
+.theme-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.theme-item.selected {
+  background: var(--drop);
+}
+.theme-item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.theme-item-badge {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: var(--text-xs);
+}
+.theme-strip {
+  display: flex;
+  width: 100%;
+  height: 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.theme-strip > span {
+  flex: 1;
+}
+.theme-detail {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px 28px 80px;
+  container-type: inline-size;
+}
+.theme-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.theme-head h2 {
+  font-family: var(--font-heading);
+  font-weight: 400;
+  font-size: var(--text-xl);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.theme-badge {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--drop);
+  font-size: var(--text-xs);
+}
+.theme-where {
+  margin: 4px 0 0;
+}
+.theme-editor {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+  margin-top: 12px;
+}
+.theme-settings {
+  flex: 0 1 470px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.theme-settings:disabled {
+  opacity: 0.75;
+}
+.theme-group {
+  margin-bottom: 18px;
+}
+.theme-group h3 {
+  margin: 0 0 6px;
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+.theme-group h4 {
+  margin: 14px 0 4px;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--muted);
+}
+.all-colours > summary {
+  cursor: pointer;
+  list-style-position: outside;
+}
+.all-colours > summary h3 {
+  display: inline;
+}
+.all-colours > summary .hint {
+  display: block;
+  margin: 2px 0 0;
+}
+.theme-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--bg-hover);
+}
+.theme-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: var(--text-md);
+}
+.theme-label .hint {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.theme-row.own .theme-label {
+  font-weight: 600;
+}
+.theme-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.theme-swatch {
+  position: relative;
+  width: 26px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.theme-swatch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.theme-color-text {
+  width: 150px;
+  padding: 3px 6px;
+  font: var(--text-sm) var(--font-mono);
+}
+.theme-control input[type="range"] {
+  width: 150px;
+}
+.theme-number {
+  width: 52px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.theme-control select {
+  width: 182px;
+}
+.theme-font {
+  font-size: var(--text-md);
+}
+.theme-reset,
+.theme-reset-space {
+  width: 26px;
+  text-align: center;
+  color: var(--muted);
+}
+.theme-reset {
+  padding: 2px 0;
+  font-size: var(--text-md);
+}
+.theme-preview {
+  position: sticky;
+  top: 0;
+  flex: 1 1 520px;
+  min-width: 0;
+}
+@container (max-width: 980px) {
+  .theme-editor {
+    flex-direction: column-reverse;
+  }
+  .theme-preview {
+    position: static;
+    width: 100%;
+  }
+  .theme-settings {
+    flex-basis: auto;
+    width: 100%;
+  }
+}
+
+/* The sample: a small piece of the app drawn with the theme being edited. */
+.theme-sample {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  font-family: var(--font-ui);
+  color: var(--text);
+  background: var(--bg);
+}
+.sample-app {
+  display: flex;
+  min-height: 420px;
+}
+.sample-sidebar {
+  width: 150px;
+  flex-shrink: 0;
+  padding: 10px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  font-size: var(--text-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sample-project {
+  font-weight: 650;
+  margin-bottom: 6px;
+}
+.sample-row {
+  padding: 3px 6px;
+  border-radius: var(--radius);
+}
+.sample-row.selected {
+  background: var(--drop);
+}
+.sample-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+.sample-buttons button {
+  pointer-events: none;
+}
+.theme-sample .sample-tooltip {
+  position: static;
+  transform: none;
+  margin-top: 14px;
+  align-self: flex-start;
+}
+.sample-page {
+  flex: 1;
+  min-width: 0;
+  background: var(--page-bg);
+  /* Links and spoilers in the sample don't react. */
+  pointer-events: none;
+}
+.sample-head {
+  padding: 10px 18px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.sample-head h1 {
+  font-family: var(--font-heading);
+  font-weight: 400;
+  font-size: var(--text-title);
+  color: var(--text);
+}
+.theme-sample .markdown {
+  padding: 8px 18px 18px;
+}
+.theme-sample .markdown .infobox {
+  width: min(var(--infobox-width), 55%);
+}
+.theme-sample details.embed-box {
+  pointer-events: none;
+}
+
+/* Installed fonts */
+.installed-fonts {
+  width: min(460px, 92vw);
+}
+.installed-fonts input {
+  width: 100%;
+}
+.font-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 4px;
+  height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.font-list button {
+  width: 100%;
+  text-align: left;
+  font-size: var(--text-lg);
+  padding: 4px 8px;
+  border-radius: var(--radius);
+}
+.font-list button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.font-list li.muted {
+  padding: 6px 8px;
+}
+
+/* Project settings: theme */
+.settings-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+.settings-field select {
+  flex: 1;
+}
+.library-themes {
+  min-height: 0;
+}
