@@ -1,6 +1,6 @@
 # Theme variables
 
-The contract for themes (M11). Defaults live in [`src/theme.css`](../src/theme.css), always light (the system's dark mode is ignored since M7). A theme sets any of these variables; anything it leaves out keeps the default. Keep this list and `theme.css` in sync.
+The contract for themes (M8). Defaults live in [`src/theme.css`](../src/theme.css), always light (the system's dark mode is ignored since M7). A theme sets any of these variables; anything it leaves out keeps the default. Keep this list and `theme.css` in sync.
 
 Rule: the app's CSS uses no colour or font of its own. Every colour and font comes from a variable below, as do the type scale and the main layout sizes. Small fixed spacings inside controls (button padding, icon sizes, gaps of a few pixels) are not themeable.
 

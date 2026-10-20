@@ -90,7 +90,7 @@ fn images_in_line(line: &str, mut f: impl FnMut(usize, usize, &str)) {
 }
 
 /// Every image file used in the page text and its galleries, in order (code skipped).
-/// (For health reports, M10.)
+/// (For health reports, M11.)
 #[allow(dead_code)]
 pub fn images(body: &str) -> Vec<String> {
     let mut out = Vec::new();

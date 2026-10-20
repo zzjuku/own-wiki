@@ -84,7 +84,7 @@ Inspiration: Wikipedia, A Wiki of Ice and Fire (AWOIAF), Chronicler.
 - **Separator lines in text:** thin horizontal line (`---`), with a toolbar button.
 - **Health reports:** auto-generated reports (broken links, orphan pages, unlinked mentions, missing images, duplicate titles, sync conflicts, hidden template values…) with tools to fix them.
 - **Graph view:** Obsidian-style interactive network of linked pages. Must handle thousands of pages: local graph (neighbours of the current page) plus a filterable global graph.
-- **Themes:** user-created, selectable, editable themes. A theme is either app-wide or belongs to one project (stored in and synced with that project); a project can use its own theme instead of the app-wide one. UI styling uses CSS variables from the start so themes are cheap to add. A theme sets colours, fonts (body text and headings separately), text size, line spacing and page width (2026-10-19). Fonts a theme uses are copied into the project/theme so Mac and Windows look the same. Custom CSS on top: undecided, settle before M12. The app itself is always light on Mac and Windows, regardless of the system's dark mode (2026-10-19); other looks come only from themes. Themes set one look for all pages, infoboxes included; a page can still give its own infobox a different **colour** (not style).
+- **Themes:** user-created, selectable, editable themes. A theme is either app-wide or belongs to one project (stored in and synced with that project); a project can use its own theme instead of the app-wide one. UI styling uses CSS variables from the start so themes are cheap to add. A theme sets colours, fonts (body text and headings separately), text size, line spacing and page width (2026-10-19). Fonts a theme uses are copied into the project/theme so Mac and Windows look the same. Custom CSS on top: not for now, can be added later (Juku, 2026-10-20). The app itself is always light on Mac and Windows, regardless of the system's dark mode (2026-10-19); other looks come only from themes. Themes set one look for all pages, infoboxes included; a page can still give its own infobox a different **colour** (not style).
 - **Interactive maps:** zoomable, pannable; pins linked to pages with hover preview; drawable regions; nested maps (a pin opens another map); distance measuring.
   - Map source (changed 2026-10-18) is either a painted image (Photoshop) exported as a large PNG (ideally 8,000+ px on the long side), which the app tiles for smooth deep zoom, or an **SVG**, which stays sharp at any zoom without tiling (very detailed SVGs can zoom slowly; PNG stays the safe choice for big painted maps). Pins, regions, labels and distance lines are vector overlays drawn by the app and stay sharp at any zoom.
 - **Timelines** with **custom calendars** (own months, eras), fuzzy dates ("c. 250") and date ranges (e.g. reigns).
@@ -112,15 +112,15 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M7 Spoilers & embeds** (done 2026-10-20), plus small additions (2026-10-19): AWOIAF-style quote box; separator line in text (toolbar button) and Divider infobox field with optional label; thinner Contents box; app always light; collapsible embed boxes.
 
 **After v1 start**
-- **M8 Relations** (2026-10-19, pulled forward from Family trees): reverse fields that fill themselves (children from parent fields), two-way fields (spouse), automatic page lists at the bottom of pages (e.g. chapters that take place at a place). A field hidden as a spoiler stays hidden in the reverse field and page lists it fills (2026-10-20).
+- **M8 Themes** (moved forward 2026-10-20, Juku): colours, fonts (body and headings), text size, line spacing, page width; look of embed boxes (frame, background, colours) per theme. No custom CSS for now.
   - Plus (Juku, 2026-10-20): app-styled tooltips. Hovering a toolbar button or any other button/control shows its name in a small tooltip that fades in and out, replacing the plain system tooltips (about 80 today). Keeps the shortcut where one exists ("Bold (Cmd+B)"). Page links keep their hover cards instead. Tooltip colours are theme variables.
-- **M9 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. Until M9 is done, Juku uses **only one computer** for real content.
-- **M10 Health reports.**
-- **M11 Graph view.**
-- **M12 Themes:** colours, fonts (body and headings), text size, line spacing, page width; look of embed boxes (frame, background, colours) per theme.
+- **M9 Relations** (2026-10-19, pulled forward from Family trees): reverse fields that fill themselves (children from parent fields), two-way fields (spouse), automatic page lists at the bottom of pages (e.g. chapters that take place at a place). A field hidden as a spoiler stays hidden in the reverse field and page lists it fills (2026-10-20).
+- **M10 Search & sync safety:** full-text deep search; detect files changed by sync and reload; surface sync-conflict copies. Until M10 is done, Juku uses **only one computer** for real content.
+- **M11 Health reports.**
+- **M12 Graph view.**
 - **M13 Interactive maps.**
 - **M14 Calendars & timelines.**
-- **M15 Family trees** (builds on M8 Relations).
+- **M15 Family trees** (builds on M9 Relations).
 - **M16 Solar system map** (later version, scope to be defined).
 - **M17 Export:** zip, static HTML site.
 
@@ -134,7 +134,7 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 **Stack and code**
 - Tauri 2 + React + TypeScript. Rust does all file access (commands in `src-tauri/src/lib.rs`, typed wrappers in `src/api.ts`). Editor: CodeMirror 6. Pasted HTML → Markdown via Turndown. Web links open through the opener plugin; plain paste reads the clipboard plugin.
 - Links are parsed in both Rust (index, rewrites) and TypeScript (rendering, editor); both run `shared-tests/links.json`, so change both together.
-- Theme contract: every colour and font, the type scale and main layout widths are CSS variables in `src/theme.css`, listed in `docs/theme-variables.md`. No hard-coded colours. The app is always light, title bar included (window `theme: "Light"`); the system's dark mode is ignored; other looks only from themes (M12).
+- Theme contract: every colour and font, the type scale and main layout widths are CSS variables in `src/theme.css`, listed in `docs/theme-variables.md`. No hard-coded colours. The app is always light, title bar included (window `theme: "Light"`); the system's dark mode is ignored; other looks only from themes (M8).
 - Per-machine settings (library path) live in `settings.json` in the OS app-config folder. Per-computer UI state (open groups, editor divider, folded contents sections, "Include pages of subcategories", the global "show all spoilers" switch) lives in browser local storage. Neither is ever synced.
 - App id `io.github.zzjuku.ownwiki`, display name "Own WIKI" (placeholder). Windows installer: NSIS, built by `.github/workflows/windows.yml`. Builds unsigned.
 
@@ -192,16 +192,15 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - One Enter = new line in the preview; an empty line = new paragraph.
 
 **Promised to later milestones (from M1–M7 scopes)**
-- M8: `linkedfrom` fields and the reserved `twoWay`/`from` options; a field hidden as a spoiler stays hidden in the reverse fields and page lists it fills.
-- M9: search in infobox fields and aliases (spoilers stay hidden in results); live reload of files changed outside the app.
-- M10: unlinked mentions, broken section links (incl. renamed headings), unused images, hidden template values.
-- M12: editing theme colours (variables already in place, incl. infobox and embed colours); embed box look (frame, background, colours) editable per theme (Juku, 2026-10-20).
+- M8: editing theme colours (variables already in place, incl. infobox and embed colours); embed box look (frame, background, colours) editable per theme (Juku, 2026-10-20).
+- M9: `linkedfrom` fields and the reserved `twoWay`/`from` options; a field hidden as a spoiler stays hidden in the reverse fields and page lists it fills.
+- M10: search in infobox fields and aliases (spoilers stay hidden in results); live reload of files changed outside the app.
+- M11: unlinked mentions, broken section links (incl. renamed headings), unused images, hidden template values.
 - M13: map location fields; SVG maps.
 - M14: calculated fields (e.g. age); eras and month numbers mapped to real calendars without a data migration.
 - Later / undecided: hover card rework to look more like AWOIAF's (e.g. bigger picture, wider card; details to define), Obsidian-style inline live preview, page history/undo of edits, image file pages ("File:" pages with description), group overview pages (Open items). Not planned: categories driven by field values, automatic linking of plain words.
 
 ## Open items (from Juku)
-- **Themes:** custom CSS on top of the theme settings, yes or no? Needed before M12.
 - **Group overview pages** (a page per group listing its contents, maybe with own text): wanted later; overlaps with category pages (M6, which can have own text), decide where it fits after M6.
 - Visual references (beyond Wikipedia/AWOIAF/Chronicler: what exactly he likes about them)
 - App name
@@ -216,3 +215,4 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - 2026-10-20 (planning): AWOIAF-style rework of the hover cards moved to a later version (listed under "Later / undecided"); the current M4/M6 hover cards stay as they are.
 - 2026-10-20 (planning): embed boxes get their own look per theme (frame/box appearance, background, colours), added to M12 Themes.
 - 2026-10-20 (planning): fading app-styled tooltips for all buttons and controls added to M8 (Juku: next milestone).
+- 2026-10-20 (planning): Themes moved forward to the next milestone, **M8 Themes**, ahead of Relations (Juku); the fading tooltips move with it. Accepted trade-offs: Search & sync safety comes later, so one computer for real content a milestone longer; later visual milestones (graph, maps, timelines, family trees) add their colours to the theme settings as they are built. Custom CSS: not for now, can be added later. Renumbered: Relations M8 → M9, Search & sync safety M9 → M10, Health reports M10 → M11, Graph view M11 → M12; M13–M17 unchanged. `docs/history.md` keeps the old numbers.

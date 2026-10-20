@@ -1,5 +1,5 @@
 /*
- * Theme variables — the contract for themes (M11).
+ * Theme variables — the contract for themes (M8).
  *
  * Every colour and font the app uses comes from here, plus the type scale and
  * the main layout sizes. A theme overrides any of these variables; anything
@@ -7,7 +7,7 @@
  * docs/theme-variables.md — keep both in sync.
  *
  * The app is always light (2026-10-19): the system's dark mode is ignored;
- * other looks come only from themes (M12).
+ * other looks come only from themes (M8).
  */
 :root {
   /* App surfaces and text */
