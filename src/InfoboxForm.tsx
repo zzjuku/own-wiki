@@ -2,7 +2,7 @@
 // remove, rename and reorder this page's own fields; change the box colour;
 // add, switch or remove the infobox; restore or discard hidden values.
 import { useRef, useState, type ReactNode } from "react";
-import type { Field, FieldKind, Infobox, Template } from "./api";
+import type { Field, FieldKind, Infobox, Relations, Template } from "./api";
 import { ColorPicker, DragHandle, moveItem, useReorder } from "./controls";
 import { useDialogs } from "./dialogs";
 import {
@@ -25,20 +25,25 @@ import { DateInput, ImageFrameContext, ImageInput, PageLinksInput, PageNameInput
 import { MiniEditor } from "./MiniEditor";
 import { FieldDef } from "./TemplatesView";
 import { Icon } from "./editorTheme";
+import { ReverseFieldInput, TwoWayExtras, type RelationProps } from "./RelationInputs";
 
 interface Props {
   pageId: string;
+  /** The page's title (relations write it into other pages). */
+  pageTitle: string;
   infobox: Infobox | null;
   /** The file has an infobox that can't be read. */
   error: string | null;
   templates: Template[];
+  relations: Relations;
+  onRelationsChanged: () => void;
   onChange: (ib: Infobox | null) => void;
 }
 
 let nextRowId = 0;
 const newRowId = () => `row-${nextRowId++}`;
 
-export function InfoboxForm({ pageId, infobox: ib, error, templates, onChange: change }: Props) {
+export function InfoboxForm({ pageId, pageTitle, infobox: ib, error, templates, relations, onRelationsChanged, onChange: change }: Props) {
   const dialogs = useDialogs();
   const wiki = useWiki();
   const [settingsOpen, setSettingsOpen] = useState<number | null>(null);
@@ -171,6 +176,7 @@ export function InfoboxForm({ pageId, infobox: ib, error, templates, onChange: c
   }
 
   const hidden = ib.hidden ?? [];
+  const rel: RelationProps = { pageId, pageTitle, pageTemplate: ib.template ?? null, relations, onRelationsChanged };
 
   return (
     <ImageFrameContext.Provider value={frameFor(wiki, ib.template)}>
@@ -246,7 +252,7 @@ export function InfoboxForm({ pageId, infobox: ib, error, templates, onChange: c
               )}
               {!isLayout(f.type) && (
                 <div className="ib-input">
-                  <ValueInput pageId={pageId} field={f} onChange={(value) => setField(i, { ...f, value: cleanValue(value) })} />
+                  <ValueInput rel={rel} field={f} onChange={(value) => setField(i, { ...f, value: cleanValue(value) })} />
                 </div>
               )}
             </div>
@@ -256,7 +262,6 @@ export function InfoboxForm({ pageId, infobox: ib, error, templates, onChange: c
                 <FieldDef
                   field={f}
                   autoFocus={justAdded === i}
-                  linkLabels={[]}
                   handle={null}
                   onChange={(nf) => {
                     const value = nf.type !== f.type && f.value !== undefined ? convertValue(f.value, nf.type) : nf.value;
@@ -383,7 +388,8 @@ function TemplateMenu({
 }
 
 /** The input for one field's value, by type. Values that don't fit the type get a warning instead. */
-function ValueInput({ pageId, field: f, onChange }: { pageId: string; field: Field; onChange: (v: unknown) => void }) {
+function ValueInput({ rel, field: f, onChange }: { rel: RelationProps; field: Field; onChange: (v: unknown) => void }) {
+  const pageId = rel.pageId;
   const problem = valueProblem(f);
   if (problem) {
     return (
@@ -426,9 +432,21 @@ function ValueInput({ pageId, field: f, onChange }: { pageId: string; field: Fie
     case "list":
       return <ListInput pageId={pageId} label={f.label} value={Array.isArray(v) ? (v as string[]) : []} onChange={onChange} />;
     case "link":
-      return <PageNameInput label={f.label} value={typeof v === "string" ? v : ""} onChange={onChange} />;
+      return (
+        <>
+          <PageNameInput label={f.label} value={typeof v === "string" ? v : ""} onChange={onChange} />
+          <TwoWayExtras {...rel} field={f} />
+        </>
+      );
     case "links":
-      return <PageLinksInput label={f.label} value={Array.isArray(v) ? (v as string[]) : []} onChange={onChange} />;
+      return (
+        <>
+          <PageLinksInput label={f.label} value={Array.isArray(v) ? (v as string[]) : []} onChange={onChange} />
+          <TwoWayExtras {...rel} field={f} />
+        </>
+      );
+    case "linkedfrom":
+      return <ReverseFieldInput {...rel} field={f} onChange={onChange} />;
     case "date":
       return <DateInput label={f.label} value={v} ranges={!!f.options?.ranges} onChange={onChange} />;
     case "image":

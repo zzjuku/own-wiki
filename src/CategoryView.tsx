@@ -2,6 +2,7 @@
 // written with the normal editor), its subcategories, and its pages under
 // letter headings. Also the list of all categories (sidebar → Categories).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { NO_RELATIONS } from "./relations";
 import { api, errorText, type CategoryChange, type CategoryPage } from "./api";
 import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
 import { Backlinks } from "./Backlinks";
@@ -234,7 +235,8 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted }
           }}
           infobox={null}
           infoboxError={null}
-          incoming={[]}
+          relations={NO_RELATIONS}
+          onRelationsChanged={() => {}}
           onInfoboxChange={() => {}}
           noInfobox
           currentCategory={shown}

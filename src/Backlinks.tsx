@@ -32,6 +32,12 @@ function cleanLine(line: string): string {
   return t.replace(/^\[\^[^\]\s]+\]:\s*/, "");
 }
 
+/** "“Father”, “Note”", plus spoiler fields without their names. */
+function fieldsText(b: Backlink): string {
+  const hidden = b.spoilerFields ? [b.spoilerFields === 1 ? "a spoiler field" : `${b.spoilerFields} spoiler fields`] : [];
+  return [...b.fields.map((f) => `“${f}”`), ...hidden].join(", ");
+}
+
 export function Backlinks({ pageId, category, title, close }: Props) {
   const wiki = useWiki();
   const [list, setList] = useState<Backlink[] | null>(null);
@@ -91,8 +97,8 @@ export function Backlinks({ pageId, category, title, close }: Props) {
                   {b.via.length > 0 && (
                     <span className="backlink-via">via alias {b.via.map((v) => `“${v}”`).join(", ")}</span>
                   )}
-                  {b.fields.length > 0 && (
-                    <span className="backlink-via">via infobox: {b.fields.map((f) => `“${f}”`).join(", ")}</span>
+                  {(b.fields.length > 0 || b.spoilerFields > 0) && (
+                    <span className="backlink-via">via infobox: {fieldsText(b)}</span>
                   )}
                   {b.lines.map((line, i) => (
                     <span

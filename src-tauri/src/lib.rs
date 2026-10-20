@@ -8,6 +8,7 @@ mod index;
 mod infobox;
 mod pages;
 mod projects;
+mod relations;
 mod relink;
 mod settings;
 mod templating;
@@ -26,7 +27,7 @@ use index::ProjectIndex;
 use infobox::{Infobox, Template};
 use pages::Page;
 use projects::ProjectInfo;
-use relink::{Backlink, IncomingField, LinkCount, Preview, RenameResult};
+use relink::{Backlink, LinkCount, Preview, RenameResult};
 use templating::ApplyResult;
 use settings::Settings;
 use tree::{GroupInfo, PageInfo, Tree};
@@ -210,9 +211,26 @@ fn apply_template(
     })
 }
 
+/// What other pages' fields add to page `id`; `typed`: names typed into its
+/// Linked from fields (their sortable values come along).
 #[tauri::command(async)]
-fn incoming_fields(state: State<'_, AppState>, project: String, id: String) -> AppResult<Vec<IncomingField>> {
-    state.with_index(&project, false, |_, idx| relink::incoming_fields(idx, &id))
+fn relations(state: State<'_, AppState>, project: String, id: String, typed: Vec<String>) -> AppResult<relations::Relations> {
+    state.with_index(&project, false, |_, idx| relations::relations(idx, &id, &typed))
+}
+
+/// Writes page `source` into (or out of) field `field` of page `target`.
+#[tauri::command(async)]
+fn set_relation(
+    state: State<'_, AppState>,
+    project: String,
+    target: String,
+    field: String,
+    source: String,
+    edit: relations::Edit,
+) -> AppResult<()> {
+    state.with_index(&project, true, |library, idx| {
+        relations::set_relation(library, &project, idx, &target, &field, &source, edit)
+    })
 }
 
 /// Copies an image file into the project. `svg`: SVG is allowed (page text, galleries).
@@ -670,7 +688,8 @@ pub fn run() {
             set_templates,
             template_pages,
             apply_template,
-            incoming_fields,
+            relations,
+            set_relation,
             import_image,
             import_image_data,
             get_image_frame,

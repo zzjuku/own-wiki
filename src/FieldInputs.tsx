@@ -65,6 +65,8 @@ export function PageNameInput({
             set(suggestions[active].name);
             setSuggest(false);
           } else if (e.key === "Escape") {
+            // Closes the suggestions only, not a dialog around the input.
+            e.stopPropagation();
             setSuggest(false);
           }
         }}

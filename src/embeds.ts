@@ -6,7 +6,7 @@
 // Embeds inside embeds work up to EMBED_DEPTH levels; loops and self-embeds
 // show a warning box. Syntax: src/embedSyntax.ts.
 import { useEffect, useMemo, useState } from "react";
-import { api, type Frame, type Infobox } from "./api";
+import { api, type Frame, type Infobox, type Relations } from "./api";
 import type { EmbedCall } from "./embedSyntax";
 import { embedTargets } from "./embedSyntax";
 import { infoboxHtml } from "./infobox";
@@ -21,6 +21,8 @@ export interface EmbedSource {
   title: string;
   body: string;
   infobox: Infobox | null;
+  /** What other pages' fields add to it (its Linked from fields, page lists). */
+  relations?: Relations;
 }
 
 /** What rendering embeds needs: the embedded pages' content and the host. */
@@ -84,7 +86,8 @@ function embedHtml(call: EmbedCall, links: LinkContext, env: EmbedEnv | null, st
   if (!src) return `<div class="embed embed-loading" aria-busy="true"></div>`;
 
   const inner = [...stack, id];
-  const box = (ib: Infobox | null) => infoboxHtml(ib, { project: env!.project, title: src.title, links, frame: env!.frame(ib?.template) });
+  const box = (ib: Infobox | null) =>
+    infoboxHtml(ib, { project: env!.project, title: src.title, links, relations: src.relations, frame: env!.frame(ib?.template) });
   let content: string;
   if (call.infobox) {
     content = box(src.infobox) || warning(`${title} has no infobox to show.`);

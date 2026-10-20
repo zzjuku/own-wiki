@@ -384,18 +384,23 @@ export function ProjectView({ project, onBack }: Props) {
     });
   }
 
-  /** A red link was clicked: create the page it points to, in a group of the user's choice. */
-  function createFromLink(title: string, fromPage?: string) {
-    const groups = [
+  // Group drop-downs: every group, indented by depth.
+  const groupOptions = useMemo(
+    () => [
       { id: ROOT, label: "Top level" },
       ...allGroupsInOrder(index).map((g) => ({ id: g.id, label: `${"\u2003".repeat(g.depth + 1)}${g.name}` })),
-    ];
+    ],
+    [index],
+  );
+
+  /** A red link was clicked: create the page it points to, in a group of the user's choice. */
+  function createFromLink(title: string, fromPage?: string) {
     dialogs.prompt({
       title: "Create page",
       label: "Page title",
       initial: title,
       note: <>This page doesn't exist yet.</>,
-      selects: [{ key: "group", label: "Group", options: groups, initial: fromPage ? parentOf(fromPage) : ROOT }, ...templateSelect()],
+      selects: [{ key: "group", label: "Group", options: groupOptions, initial: fromPage ? parentOf(fromPage) : ROOT }, ...templateSelect()],
       confirmLabel: "Create",
       submit: async (t, allowLong, { selected: sel }) => {
         await flushAll();
@@ -660,14 +665,24 @@ export function ProjectView({ project, onBack }: Props) {
   const targetHint = targetGroup ? `in ${displayGroup(targetGroup)}` : "at the top level";
 
   // Stable functions for the context, always calling the latest versions.
-  const actions = useRef({ follow, createFromLink, openCategory, createCategory });
-  actions.current = { follow, createFromLink, openCategory, createCategory };
+  /** Creates a page without opening it (e.g. a child added from its parent's page). */
+  async function createPageQuietly(title: string, group: string, template: string | null, allowLong: boolean) {
+    await flushAll();
+    const page = await api.createPage(project.id, group, title, allowLong, template);
+    await reload();
+    return page;
+  }
+
+  const actions = useRef({ follow, createFromLink, openCategory, createCategory, createPageQuietly });
+  actions.current = { follow, createFromLink, openCategory, createCategory, createPageQuietly };
   const wiki = useMemo<Wiki>(
     () => ({
       project: project.id,
       names,
       follow: (t) => actions.current.follow(t),
       createFromLink: (title, from) => actions.current.createFromLink(title, from),
+      createPage: (title, group, template, allowLong) => actions.current.createPageQuietly(title, group, template, allowLong),
+      groupOptions,
       templates: templates.templates,
       imageFrame,
       setImageFrame: (f) => {
@@ -680,7 +695,7 @@ export function ProjectView({ project, onBack }: Props) {
       reloadCategories,
       settings,
     }),
-    [project.id, names, templates.templates, imageFrame, report, categories, reloadCategories, settings],
+    [project.id, names, groupOptions, templates.templates, imageFrame, report, categories, reloadCategories, settings],
   );
 
   return (

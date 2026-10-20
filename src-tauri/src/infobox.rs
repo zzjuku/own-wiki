@@ -29,7 +29,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::wikilinks::{norm, parse_links, rewrite_links};
+use std::collections::BTreeMap;
+
+use crate::wikilinks::{norm, parse_links, rewrite_links, spoiler_ranges};
 
 // Field types (all of them are listed for reference; the Rust side only
 // needs to treat some specially).
@@ -173,9 +175,13 @@ pub struct FieldLink {
     /// From a two-way Page link(s) field.
     #[serde(default, skip_serializing_if = "is_false")]
     pub two_way: bool,
+    /// Hidden as a spoiler: the field is a spoiler, or the link sits inside
+    /// `||…||` in a text field.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub spoiler: bool,
 }
 
-fn strings(v: &Value) -> Vec<&str> {
+pub(crate) fn strings(v: &Value) -> Vec<&str> {
     match v {
         Value::String(s) => vec![s.as_str()],
         Value::Array(a) => a.iter().filter_map(Value::as_str).collect(),
@@ -188,40 +194,77 @@ fn option_bool(f: &Field, name: &str) -> bool {
 }
 
 /// The page part of a link field value ("Page" of "Page#Section").
-fn link_value_page(s: &str) -> &str {
+pub(crate) fn link_value_page(s: &str) -> &str {
     s.split('#').next().unwrap_or("").trim()
 }
 
-/// Every link in the infobox's fields (not in hidden values).
+/// Every link in the infobox's fields (not in hidden values). Typed-in
+/// entries of Linked from fields count like Page link values.
 pub fn field_links(ib: &Infobox) -> Vec<FieldLink> {
     let mut out = Vec::new();
     for f in &ib.fields {
         let Some(v) = &f.value else { continue };
+        let spoiler = f.is_spoiler();
+        let link = |target: String, two_way: bool, spoiler: bool| FieldLink { field: f.label.clone(), target, two_way, spoiler };
+        // [[links]] in text, each a spoiler if it sits inside ||…||.
+        let text_links = |s: &str, out: &mut Vec<FieldLink>| {
+            let hidden = spoiler_ranges(s);
+            for l in parse_links(s).into_iter().filter(|l| !l.page.is_empty()) {
+                let inside = hidden.iter().any(|&(a, b)| a <= l.start && l.end <= b);
+                out.push(link(l.page, false, spoiler || inside));
+            }
+        };
         match f.kind.as_str() {
-            LINK | LINKS => {
-                let two_way = option_bool(f, "twoWay");
+            LINK | LINKS | LINKED_FROM => {
+                let two_way = f.kind != LINKED_FROM && option_bool(f, "twoWay");
                 for s in strings(v) {
                     let page = link_value_page(s);
                     if !page.is_empty() {
-                        out.push(FieldLink { field: f.label.clone(), target: page.to_string(), two_way });
+                        out.push(link(page.to_string(), two_way, spoiler));
                     }
                 }
             }
             TEXT | LONG_TEXT | LIST => {
                 for s in strings(v) {
-                    for l in parse_links(s).into_iter().filter(|l| !l.page.is_empty()) {
-                        out.push(FieldLink { field: f.label.clone(), target: l.page, two_way: false });
-                    }
+                    text_links(s, &mut out);
                 }
             }
             IMAGE => {
                 if let Some(c) = v.get("caption").and_then(Value::as_str) {
-                    for l in parse_links(c).into_iter().filter(|l| !l.page.is_empty()) {
-                        out.push(FieldLink { field: f.label.clone(), target: l.page, two_way: false });
-                    }
+                    text_links(c, &mut out);
                 }
             }
             _ => {}
+        }
+    }
+    out
+}
+
+/// A date value's sort key: year, month, day (missing ones 0); a range sorts
+/// by its start. Eras aren't compared until calendars exist (M14).
+fn date_key(v: &Value) -> Option<Vec<f64>> {
+    let point = match v.get("start") {
+        Some(start) => start,
+        None if v.get("end").is_some() => return None,
+        None => v,
+    };
+    let num = |k: &str| point.get(k).and_then(Value::as_f64);
+    Some(vec![num("year")?, num("month").unwrap_or(0.0), num("day").unwrap_or(0.0)])
+}
+
+/// The values page lists and reverse fields can sort by: Number and Date
+/// fields that have a value and aren't spoilers (a hidden value mustn't show
+/// through the order). Keyed by the field's label as compared ([`norm`]).
+pub fn sortable_values(ib: &Infobox) -> BTreeMap<String, Vec<f64>> {
+    let mut out = BTreeMap::new();
+    for f in ib.fields.iter().filter(|f| !f.is_spoiler()) {
+        let key = match (f.kind.as_str(), &f.value) {
+            (NUMBER, Some(v)) => v.as_f64().map(|n| vec![n]),
+            (DATE, Some(v)) if v.is_object() => date_key(v),
+            _ => None,
+        };
+        if let Some(k) = key {
+            out.entry(norm(&f.label)).or_insert(k);
         }
     }
     out
@@ -264,7 +307,7 @@ fn rewrite_field(f: &mut Field, old: &str, new: &str) -> usize {
     let Some(v) = f.value.as_mut() else { return 0 };
     let mut n = 0;
     let mut each = |s: &mut String| match kind.as_str() {
-        LINK | LINKS => n += rewrite_link_value(s, old, new),
+        LINK | LINKS | LINKED_FROM => n += rewrite_link_value(s, old, new),
         TEXT | LONG_TEXT | LIST => n += rewrite_text(s, old, new),
         _ => {}
     };
@@ -294,7 +337,7 @@ pub fn rewrite_infobox_links(ib: &mut Infobox, old: &str, new: &str) -> usize {
 // ---- applying a template to existing pages ----
 
 const STRING_KINDS: &[&str] = &[TEXT, LONG_TEXT, CHOICE, LINK];
-const LIST_KINDS: &[&str] = &[LIST, LINKS];
+const LIST_KINDS: &[&str] = &[LIST, LINKS, LINKED_FROM];
 
 /// A value moved to another field type, converted where nothing is lost
 /// (one text <-> a one-entry list, number <-> text). Anything else stays as
@@ -509,6 +552,56 @@ mod tests {
         ];
         assert_eq!(got, want.map(|(a, b, c)| (a.to_string(), b.to_string(), c)));
         assert_eq!(first_image(&ib).as_deref(), Some("a.png"));
+    }
+
+    #[test]
+    fn field_links_mark_spoilers_and_typed_in_entries() {
+        let mut secret = field(None, "Father", LINK, Some(json!("Page A")));
+        secret.extra.insert("spoiler".into(), Value::Bool(true));
+        let ib = Infobox {
+            fields: vec![
+                secret,
+                field(None, "Note", TEXT, Some(json!("[[Page B]] and ||hidden [[Page C]]|| [[Page D]]"))),
+                field(None, "Children", LINKED_FROM, Some(json!(["Page E"]))),
+            ],
+            ..Default::default()
+        };
+        let got: Vec<(String, String, bool, bool)> =
+            field_links(&ib).into_iter().map(|l| (l.field, l.target, l.two_way, l.spoiler)).collect();
+        let want = [
+            ("Father", "Page A", false, true),
+            ("Note", "Page B", false, false),
+            ("Note", "Page C", false, true),
+            ("Note", "Page D", false, false),
+            ("Children", "Page E", false, false),
+        ];
+        assert_eq!(got, want.map(|(a, b, c, d)| (a.to_string(), b.to_string(), c, d)));
+        // Typed-in entries follow renames.
+        let mut ib = ib;
+        assert_eq!(rewrite_infobox_links(&mut ib, "page e", "Page F"), 1);
+        assert_eq!(ib.fields[2].value, Some(json!(["Page F"])));
+    }
+
+    #[test]
+    fn sortable_values_from_numbers_and_dates() {
+        let mut hidden = field(None, "Secret", NUMBER, Some(json!(9)));
+        hidden.extra.insert("spoiler".into(), Value::Bool(true));
+        let ib = Infobox {
+            fields: vec![
+                field(None, "Chapter no.", NUMBER, Some(json!(12))),
+                field(None, "Born", DATE, Some(json!({ "year": 250, "month": 3, "era": "AE" }))),
+                field(None, "Reign", DATE, Some(json!({ "start": { "year": -5 }, "end": "present" }))),
+                field(None, "Undated", DATE, Some(json!({ "month": 4 }))),
+                field(None, "Note", TEXT, Some(json!("12"))),
+                hidden,
+            ],
+            ..Default::default()
+        };
+        let v = sortable_values(&ib);
+        assert_eq!(v.len(), 3, "{v:?}");
+        assert_eq!(v["chapter no."], [12.0]);
+        assert_eq!(v["born"], [250.0, 3.0, 0.0]);
+        assert_eq!(v["reign"], [-5.0, 0.0, 0.0]);
     }
 
     #[test]

@@ -2,21 +2,22 @@
 // templates; edit each template's fields, infobox colour and starter text,
 // with a live preview of the box. Templates are starting points: changing
 // one never changes existing pages (see SPEC.md, M5).
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Field, type FieldKind, type Frame, type PageInfo, type Template } from "./api";
 import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
 import { Chips, ColorPicker, DragHandle, moveItem, useReorder } from "./controls";
 import { useDialogs } from "./dialogs";
 import { infoboxHtml, instantiate, isLayout, KINDS, newFieldKey, newFieldLabel, newTemplateId } from "./infobox";
 import { MiniEditor } from "./MiniEditor";
+import { renameFieldInTemplates } from "./relations";
 import { ApplyDialog, CopyTemplatesDialog } from "./TemplateDialogs";
 import { useReportError } from "./notify";
 import { displayGroup } from "./tree";
 import { useLinkContext, useWiki } from "./wiki";
 import { norm } from "./wikilinks";
 
-/** Field types offered (Linked from is postponed; see SPEC.md, Open items). */
-export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "links", "date", "image", "heading", "divider"];
+/** Field types offered. */
+export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "links", "linkedfrom", "date", "image", "heading", "divider"];
 
 /** The project's templates, saved a moment after each change. */
 export function useTemplates(project: string) {
@@ -209,11 +210,11 @@ export function TemplatesView({ project, state, selected, setSelected, openPage 
             key={current.id}
             project={project}
             template={current}
-            templates={templates}
             onChange={change}
             onRename={() => rename(current)}
             onDuplicate={() => duplicate(current)}
             onDelete={() => void remove(current)}
+            onFieldRenamed={(old, next) => update(renameFieldInTemplates(templates, old, next))}
             openPage={openPage}
             flush={state.flush}
           />
@@ -228,16 +229,17 @@ export function TemplatesView({ project, state, selected, setSelected, openPage 
 interface EditorProps {
   project: string;
   template: Template;
-  templates: Template[];
   onChange: (t: Template) => void;
   onRename: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  /** A field's label was changed (when the label box is left): Linked from fields follow. */
+  onFieldRenamed: (old: string, next: string) => void;
   openPage: (id: string) => void;
   flush: () => Promise<void>;
 }
 
-function TemplateEditor({ project, template: t, templates, onChange, onRename, onDuplicate, onDelete, openPage, flush }: EditorProps) {
+function TemplateEditor({ project, template: t, onChange, onRename, onDuplicate, onDelete, onFieldRenamed, openPage, flush }: EditorProps) {
   const wiki = useWiki();
   const links = useLinkContext();
   const [using, setUsing] = useState<PageInfo[] | null>(null);
@@ -262,14 +264,6 @@ function TemplateEditor({ project, template: t, templates, onChange, onRename, o
     setFields([...t.fields, { key: newFieldKey(t.fields), label: newFieldLabel(kind), type: kind }]);
     setJustAdded(t.fields.length);
   }
-
-  // Link fields of every template, for "Linked from".
-  const linkLabels = useMemo(() => {
-    const set = new Map<string, string>();
-    for (const tpl of templates)
-      for (const f of tpl.fields) if (f.type === "link" || f.type === "links") set.set(norm(f.label), f.label);
-    return [...set.values()];
-  }, [templates]);
 
   const preview = useMemo(
     () => infoboxHtml(instantiate(t), { project, title: "Page title", links, placeholders: true, frame: t.imageFrame ?? wiki.imageFrame }),
@@ -326,7 +320,7 @@ function TemplateEditor({ project, template: t, templates, onChange, onRename, o
                 <FieldDef
                   field={f}
                   autoFocus={justAdded === i}
-                  linkLabels={linkLabels}
+                  onRenamed={onFieldRenamed}
                   onChange={(nf) => setFields(t.fields.map((x, j) => (j === i ? nf : x)))}
                   onRemove={() => setFields(t.fields.filter((_, j) => j !== i))}
                   handle={<DragHandle label={`Move ${f.label}`} onPointerDown={(e) => reorder.start(e, i)} />}
@@ -455,27 +449,38 @@ function FrameInputs({ value, onChange, label }: { value: Frame; onChange: (f: F
   );
 }
 
+/** Labels of the fields of every template whose type is one of `kinds` (each name once). */
+function labelsOf(templates: Template[], kinds: string[]): string[] {
+  const set = new Map<string, string>();
+  for (const t of templates) for (const f of t.fields) if (kinds.includes(f.type) && f.label.trim()) set.set(norm(f.label), f.label);
+  return [...set.values()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
 export function FieldDef({
   field: f,
   autoFocus,
-  linkLabels,
   onChange,
   onRemove,
+  onRenamed,
   handle,
 }: {
   field: Field;
   autoFocus?: boolean;
-  linkLabels: string[];
   onChange: (f: Field) => void;
   onRemove: () => void;
+  /** The label changed (called when the label box is left). */
+  onRenamed?: (old: string, next: string) => void;
   handle: React.ReactNode;
 }) {
+  const wiki = useWiki();
   const options = f.options ?? {};
   const setOptions = (o: Field["options"]) => {
-    const clean = Object.fromEntries(Object.entries(o ?? {}).filter(([, v]) => v !== undefined && v !== false && !(Array.isArray(v) && !v.length)));
+    const clean = Object.fromEntries(Object.entries(o ?? {}).filter(([, v]) => v !== undefined && v !== false && v !== "" && !(Array.isArray(v) && !v.length)));
     onChange({ ...f, options: Object.keys(clean).length ? clean : undefined });
   };
   const kinds = KINDS.filter((k) => READY_KINDS.includes(k.kind) || k.kind === f.type);
+  // The label when the box was entered; a blank label in between doesn't count.
+  const renamedFrom = useRef(f.label);
 
   if (isLayout(f.type)) {
     const heading = f.type === "heading";
@@ -507,7 +512,14 @@ export function FieldDef({
         <input
           className="field-label"
           autoFocus={autoFocus}
-          onFocus={(e) => autoFocus && e.target.select()}
+          onFocus={(e) => {
+            if (autoFocus) e.target.select();
+            if (f.label.trim()) renamedFrom.current = f.label;
+          }}
+          onBlur={() => {
+            if (onRenamed && f.label.trim() && norm(renamedFrom.current) !== norm(f.label)) onRenamed(renamedFrom.current, f.label);
+            if (f.label.trim()) renamedFrom.current = f.label;
+          }}
           value={f.label}
           aria-label="Field label"
           placeholder="Field label"
@@ -541,19 +553,13 @@ export function FieldDef({
             />
           </label>
         )}
-        {f.type === "linkedfrom" && (
-          <label className="field-option">
-            <span>Pages whose</span>
-            <Chips
-              label="Fields that point here"
-              values={options.from ?? []}
-              placeholder="Field name, e.g. a Page link field…"
-              suggestions={linkLabels}
-              onChange={(from) => setOptions({ ...options, from })}
-            />
-            <span className="muted">points to this page</span>
+        {(f.type === "links" || f.type === "link") && (
+          <label className="check" title="A link here also shows on the other page, in its field with the same name (e.g. Spouse)">
+            <input type="checkbox" checked={!!options.twoWay} onChange={(e) => setOptions({ ...options, twoWay: e.target.checked })} />
+            <span>Two-way: also show this page on the linked pages, in their “{f.label || "…"}” field</span>
           </label>
         )}
+        {f.type === "linkedfrom" && <LinkedFromOptions options={options} setOptions={setOptions} templates={wiki.templates} />}
         {f.type === "date" && (
           <label className="check">
             <input type="checkbox" checked={!!options.ranges} onChange={(e) => setOptions({ ...options, ranges: e.target.checked })} />
@@ -569,5 +575,75 @@ export function FieldDef({
         />
       </div>
     </>
+  );
+}
+
+/** Settings of a Linked from field: which fields point here, from which templates, sorted how. */
+function LinkedFromOptions({
+  options,
+  setOptions,
+  templates,
+}: {
+  options: NonNullable<Field["options"]>;
+  setOptions: (o: Field["options"]) => void;
+  templates: Template[];
+}) {
+  const filter = options.templates ?? [];
+  const sortable = labelsOf(templates, ["number", "date"]);
+  const sortBy = options.sortBy ?? "";
+  if (sortBy && !sortable.some((l) => norm(l) === norm(sortBy))) sortable.push(sortBy);
+  const sortedTemplates = [...templates].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const gone = filter.filter((id) => !templates.some((t) => t.id === id));
+  return (
+    <div className="linked-from-options">
+      <label className="field-option">
+        <span>Pages whose</span>
+        <Chips
+          label="Fields that point here"
+          values={options.from ?? []}
+          placeholder="Field name, e.g. a Page link field…"
+          suggestions={labelsOf(templates, ["link", "links"])}
+          onChange={(from) => setOptions({ ...options, from })}
+        />
+        <span className="muted">points to this page</span>
+      </label>
+      <div className="field-option template-filter" role="group" aria-label="Only pages using these templates">
+        <span>Only pages from</span>
+        <span className="template-checks">
+          <label className="check">
+            <input type="checkbox" checked={!filter.length} onChange={() => setOptions({ ...options, templates: undefined })} />
+            <span>Any template</span>
+          </label>
+          {sortedTemplates.map((t) => (
+            <label key={t.id} className="check">
+              <input
+                type="checkbox"
+                checked={filter.includes(t.id)}
+                onChange={(e) => setOptions({ ...options, templates: e.target.checked ? [...filter, t.id] : filter.filter((x) => x !== t.id) })}
+              />
+              <span>{t.name}</span>
+            </label>
+          ))}
+          {gone.length > 0 && (
+            <label className="check">
+              <input type="checkbox" checked onChange={() => setOptions({ ...options, templates: filter.filter((x) => !gone.includes(x)) })} />
+              <span className="muted">{gone.length === 1 ? "a deleted template" : `${gone.length} deleted templates`}</span>
+            </label>
+          )}
+        </span>
+      </div>
+      <label className="field-option">
+        <span>Sort by</span>
+        <select aria-label="Sort by" value={sortBy} onChange={(e) => setOptions({ ...options, sortBy: e.target.value || undefined })}>
+          <option value="">Title</option>
+          {sortable.map((l) => (
+            <option key={l} value={l}>
+              {l}
+            </option>
+          ))}
+        </select>
+        <span className="muted">{sortBy ? "pages without it come last" : ""}</span>
+      </label>
+    </div>
   );
 }

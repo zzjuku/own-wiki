@@ -124,6 +124,7 @@ pub fn rename_with_links(
 }
 
 #[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Backlink {
     pub id: String,
     pub title: String,
@@ -132,8 +133,10 @@ pub struct Backlink {
     pub via: Vec<String>,
     /// The lines that contain the links (only when asked for).
     pub lines: Vec<String>,
-    /// Infobox fields that link here.
+    /// Infobox fields that link here (not those hidden as spoilers).
     pub fields: Vec<String>,
+    /// How many fields that link here are spoilers (their names stay hidden).
+    pub spoiler_fields: usize,
 }
 
 /// Pages that link to page `id`, by its title or one of its aliases.
@@ -156,6 +159,7 @@ pub fn backlinks(
         let mut via: Vec<String> = Vec::new();
         let mut lines: Vec<usize> = Vec::new();
         let mut fields: Vec<String> = Vec::new();
+        let mut hidden: Vec<String> = Vec::new();
         let mut note_alias = |alias: &Option<&str>| {
             if let Some(a) = alias {
                 if !via.iter().any(|v| v == a) {
@@ -173,11 +177,14 @@ pub fn backlinks(
         for l in &e.field_links {
             let Some(alias) = names.get(&norm(&l.target)) else { continue };
             note_alias(alias);
-            if !fields.contains(&l.field) {
-                fields.push(l.field.clone());
+            let list = if l.spoiler { &mut hidden } else { &mut fields };
+            if !list.contains(&l.field) {
+                list.push(l.field.clone());
             }
         }
-        if lines.is_empty() && fields.is_empty() {
+        // A field with an open link is named anyway.
+        let spoiler_fields = hidden.iter().filter(|h| !fields.iter().any(|f| norm(f) == norm(h))).count();
+        if lines.is_empty() && fields.is_empty() && spoiler_fields == 0 {
             continue;
         }
         let lines = match &pages_dir {
@@ -191,6 +198,7 @@ pub fn backlinks(
             via,
             lines,
             fields,
+            spoiler_fields,
         });
     }
     out.sort_by_key(|b| b.title.to_lowercase());
@@ -237,36 +245,6 @@ pub fn preview(
     Ok(p)
 }
 
-/// A link from another page's infobox field to this page.
-#[derive(Debug, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct IncomingField {
-    /// The field's label on the linking page.
-    pub field: String,
-    pub id: String,
-    pub title: String,
-    pub two_way: bool,
-}
-
-/// Every infobox field link that points at page `id` (by title or alias),
-/// for "Linked from" and two-way fields. Sorted by title.
-pub fn incoming_fields(idx: &ProjectIndex, id: &str) -> AppResult<Vec<IncomingField>> {
-    let target = entry(idx, id)?;
-    let names: Vec<String> = std::iter::once(&target.title).chain(&target.aliases).map(|n| norm(n)).collect();
-    let mut out = Vec::new();
-    for (pid, e) in idx.pages.iter().filter(|(pid, _)| pid.as_str() != id) {
-        for l in &e.field_links {
-            if names.contains(&norm(&l.target))
-                && !out.iter().any(|o: &IncomingField| &o.id == pid && norm(&o.field) == norm(&l.field))
-            {
-                out.push(IncomingField { field: l.field.clone(), id: pid.clone(), title: e.title.clone(), two_way: l.two_way });
-            }
-        }
-    }
-    out.sort_by_key(|o| o.title.to_lowercase());
-    Ok(out)
-}
-
 /// A page or category page whose text embeds a page.
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -299,13 +277,15 @@ pub fn embedded_in(idx: &ProjectIndex, id: &str) -> AppResult<Vec<EmbedHost>> {
     Ok(out)
 }
 
-/// What an embed shows of a page: its text and infobox.
+/// What an embed shows of a page: its text and infobox, and what other
+/// pages' fields add to it (Linked from fields, page lists).
 #[derive(Debug, Serialize)]
 pub struct EmbedSource {
     pub id: String,
     pub title: String,
     pub body: String,
     pub infobox: Option<crate::infobox::Infobox>,
+    pub relations: crate::relations::Relations,
 }
 
 /// Embeds go this many levels deep (an embed in an embed in …).
@@ -341,7 +321,11 @@ pub fn embed_sources(library: &Path, project: &str, idx: &ProjectIndex, ids: &[S
     Ok(read
         .into_iter()
         .flatten()
-        .map(|p| EmbedSource { id: p.id, title: p.title, body: p.body, infobox: p.infobox })
+        .map(|p| {
+            let typed = p.infobox.as_ref().map(crate::relations::typed_names).unwrap_or_default();
+            let relations = crate::relations::relations(idx, &p.id, &typed).unwrap_or_default();
+            EmbedSource { id: p.id, title: p.title, body: p.body, infobox: p.infobox, relations }
+        })
         .collect())
 }
 
@@ -434,6 +418,7 @@ mod tests {
                     via: vec!["Alias".into()],
                     lines: vec!["one [[Target]]".into(), "two [[alias|x]] and [[Target#S]]".into()],
                     fields: vec![],
+                    spoiler_fields: 0,
                 },
                 Backlink {
                     id: "C.md".into(),
@@ -442,6 +427,7 @@ mod tests {
                     via: vec!["Alias".into()],
                     lines: vec!["[[Alias]]".into()],
                     fields: vec![],
+                    spoiler_fields: 0,
                 },
             ]
         );
@@ -463,7 +449,7 @@ mod tests {
         assert_eq!((bl[0].fields.clone(), bl[0].via.clone()), (vec!["Father".into(), "Spouse".into(), "Note".into()], vec!["Nick".into()]));
         assert_eq!(bl[0].lines, ["Text [[Old]]"]);
         assert_eq!((bl[1].fields.clone(), bl[1].lines.len()), (vec!["Father".into()], 0));
-        let inc = incoming_fields(&idx, "Old.md").unwrap();
+        let inc = crate::relations::incoming_fields(&idx, "Old.md").unwrap();
         let got: Vec<_> = inc.iter().map(|i| (i.field.as_str(), i.id.as_str(), i.two_way)).collect();
         assert_eq!(got, [("Father", "A.md", false), ("Spouse", "A.md", true), ("Note", "A.md", false), ("Father", "B.md", false)]);
         assert_eq!(link_count(&idx, "Old"), LinkCount { links: 4, pages: 2 });
@@ -472,7 +458,7 @@ mod tests {
         let a = read(lib.path(), &p, "A.md");
         assert!(a.contains("value: New\n") && a.contains("- Nick\n") && a.contains("[[New|x]]") && a.ends_with("Text [[New]]\n"), "{a}");
         assert_eq!(link_count(&idx, "Old").links, 0);
-        assert_eq!(incoming_fields(&idx, "New.md").unwrap().len(), 4);
+        assert_eq!(crate::relations::incoming_fields(&idx, "New.md").unwrap().len(), 4);
     }
 
     #[test]

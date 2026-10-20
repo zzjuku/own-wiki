@@ -3,14 +3,15 @@
 // The file format is described in src-tauri/src/infobox.rs.
 import { readableOn } from "./themes/color";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { Field, FieldKind, Frame, IncomingField, Infobox, Template } from "./api";
+import type { Field, FieldKind, Frame, Infobox, Relations, Template } from "./api";
 import { renderInline, renderPage, slugify, spoilerHtml, type LinkContext } from "./markdown";
+import { reverseEntries, twoWayExtras, type RelationEntry } from "./relations";
 import { norm } from "./wikilinks";
 
 export interface KindInfo {
   kind: FieldKind;
   label: string;
-  /** Has a value (headings, dividers and Linked from don't). */
+  /** Has a value (headings and dividers don't; Linked from: names typed in). */
   hasValue: boolean;
 }
 
@@ -25,7 +26,7 @@ export const KINDS: KindInfo[] = [
   // "link" (exactly one page) still reads and edits, but isn't offered.
   { kind: "links", label: "Page link", hasValue: true },
   { kind: "link", label: "Page link (one page)", hasValue: true },
-  { kind: "linkedfrom", label: "Linked from", hasValue: false },
+  { kind: "linkedfrom", label: "Linked from", hasValue: true },
   { kind: "date", label: "Date", hasValue: true },
   { kind: "image", label: "Image", hasValue: true },
   { kind: "heading", label: "Section heading", hasValue: false },
@@ -101,6 +102,7 @@ export function valueProblem(f: Field): string | null {
       return (f.options?.choices ?? []).some((c) => c === v) ? null : `“${v}” isn't one of the options.`;
     case "list":
     case "links":
+    case "linkedfrom":
       return isStringArray(v) ? null : "This value doesn't fit a " + kindLabel(f.type) + " field.";
     case "date":
       return typeof v === "object" && !Array.isArray(v) ? null : "This isn't a date.";
@@ -137,7 +139,7 @@ export function valueText(f: Field): string {
 }
 
 const STRING_KINDS = ["text", "longtext", "choice", "link"];
-const LIST_KINDS = ["list", "links"];
+const LIST_KINDS = ["list", "links", "linkedfrom"];
 
 /** A value moved to another field type, converted where nothing is lost
  * (same rules as convert_value in src-tauri/src/infobox.rs). */
@@ -284,8 +286,8 @@ export interface BoxContext {
   project: string;
   title: string;
   links: LinkContext;
-  /** Links from other pages' fields to this page (Linked from, two-way). */
-  incoming?: IncomingField[];
+  /** What other pages' fields add to this page (Linked from, two-way). */
+  relations?: Relations;
   /** Template preview: show every field, with placeholders for missing values. */
   placeholders?: boolean;
   /** Editor preview: show the box (title bar and a note) even without values. */
@@ -354,24 +356,17 @@ function linkHtml(name: string, ctx: BoxContext): string {
   return renderInline(`[[${name.replace(/[[\]|\n]/g, "").trim()}]]`, ctx.links);
 }
 
-/** Entries other pages add to this field: Linked from, and two-way link fields. */
-export function incomingFor(f: Field, incoming: IncomingField[] | undefined): IncomingField[] {
-  if (!incoming?.length) return [];
-  if (f.type === "linkedfrom") {
-    const from = (f.options?.from ?? []).map(norm);
-    return incoming.filter((i) => from.includes(norm(i.field)));
-  }
-  if ((f.type === "link" || f.type === "links") && f.options?.twoWay) {
-    return incoming.filter((i) => i.twoWay && norm(i.field) === norm(f.label));
-  }
-  return [];
+/** Entries as links, one per line; entries from spoiler fields stay hidden
+ * (unless the whole field is a spoiler: one click shows it all). */
+function entriesHtml(entries: RelationEntry[], f: Field, ctx: BoxContext): string {
+  return entries.map((e) => (e.spoiler && !f.spoiler ? spoilerHtml(linkHtml(e.name, ctx)) : linkHtml(e.name, ctx))).join("<br>");
 }
 
 /** The value cell's HTML, or "" when there's nothing to show. */
 function valueHtml(f: Field, ctx: BoxContext): string {
   const v = f.value;
-  const extra = incomingFor(f, ctx.incoming);
-  if (f.type === "linkedfrom") return extra.map((i) => linkHtml(i.title, ctx)).join("<br>");
+  if (f.type === "linkedfrom" && !valueProblem(f)) return entriesHtml(reverseEntries(f, ctx.relations, ctx.links.resolve), f, ctx);
+  const extra = f.type === "link" || f.type === "links" ? twoWayExtras(f, ctx.relations, ctx.links.resolve) : [];
   if (isEmptyValue(v) && !extra.length) return "";
   if (valueProblem(f) && !extra.length) return escapeHtml(rawValueText(v));
   switch (f.type) {
@@ -389,12 +384,7 @@ function valueHtml(f: Field, ctx: BoxContext): string {
     case "link":
     case "links": {
       const own = (typeof v === "string" ? [v] : isStringArray(v) ? v : []).filter((x) => x.trim());
-      const names = [...own];
-      for (const i of extra) {
-        const target = ctx.links.resolve(i.title);
-        if (!own.some((o) => ctx.links.resolve(o)?.page.id === target?.page.id)) names.push(i.title);
-      }
-      return names.map((n) => linkHtml(n, ctx)).join("<br>");
+      return [own.map((n) => linkHtml(n, ctx)).join("<br>"), entriesHtml(extra, f, ctx)].filter(Boolean).join("<br>");
     }
     case "date":
       return escapeHtml(formatDate(v));

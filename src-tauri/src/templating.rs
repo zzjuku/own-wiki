@@ -225,7 +225,7 @@ mod tests {
         let reopen = t0.elapsed();
         println!("reopen (cache): {reopen:?}");
         let t0 = Instant::now();
-        let inc = crate::relink::incoming_fields(&idx, "Group 0/Page 0.md").unwrap();
+        let inc = crate::relations::incoming_fields(&idx, "Group 0/Page 0.md").unwrap();
         let incoming = t0.elapsed();
         println!("incoming field links: {incoming:?} ({} links)", inc.len());
 

@@ -11,6 +11,7 @@ import "./styles/editor.css";
 import "./styles/links.css";
 import "./styles/infobox.css";
 import "./styles/templates.css";
+import "./styles/relations.css";
 import "./styles/images.css";
 import "./styles/categories.css";
 import "./styles/spoilers.css";

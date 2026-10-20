@@ -107,6 +107,23 @@ pub fn spoiler_at(text: &str, i: usize) -> Option<usize> {
     }
 }
 
+/// Byte ranges of the spoilers `||…||` in one line of text, in order.
+pub fn spoiler_ranges(text: &str) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(k) = text.get(i..).and_then(|t| t.find("||")) {
+        let at = i + k;
+        match spoiler_at(text, at) {
+            Some(end) => {
+                out.push((at, end));
+                i = end;
+            }
+            None => i = at + 1,
+        }
+    }
+    out
+}
+
 // ---- scanning ----
 
 /// A fenced code block opener/closer: up to 3 spaces, then ``` or ~~~.

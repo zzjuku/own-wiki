@@ -1,0 +1,120 @@
+/* Relations (M9): Linked from fields and two-way entries in the Infobox tab,
+ * the Add dialog, and Linked from settings in templates. */
+
+.ib-relations,
+.relation-extras {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.relation-extras {
+  margin-top: 6px;
+}
+.relation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  align-self: stretch;
+}
+.relation-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+.relation-list li:last-child {
+  border-bottom: none;
+}
+.relation-name {
+  color: var(--link);
+}
+.relation-name.missing {
+  color: var(--link-new);
+}
+/* Shown, but marked: it's a spoiler where it comes from (like the editor preview). */
+.relation-name.relation-spoiler {
+  background: var(--spoiler-revealed-bg);
+  border-bottom: 1px dashed var(--spoiler-mark);
+  border-radius: 2px;
+  padding: 0 3px;
+}
+.relation-source {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.relation-list button.remove {
+  align-self: center;
+}
+
+/* Add dialog */
+.relation-dialog {
+  width: min(520px, 92vw);
+}
+.relation-dialog .page-name-input input {
+  width: 100%;
+}
+.relation-create {
+  margin-top: 12px;
+}
+.relation-create-row {
+  display: flex;
+  gap: 12px;
+}
+.relation-create-row .field {
+  flex: 1;
+  min-width: 0;
+}
+.relation-slots {
+  margin: 14px 0 0;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.relation-slots legend {
+  padding: 0 4px;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.relation-slots .check {
+  margin-top: 6px;
+}
+.relation-slots .check.disabled > span:first-of-type {
+  color: var(--muted);
+}
+.relation-writes {
+  margin-top: 12px !important;
+}
+.relation-dialog .dialog-actions .spacer {
+  flex: 1;
+}
+
+/* Linked from settings */
+.linked-from-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.template-filter {
+  align-items: flex-start;
+}
+.template-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.template-checks .check {
+  margin: 0;
+}
+.linked-from-options select {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px 6px;
+}

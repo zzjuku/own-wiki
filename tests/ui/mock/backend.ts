@@ -2,7 +2,7 @@
 // runs in a plain browser under Playwright. It mirrors the real behaviour only
 // as far as the smoke tests need; file rules themselves are tested in Rust.
 import type {
-  Backlink, CategoryInfo, Field, Infobox, PageInfo, ProjectSettings, Template,
+  Backlink, CategoryInfo, Field, IncomingField, Infobox, PageInfo, ProjectSettings, Relations, Template,
 } from "../../../src/api";
 import type { ThemeData } from "../../../src/themes/engine";
 
@@ -108,9 +108,58 @@ export function createBackend(fixture: Fixture) {
     const other = findTitle(p, name);
     if (other && other.id !== except) throw new CommandError("exists", `"${other.title}" already exists.`);
   };
-  const fieldTargets = (ib: Infobox | null) =>
-    (ib?.fields ?? []).filter((f) => f.type === "link" || f.type === "links")
-      .flatMap((f) => (Array.isArray(f.value) ? f.value : f.value ? [f.value] : []) as string[]);
+  const strings = (v: unknown): string[] => (Array.isArray(v) ? v : typeof v === "string" ? [v] : []).filter((x): x is string => typeof x === "string");
+  /** Links in infobox fields, as the Rust link index has them (src-tauri/src/infobox.rs, field_links). */
+  const fieldLinks = (ib: Infobox | null) =>
+    (ib?.fields ?? []).flatMap((f) => {
+      const spoiler = !!f.spoiler;
+      if (["link", "links", "linkedfrom"].includes(f.type))
+        return strings(f.value).map((v) => v.split("#")[0].trim()).filter(Boolean)
+          .map((target) => ({ field: f.label, target, twoWay: f.type !== "linkedfrom" && !!f.options?.twoWay, spoiler }));
+      if (!["text", "longtext", "list"].includes(f.type)) return [];
+      return strings(f.value).flatMap((text) => {
+        const hidden = [...text.matchAll(/\|\|[^|\s][^\n]*?\|\|/g)].map((m) => [m.index!, m.index! + m[0].length]);
+        return [...text.matchAll(LINK)].map((m) => ({
+          field: f.label, target: m[1].trim(), twoWay: false,
+          spoiler: spoiler || hidden.some(([a, b]) => a <= m.index! && m.index! + m[0].length <= b),
+        }));
+      });
+    });
+  /** Number and date values reverse fields can sort by (not spoilers). */
+  const sortValues = (ib: Infobox | null) => {
+    const out: Record<string, number[]> = {};
+    for (const f of ib?.fields ?? []) {
+      const v = f.value as any;
+      if (f.spoiler || v === undefined || v === null) continue;
+      const point = f.type === "date" ? (v.start ?? v) : null;
+      const key = f.type === "number" && typeof v === "number" ? [v] : point && typeof point.year === "number" ? [point.year, point.month ?? 0, point.day ?? 0] : null;
+      if (key && !(lc(f.label.trim()) in out)) out[lc(f.label.trim())] = key;
+    }
+    return out;
+  };
+  function relations(p: Project, id: string, typed: string[]): Relations {
+    const target = page(p, id);
+    const names = [target.title, ...target.aliases].map(lc);
+    const incoming: IncomingField[] = [];
+    for (const pg of p.pages.values()) {
+      if (pg.id === id) continue;
+      for (const l of fieldLinks(pg.infobox).filter((l) => names.includes(lc(l.target)))) {
+        const same = incoming.find((i) => i.id === pg.id && lc(i.field) === lc(l.field));
+        if (same) same.spoiler &&= l.spoiler;
+        else incoming.push({ field: l.field, id: pg.id, title: pg.title, twoWay: l.twoWay, spoiler: l.spoiler, template: pg.infobox?.template ?? undefined });
+      }
+    }
+    incoming.sort((a, b) => lc(a.title).localeCompare(lc(b.title)));
+    const values: Relations["values"] = {};
+    const add = (pg: Required<MockPage> | undefined) => {
+      const v = pg && sortValues(pg.infobox);
+      if (pg && v && Object.keys(v).length) values[pg.id] = v;
+    };
+    incoming.forEach((i) => add(p.pages.get(i.id)));
+    typed.forEach((t) => add(findTitle(p, t.split("#")[0].trim())));
+    return { incoming, values };
+  }
+  const typedOf = (ib: Infobox | null) => (ib?.fields ?? []).filter((f) => f.type === "linkedfrom").flatMap((f) => strings(f.value));
 
   // Categories: a category exists while a page, template, subcategory or its own text uses it.
   function categories(p: Project): Map<string, CategoryInfo & { members: Required<MockPage>[] }> {
@@ -136,8 +185,10 @@ export function createBackend(fixture: Fixture) {
     for (const pg of p.pages.values()) {
       const lines = pg.body.split("\n").filter((line) =>
         [...line.matchAll(LINK)].some((l) => names.includes(lc(l[1].trim()).replace(/^category:\s*/, "category:"))));
-      const fields = (pg.infobox?.fields ?? []).filter((f) => fieldTargets({ fields: [f] }).some((t) => names.includes(lc(t)))).map((f) => f.label);
-      if (lines.length || fields.length) out.push({ id: pg.id, title: pg.title, group: parent(pg.id), via: [], lines, fields });
+      const here = isCategory ? [] : fieldLinks(pg.infobox).filter((l) => names.includes(lc(l.target)));
+      const fields = [...new Set(here.filter((l) => !l.spoiler).map((l) => l.field))];
+      const spoilerFields = new Set(here.filter((l) => l.spoiler && !fields.includes(l.field)).map((l) => l.field)).size;
+      if (lines.length || fields.length || spoilerFields) out.push({ id: pg.id, title: pg.title, group: parent(pg.id), via: [], lines, fields, spoilerFields });
     }
     return out;
   }
@@ -249,7 +300,32 @@ export function createBackend(fixture: Fixture) {
     template_pages: ({ project, id }) =>
       [...proj(project).pages.values()].filter((pg) => pg.infobox?.template === id).map(info),
     apply_template: () => ({ changes: [], failed: [] }),
-    incoming_fields: () => [],
+    relations: ({ project, id, typed }) => relations(proj(project), id, typed ?? []),
+    set_relation: ({ project, target, field, source, edit }) => {
+      const p = proj(project);
+      const src = page(p, source);
+      const tgt = page(p, target);
+      const names = [src.title, ...src.aliases].map(lc);
+      const isSource = (v: string) => names.includes(lc(v.split("#")[0].trim()));
+      const ib: Infobox = tgt.infobox ?? { fields: [] };
+      const f = ib.fields.find((x) => x.type !== "heading" && x.type !== "divider" && lc(x.label.trim()) === lc(field.trim()));
+      if (!f) {
+        if (edit !== "remove") ib.fields.push({ label: field.trim(), type: "links", value: [src.title] });
+      } else {
+        if (f.type !== "link" && f.type !== "links")
+          throw new CommandError("invalid", `${tgt.title}'s field “${f.label}” isn't a Page link field, so it can't be filled from here.`);
+        const current = strings(f.value).filter((v) => v.trim());
+        const has = current.some(isSource);
+        let next = current;
+        if (edit === "add" && !has) {
+          if (f.type === "link" && current.length) throw new CommandError("invalid", `${tgt.title}'s ${f.label} holds one page only. Replace it instead.`);
+          next = [...current, src.title];
+        } else if (edit === "replace") next = [src.title];
+        else if (edit === "remove") next = current.filter((v) => !isSource(v));
+        f.value = !next.length ? undefined : f.type === "link" ? next[0] : next;
+      }
+      tgt.infobox = ib;
+    },
 
     list_categories: ({ project }) => [...categories(proj(project)).values()].map(catInfo),
     category_page: ({ project, name, includeSub }) => {
@@ -352,7 +428,7 @@ export function createBackend(fixture: Fixture) {
       }
       return [...seen].map((id) => {
         const pg = page(p, id);
-        return { id, title: pg.title, body: pg.body, infobox: pg.infobox };
+        return { id, title: pg.title, body: pg.body, infobox: pg.infobox, relations: relations(p, id, typedOf(pg.infobox)) };
       });
     },
     link_count: ({ project, name }) => {

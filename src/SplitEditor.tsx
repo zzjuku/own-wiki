@@ -22,7 +22,7 @@ import {
   toggleQuote,
   type ActiveFormats,
 } from "./formatting";
-import { api, errorText, type IncomingField, type Infobox } from "./api";
+import { api, errorText, type Infobox, type Relations } from "./api";
 import { infoboxHtml } from "./infobox";
 import { InfoboxForm } from "./InfoboxForm";
 import { editorLinks, imageRangeAt, insertLink, linkCompletions, linkRangeAt, setLinkEnv, wikiLinkSyntax, type LinkEnv } from "./editorLinks";
@@ -52,7 +52,10 @@ interface Props {
   onChange: (text: string) => void;
   infobox: Infobox | null;
   infoboxError: string | null;
-  incoming: IncomingField[];
+  /** What other pages' fields add to this page (Linked from, two-way fields). */
+  relations: Relations;
+  /** This page wrote a relation into another page: re-read the relations. */
+  onRelationsChanged: () => void;
   onInfoboxChange: (ib: Infobox | null) => void;
   /** Shown at the right of the status line (save state). */
   status?: ReactNode;
@@ -201,7 +204,7 @@ const NO_FORMATS: ActiveFormats = {
   quote: false,
 };
 
-export function SplitEditor({ pageId, title, initial, onChange, infobox, infoboxError, incoming, onInfoboxChange, status, noInfobox, currentCategory }: Props) {
+export function SplitEditor({ pageId, title, initial, onChange, infobox, infoboxError, relations, onRelationsChanged, onInfoboxChange, status, noInfobox, currentCategory }: Props) {
   const wiki = useWiki();
   const report = useReportError();
   const [tab, setTab] = useState<Tab>("text");
@@ -462,8 +465,8 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
   const embedEnv = useEmbedEnv(text, currentCategory !== undefined ? `category:${currentCategory}` : pageId);
   const textHtml = useMemo(() => renderWithEmbeds(text, { lineAnchors: true, links }, embedEnv).html, [text, links, embedEnv]);
   const boxHtml = useMemo(
-    () => infoboxHtml(infobox, { project: wiki.project, title, links, incoming, showEmpty: true, frame: frameFor(wiki, infobox?.template) }),
-    [infobox, wiki, title, links, incoming],
+    () => infoboxHtml(infobox, { project: wiki.project, title, links, relations, showEmpty: true, frame: frameFor(wiki, infobox?.template) }),
+    [infobox, wiki, title, links, relations],
   );
   const html = boxHtml + textHtml;
   const counts = useMemo(() => {
@@ -632,9 +635,12 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
           {tab === "infobox" && (
             <InfoboxForm
               pageId={pageId}
+              pageTitle={title}
               infobox={infobox}
               error={infoboxError}
               templates={wiki.templates}
+              relations={relations}
+              onRelationsChanged={onRelationsChanged}
               onChange={onInfoboxChange}
             />
           )}

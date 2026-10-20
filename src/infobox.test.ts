@@ -84,12 +84,12 @@ describe("infoboxHtml", () => {
       ],
     };
     const incoming = [
-      { field: "Father", id: "Page B.md", title: "Page B", twoWay: false },
-      { field: "Spouse", id: "Page B.md", title: "Page B", twoWay: true },
-      { field: "Spouse", id: "Page C.md", title: "Page C", twoWay: true },
-      { field: "Spouse", id: "Page D.md", title: "Page D", twoWay: false },
+      { field: "Father", id: "Page B.md", title: "Page B", twoWay: false, spoiler: false },
+      { field: "Spouse", id: "Page B.md", title: "Page B", twoWay: true, spoiler: false },
+      { field: "Spouse", id: "Page C.md", title: "Page C", twoWay: true, spoiler: false },
+      { field: "Spouse", id: "Page D.md", title: "Page D", twoWay: false, spoiler: false },
     ];
-    const html = infoboxHtml(ib, { ...ctx, incoming });
+    const html = infoboxHtml(ib, { ...ctx, relations: { incoming, values: {} } });
     const children = html.slice(html.indexOf("Children"), html.indexOf("Spouse"));
     expect(children).toContain("Page B");
     const spouse = html.slice(html.indexOf("Spouse"));

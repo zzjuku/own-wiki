@@ -588,7 +588,7 @@ pub fn backlinks(library: &Path, project: &str, idx: &ProjectIndex, name: &str, 
             continue;
         }
         let lines = if context { pages::body_lines(&pages_dir, id, &lines[..lines.len().min(3)]).unwrap_or_default() } else { Vec::new() };
-        out.push(Backlink { id: id.clone(), title: e.title.clone(), group: rel_parent(id).to_string(), via: Vec::new(), lines, fields: Vec::new() });
+        out.push(Backlink { id: id.clone(), title: e.title.clone(), group: rel_parent(id).to_string(), via: Vec::new(), lines, fields: Vec::new(), spoiler_fields: 0 });
     }
     out.sort_by_key(|b| b.title.to_lowercase());
     Ok(out)

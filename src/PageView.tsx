@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, errorText, type IncomingField, type Infobox, type Page } from "./api";
+import { api, errorText, type Infobox, type Page, type Relations } from "./api";
 import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
 import { renderWithEmbeds, useEmbedEnv } from "./embeds";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
 import { AliasEditor } from "./AliasEditor";
 import { infoboxHtml } from "./infobox";
+import { NO_RELATIONS, typedNames } from "./relations";
 import { Backlinks } from "./Backlinks";
 import { SplitEditor } from "./SplitEditor";
 import { TocPanel } from "./TocPanel";
@@ -52,8 +53,10 @@ export function PageView(props: Props) {
   const [boxStatus, setBoxStatus] = useState<SaveStatus>("saved");
   const [infobox, setInfobox] = useState<Infobox | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
-  // Links from other pages' infobox fields (Linked from, two-way fields).
-  const [incoming, setIncoming] = useState<IncomingField[]>([]);
+  // What other pages' infobox fields add to this one (Linked from, two-way fields).
+  const [relations, setRelations] = useState<Relations>(NO_RELATIONS);
+  // Bumped after this page wrote a relation into another page.
+  const [relationsVersion, setRelationsVersion] = useState(0);
   // While editing, the latest text lives here (not in state) so typing
   // doesn't re-render the whole page.
   const latest = useRef("");
@@ -121,22 +124,30 @@ export function PageView(props: Props) {
       (l) => live && setLinkingPages(l.length),
       () => {},
     );
-    api.incomingFields(project, pageId).then(
-      (l) => live && setIncoming(l),
+    return () => {
+      live = false;
+    };
+  }, [project, pageId, wiki.names]);
+  // Names typed into Linked from fields: their sort values come with the relations.
+  const typed = useMemo(() => typedNames(infobox).join("\n"), [infobox]);
+  useEffect(() => {
+    let live = true;
+    api.relations(project, pageId, typed ? typed.split("\n") : []).then(
+      (r) => live && setRelations(r),
       () => {},
     );
     return () => {
       live = false;
     };
-  }, [project, pageId, wiki.names]);
+  }, [project, pageId, wiki.names, typed, relationsVersion]);
   const onContentClick = useContentClick(pageId);
   // The read view shows the contents in the left panel, not in the text.
   const embedEnv = useEmbedEnv(editing ? "" : body, pageId);
   const rendered = useMemo(() => renderWithEmbeds(body, { tocBox: false, links }, embedEnv), [body, links, embedEnv]);
   const shownTitle = props.title ?? page?.title ?? "";
   const boxHtml = useMemo(
-    () => infoboxHtml(infobox, { project, title: shownTitle, links, incoming, frame: frameFor(wiki, infobox?.template) }),
-    [infobox, project, shownTitle, links, incoming, wiki],
+    () => infoboxHtml(infobox, { project, title: shownTitle, links, relations, frame: frameFor(wiki, infobox?.template) }),
+    [infobox, project, shownTitle, links, relations, wiki],
   );
   const readRef = useRef<HTMLDivElement>(null);
   const spoilers = useSpoilerReveal(readRef);
@@ -288,7 +299,8 @@ export function PageView(props: Props) {
           }}
           infobox={infobox}
           infoboxError={page.infoboxError}
-          incoming={incoming}
+          relations={relations}
+          onRelationsChanged={() => setRelationsVersion((v) => v + 1)}
           onInfoboxChange={changeInfobox}
           status={
             <span className={`save-status ${worst(status, boxStatus)}`} aria-live="polite">

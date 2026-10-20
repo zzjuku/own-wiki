@@ -61,8 +61,10 @@ export interface Backlink {
   via: string[];
   /** Lines containing the links (when asked for). */
   lines: string[];
-  /** Infobox fields that link here. */
+  /** Infobox fields that link here (not spoiler fields). */
   fields: string[];
+  /** How many spoiler fields link here (their names stay hidden). */
+  spoilerFields: number;
 }
 
 /** A page or category page whose text embeds a page. */
@@ -109,7 +111,7 @@ export interface Field {
   label: string;
   type: FieldKind;
   hint?: string;
-  /** choices (choice), twoWay (link, links), from (linkedfrom), ranges (date). */
+  /** choices (choice), twoWay (link, links), from/templates/sortBy (linkedfrom), ranges (date). */
   options?: FieldOptions;
   value?: unknown;
   /** Pages only: the value is hidden as a spoiler until clicked. */
@@ -120,7 +122,12 @@ export interface Field {
 export interface FieldOptions {
   choices?: string[];
   twoWay?: boolean;
+  /** Linked from: names of the fields (on other pages) that point here. */
   from?: string[];
+  /** Linked from: only pages using these templates (ids); none = any page. */
+  templates?: string[];
+  /** Linked from: sort by this number or date field of the listed pages; none = by title. */
+  sortBy?: string;
   ranges?: boolean;
   [extra: string]: unknown;
 }
@@ -175,7 +182,21 @@ export interface IncomingField {
   id: string;
   title: string;
   twoWay: boolean;
+  /** Every link from that field to here is hidden as a spoiler. */
+  spoiler: boolean;
+  /** Template of the linking page's infobox. */
+  template?: string;
 }
+
+/** What other pages' fields add to a page (Linked from, two-way fields, page lists). */
+export interface Relations {
+  incoming: IncomingField[];
+  /** Page id -> field label (as compared, see norm) -> sort key (number, or year/month/day). */
+  values: Record<string, Record<string, number[]>>;
+}
+
+/** How setRelation changes the other page's field. */
+export type RelationEdit = "add" | "replace" | "remove";
 
 export interface ApplySummary {
   added: number;
@@ -288,7 +309,11 @@ export const api = {
   templatePages: (project: string, id: string) => invoke<PageInfo[]>("template_pages", { project, id }),
   applyTemplate: (project: string, id: string, pages: string[] | null, dryRun: boolean) =>
     invoke<ApplyResult>("apply_template", { project, id, pages, dryRun }),
-  incomingFields: (project: string, id: string) => invoke<IncomingField[]>("incoming_fields", { project, id }),
+  /** `typed`: names typed into the page's Linked from fields (their sort values come along). */
+  relations: (project: string, id: string, typed: string[]) => invoke<Relations>("relations", { project, id, typed }),
+  /** Writes page `source` into (or out of) the field named `field` on page `target`. */
+  setRelation: (project: string, target: string, field: string, source: string, edit: RelationEdit) =>
+    invoke<void>("set_relation", { project, target, field, source, edit }),
 
   // Categories
   listCategories: (project: string) => invoke<CategoryInfo[]>("list_categories", { project }),
@@ -319,7 +344,7 @@ export const api = {
   embeddedIn: (project: string, id: string) => invoke<EmbedHost[]>("embedded_in", { project, id }),
   /** The pages `ids` embed, and what those embed (up to 5 levels). */
   embedSources: (project: string, ids: string[]) =>
-    invoke<{ id: string; title: string; body: string; infobox: Infobox | null }[]>("embed_sources", { project, ids }),
+    invoke<{ id: string; title: string; body: string; infobox: Infobox | null; relations: Relations }[]>("embed_sources", { project, ids }),
 
   // Themes (M8). `project` null = the app-wide themes in the library folder.
   listThemes: (project: string | null) => invoke<ThemeInfo[]>("list_themes", { project }),
