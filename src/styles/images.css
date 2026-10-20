@@ -56,6 +56,7 @@
   display: block;
   padding: 4px 3px 2px;
   color: var(--thumb-caption);
+  font-family: var(--font-caption);
 }
 /* Narrow windows: floating images sit above the text. */
 @container (max-width: 620px) {
@@ -116,6 +117,7 @@
 .markdown .gallery-item figcaption {
   padding: 4px 2px 0;
   color: var(--thumb-caption);
+  font-family: var(--font-caption);
   text-align: center;
 }
 

@@ -293,20 +293,17 @@
 .sample-page {
   flex: 1;
   min-width: 0;
+  height: auto;
   background: var(--page-bg);
   /* Links and spoilers in the sample don't react. */
   pointer-events: none;
 }
-.sample-head {
-  padding: 10px 18px 6px;
-  border-bottom: 1px solid var(--border);
+.theme-sample .page-head {
+  padding: 10px 18px 8px;
   background: var(--bg);
 }
-.sample-head h1 {
-  font-family: var(--font-heading);
-  font-weight: 400;
-  font-size: var(--text-title);
-  color: var(--text);
+.theme-sample .page > .page-head h1 {
+  font-size: calc(var(--title-size) * 0.8);
 }
 .theme-sample .markdown {
   padding: 8px 18px 18px;

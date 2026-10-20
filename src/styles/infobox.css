@@ -30,6 +30,7 @@
   padding: 3px;
   background: var(--infobox-bg);
   border: 1px solid var(--infobox-border);
+  font-family: var(--font-infobox);
   font-size: var(--infobox-font-size);
   line-height: 1.5;
 }
@@ -52,13 +53,15 @@
   background: var(--infobox-header-bg);
   color: var(--infobox-header-text);
   text-align: center;
-  font-size: 125%;
+  font-family: var(--font-infobox-title);
+  font-size: var(--infobox-title-size);
   font-weight: 700;
   padding: 0.25em 0.4em;
 }
 .markdown .infobox th.infobox-heading {
   background: var(--infobox-header-bg);
   color: var(--infobox-header-text);
+  font-family: var(--font-infobox-header);
   text-align: center;
   font-weight: 700;
 }
@@ -67,6 +70,7 @@
 }
 .markdown .infobox th.infobox-label {
   width: 38%;
+  font-family: var(--font-infobox-label);
   font-weight: 700;
   color: var(--infobox-label);
 }
@@ -81,6 +85,7 @@
   margin: 0 auto;
 }
 .infobox-caption {
+  font-family: var(--font-caption);
   font-size: 92%;
   padding-top: 0.2em;
   text-align: center;

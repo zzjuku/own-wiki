@@ -49,7 +49,9 @@ export function ThemeEditor({ themeRef, project, data, readOnly, onChange }: Pro
       {s.type.kind === "font" && (
         <FontPicker
           name={s.name}
+          label={s.label}
           value={resolved.all[s.name]}
+          effective={effectiveValue(resolved, s.name)}
           fonts={fonts}
           scope={scope}
           themeRef={themeRef}
@@ -195,7 +197,9 @@ function ColorInput({ id, label, value, onChange }: { id: string; label: string;
 
 function FontPicker({
   name,
+  label,
   value,
+  effective,
   fonts,
   scope,
   themeRef,
@@ -205,7 +209,11 @@ function FontPicker({
   addFonts,
 }: {
   name: string;
+  label: string;
+  /** As the theme has it: a font stack, or "var(--font-…)" when it follows another font. */
   value: string;
+  /** The font stack in the end. */
+  effective: string;
   fonts: ThemeFont[];
   scope: string;
   themeRef: ThemeRef;
@@ -219,10 +227,13 @@ function FontPicker({
   const place = parseRef(themeRef);
   const store = storeOf(place, project);
   const families = [...new Set(fonts.map((f) => f.family))];
-  const standard = STANDARD_FONTS.find((f) => f.value === value);
-  const family = firstFamily(value);
-  const current = standard ? `std:${standard.value}` : families.includes(family) ? `own:${family}` : `std:${value}`;
+  const follows = DEFAULTS[name]?.startsWith("var(") ? followsWhat(name) : null;
+  const following = follows !== null && value.startsWith("var(");
+  const standard = following ? undefined : STANDARD_FONTS.find((f) => f.value === value);
+  const family = firstFamily(following ? effective : value);
+  const current = following ? "follow" : standard ? `std:${standard.value}` : families.includes(family) ? `own:${family}` : `std:${value}`;
   const previewFamily = (f: string) => `"${scopedFamily(f, scope)}", "${f}"`;
+  const preview = standard ? standard.value : families.includes(family) ? previewFamily(family) : effective;
 
   async function importFile() {
     try {
@@ -238,25 +249,27 @@ function FontPicker({
     <>
       <select
         className="theme-font"
-        aria-label={name === "--font-body" ? "Page font" : "Headings font"}
+        aria-label={label}
         value={current}
         disabled={disabled}
-        style={{ fontFamily: standard ? standard.value : previewFamily(family) }}
+        style={{ fontFamily: preview }}
         onChange={(e) => {
           const v = e.target.value;
-          if (v === "installed") setInstalledOpen(true);
+          if (v === "follow") set(name, null);
+          else if (v === "installed") setInstalledOpen(true);
           else if (v === "import") void importFile();
           else if (v.startsWith("std:")) set(name, v.slice(4) === DEFAULTS[name] ? null : v.slice(4));
           else set(name, fontStack(v.slice(4), name));
         }}
       >
+        {follows && <option value="follow">Same as {(LABELS[follows] ?? follows).toLowerCase()}</option>}
         <optgroup label="Standard (Mac and Windows)">
           {STANDARD_FONTS.map((f) => (
             <option key={f.label} value={`std:${f.value}`} style={{ fontFamily: f.value }}>
               {f.label}
             </option>
           ))}
-          {current === `std:${value}` && !standard && <option value={`std:${value}`}>{family}</option>}
+          {current === `std:${value}` && <option value={`std:${value}`}>{family}</option>}
         </optgroup>
         {families.length > 0 && (
           <optgroup label="In this theme">

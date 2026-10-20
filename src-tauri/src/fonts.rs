@@ -132,17 +132,27 @@ fn store(theme: &Path, name: &str, ext: &str, data: &[u8]) -> AppResult<String> 
 
 /// Copies the font file at `source` into the theme folder `theme`.
 pub fn import(theme: &Path, source: &Path) -> AppResult<FontFile> {
-    let ext = extension(source).filter(|e| EXTENSIONS.contains(&e.as_str())).ok_or_else(|| {
-        AppError::Invalid("Fonts can be .ttf, .otf, .woff or .woff2 files.".into())
-    })?;
-    let data = fs::read(source)?;
+    check_extension(source)?;
+    import_data(theme, source, &fs::read(source)?)
+}
+
+fn check_extension(path: &Path) -> AppResult<String> {
+    extension(path)
+        .filter(|e| EXTENSIONS.contains(&e.as_str()))
+        .ok_or_else(|| AppError::Invalid("Fonts can be .ttf, .otf, .woff or .woff2 files.".into()))
+}
+
+/// Stores font bytes that came with the file name `name` (e.g. a built-in
+/// theme's font when the theme is copied) in the theme folder `theme`.
+pub fn import_data(theme: &Path, name: &Path, data: &[u8]) -> AppResult<FontFile> {
+    let ext = check_extension(name)?;
     let meta = if ext == "woff" || ext == "woff2" {
-        meta_from_file_name(source)
+        meta_from_file_name(name)
     } else {
-        read_meta(&data, 0).ok_or_else(|| AppError::Invalid("This file isn't a font the app can read.".into()))?
+        read_meta(data, 0).ok_or_else(|| AppError::Invalid("This file isn't a font the app can read.".into()))?
     };
-    let stem = source.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or(meta.name);
-    let file = store(theme, &stem, &ext, &data)?;
+    let stem = name.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or(meta.name);
+    let file = store(theme, &stem, &ext, data)?;
     Ok(FontFile { family: meta.family, file, weight: meta.weight, style: meta.style })
 }
 

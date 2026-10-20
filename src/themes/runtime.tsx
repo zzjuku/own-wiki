@@ -45,18 +45,21 @@ const loadedFonts = new Map<string, Promise<void>>();
 /** Loads a theme's font files (once each) under their scoped family names. */
 export function loadFonts(ref: ThemeRef, project: string | null, fonts: ThemeFont[] | undefined): Promise<void> {
   const place = parseRef(ref);
-  if (place.kind === "builtin" || !fonts?.length || typeof FontFace === "undefined") return Promise.resolve();
+  if (!fonts?.length || typeof FontFace === "undefined") return Promise.resolve();
   const scope = fontScope(ref, project);
   return Promise.all(
     fonts.map((f) => {
       const key = `${scope}/${f.file}`;
       let p = loadedFonts.get(key);
       if (!p) {
-        p = api
-          .fontData(storeOf(place, project), place.id, f.file)
+        // Built-in themes' fonts come with the app; others from the theme folder.
+        const source: Promise<ArrayBuffer | string> = f.url
+          ? Promise.resolve(`url(${JSON.stringify(f.url)})`)
+          : api.fontData(storeOf(place, project), place.id, f.file);
+        p = source
           // The bytes may arrive as a plain list of numbers instead of an ArrayBuffer.
           .then((data) => {
-            const bytes = data instanceof ArrayBuffer ? data : new Uint8Array(data as unknown as number[]).buffer;
+            const bytes = typeof data === "string" || data instanceof ArrayBuffer ? data : new Uint8Array(data as unknown as number[]).buffer;
             return new FontFace(scopedFamily(f.family, scope), bytes, { weight: f.weight, style: f.style }).load();
           })
           .then((face) => void document.fonts.add(face))

@@ -334,6 +334,11 @@ export const api = {
   getAppTheme: () => invoke<string | null>("get_app_theme"),
   setAppTheme: (choice: string | null) => invoke<void>("set_app_theme", { choice }),
   importFont: (project: string | null, id: string, path: string) => invoke<ThemeFont>("import_font", { project, id, path }),
+  /** Stores font bytes (e.g. a built-in theme's font) in a theme. */
+  importFontData: (project: string | null, id: string, name: string, data: Uint8Array) =>
+    invoke<ThemeFont>("import_font_data", data, {
+      headers: { project: encodeURIComponent(project ?? ""), id: encodeURIComponent(id), name: encodeURIComponent(name) },
+    }),
   /** Family names of the fonts installed on this computer. */
   installedFonts: () => invoke<string[]>("installed_fonts"),
   copyInstalledFont: (project: string | null, id: string, family: string) =>

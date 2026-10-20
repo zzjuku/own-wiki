@@ -142,6 +142,7 @@ button.ib-spoiler.active {
   margin: 1.2em auto 1.4em;
   max-width: 36em;
   text-align: center;
+  font-family: var(--font-quote);
 }
 .markdown .quote-box .quote-text {
   position: relative;

@@ -19,6 +19,12 @@ const SAMPLE_TEXT = [
   "",
   "More example text in the page font, with **bold** and *italic* words.",
   "",
+  "### Smaller heading",
+  "",
+  "Text under a smaller heading.",
+  "",
+  "## Another section",
+  "",
   "<quote>",
   "An example quote in a quote box.",
   "<by>Example person</by>",
@@ -54,7 +60,7 @@ const env: EmbedEnv = {
 export function ThemeSample({ resolved, fonts, scope }: { resolved: Resolved; fonts: ThemeFont[]; scope: string }) {
   const style = useMemo(() => scopeFonts(resolved.all, fonts, scope) as CSSProperties, [resolved, fonts, scope]);
   const html = useMemo(
-    () => infoboxHtml(SAMPLE_BOX, { project: "", title: "Page A", links }) + renderWithEmbeds(SAMPLE_TEXT, { tocBox: false, links }, env).html,
+    () => infoboxHtml(SAMPLE_BOX, { project: "", title: "Page A", links }) + renderWithEmbeds(SAMPLE_TEXT, { tocBox: true, links }, env).html,
     [],
   );
   return (
@@ -74,10 +80,16 @@ export function ThemeSample({ resolved, fonts, scope }: { resolved: Resolved; fo
           </div>
           <div className="app-tooltip visible sample-tooltip">Example tooltip</div>
         </div>
-        <div className="sample-page">
-          <div className="sample-head">
-            <h1>Page A</h1>
-          </div>
+        <div className="page sample-page">
+          <header className="page-head">
+            <div className="page-titles">
+              <h1>Page A</h1>
+            </div>
+            <div className="spacer" />
+            <button type="button" className="primary" tabIndex={-1}>
+              Edit
+            </button>
+          </header>
           <div className="markdown" dangerouslySetInnerHTML={{ __html: html }} />
         </div>
       </div>

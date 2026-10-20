@@ -10,7 +10,7 @@ export const DEFAULTS: Record<string, string> = Object.fromEntries(
 
 export type SettingKind =
   | { kind: "color" }
-  | { kind: "size"; min: number; max: number; step: number; unit: "px" | "" }
+  | { kind: "size"; min: number; max: number; step: number; unit: "px" | "em" | "%" | "" }
   | { kind: "select"; options: { value: string; label: string }[] }
   | { kind: "font" };
 
@@ -22,7 +22,19 @@ export interface Setting {
 }
 
 const color = { kind: "color" } as const;
-const px = (min: number, max: number, step = 1) => ({ kind: "size", min, max, step, unit: "px" }) as const;
+const font = { kind: "font" } as const;
+const size = (min: number, max: number, step: number, unit: "px" | "em" | "%" | "") => ({ kind: "size", min, max, step, unit }) as const;
+const px = (min: number, max: number, step = 1) => size(min, max, step, "px");
+const select = (...options: [string, string][]) => ({ kind: "select", options: options.map(([value, label]) => ({ value, label })) }) as const;
+
+const FRAMES = select(["plain", "Plain"], ["double", "Double line"], ["ornate", "Ornate corners"]);
+/** Shadow choices: the values are CSS box-shadows ("0 0 #0000" = none). */
+export const SHADOWS = select(
+  ["0 0 #0000", "None"],
+  ["0 1px 3px rgb(0 0 0 / 0.12)", "Soft"],
+  ["2px 2px 0 rgb(96 76 48 / 0.06), 0 4px 11px rgb(35 27 18 / 0.09)", "Medium"],
+  ["0 1px 0 rgb(96 76 48 / 0.1), 0 8px 22px rgb(35 27 18 / 0.15)", "Deep"],
+);
 
 /** The main settings, up front in the editor. Everything else follows them. */
 export const MAIN_SETTINGS: { title: string; settings: Setting[] }[] = [
@@ -51,36 +63,70 @@ export const MAIN_SETTINGS: { title: string; settings: Setting[] }[] = [
     ],
   },
   {
+    title: "Look",
+    settings: [
+      { name: "--title-align", label: "Page title", type: select(["left", "Left"], ["center", "Centred, own row"]) },
+      { name: "--title-deco", label: "Line under the title", type: select(["none", "None"], ["line", "Line"], ["accent", "Line with accent"]) },
+      { name: "--heading-deco", label: "Line under section headings", type: select(["line", "Line"], ["accent", "Line with accent"], ["none", "None"]) },
+      { name: "--ornament", label: "Ornaments", hint: "Accent bars and corner ornaments", type: color },
+      { name: "--box-inner-line", label: "Inner frame line", hint: "The second line of double and ornate frames", type: color },
+    ],
+  },
+  {
+    title: "Boxes",
+    settings: [
+      { name: "--infobox-frame", label: "Infobox frame", type: FRAMES },
+      { name: "--infobox-shadow", label: "Infobox shadow", type: SHADOWS },
+      { name: "--infobox-title-style", label: "Infobox title style", hint: "A page's own infobox colour shows on the bar", type: select(["bar", "Coloured bar"], ["plain", "Plain with line"], ["accent", "Plain with accent"]) },
+      { name: "--toc-frame", label: "Contents frame", type: FRAMES },
+      { name: "--toc-shadow", label: "Contents shadow", type: SHADOWS },
+      { name: "--quote-style", label: "Quote boxes", type: select(["open", "Quotation marks"], ["framed", "Framed"]) },
+    ],
+  },
+  {
     title: "Embed boxes",
     settings: [
       { name: "--navbox-bg", label: "Background", type: color },
       { name: "--navbox-border", label: "Frame colour", type: color },
       { name: "--navbox-title-bg", label: "Title bar", type: color },
+      { name: "--navbox-frame", label: "Frame", type: FRAMES },
+      { name: "--navbox-shadow", label: "Shadow", type: SHADOWS },
       { name: "--navbox-border-width", label: "Frame width", type: px(0, 6) },
       {
         name: "--navbox-border-style",
         label: "Frame style",
-        type: {
-          kind: "select",
-          options: [
-            { value: "solid", label: "Solid" },
-            { value: "dashed", label: "Dashed" },
-            { value: "dotted", label: "Dotted" },
-            { value: "double", label: "Double" },
-            { value: "none", label: "None" },
-          ],
-        },
+        type: select(["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"], ["double", "Double"], ["none", "None"]),
       },
       { name: "--navbox-radius", label: "Corner rounding", type: px(0, 16) },
     ],
   },
   {
-    title: "Text",
+    title: "Fonts",
     settings: [
-      { name: "--font-body", label: "Page font", type: { kind: "font" } },
-      { name: "--font-heading", label: "Headings font", hint: "Page title and section headings", type: { kind: "font" } },
+      { name: "--font-body", label: "Page font", hint: "Page text", type: font },
+      { name: "--font-title", label: "Title font", hint: "The page title at the top", type: font },
+      { name: "--font-heading", label: "Headings font", hint: "Section headings", type: font },
+      { name: "--font-infobox", label: "Infobox text", type: font },
+      { name: "--font-infobox-title", label: "Infobox title", type: font },
+      { name: "--font-infobox-header", label: "Infobox section headings", type: font },
+      { name: "--font-infobox-label", label: "Infobox labels", type: font },
+      { name: "--font-toc", label: "Contents", type: font },
+      { name: "--font-navbox-title", label: "Embed box titles", type: font },
+      { name: "--font-quote", label: "Quote boxes", type: font },
+      { name: "--font-caption", label: "Captions", type: font },
+      { name: "--font-ui", label: "App interface", hint: "Buttons, sidebar, dialogs", type: font },
+    ],
+  },
+  {
+    title: "Sizes",
+    settings: [
       { name: "--page-font-size", label: "Text size", type: px(12, 24) },
-      { name: "--page-line-height", label: "Line spacing", type: { kind: "size", min: 1.2, max: 2.2, step: 0.05, unit: "" } },
+      { name: "--page-line-height", label: "Line spacing", type: size(1.2, 2.2, 0.05, "") },
+      { name: "--title-size", label: "Title size", type: px(16, 52) },
+      { name: "--heading-size", label: "Section heading size", type: size(1, 2.4, 0.05, "em") },
+      { name: "--infobox-font-size", label: "Infobox text size", type: size(70, 110, 1, "%") },
+      { name: "--infobox-title-size", label: "Infobox title size", type: size(100, 180, 5, "%") },
+      { name: "--infobox-width", label: "Infobox width", type: size(16, 32, 0.5, "em") },
       { name: "--page-width", label: "Page width", hint: "Widest the page text gets, infobox included", type: px(700, 2000, 10) },
     ],
   },
@@ -158,6 +204,13 @@ export const ALL_COLORS: { title: string; vars: [string, string][] }[] = [
       ["--thumb-caption", "Captions"],
       ["--viewer-bg", "Image viewer background"],
       ["--viewer-text", "Image viewer text"],
+    ],
+  },
+  {
+    title: "Look",
+    vars: [
+      ["--ornament", "Ornaments"],
+      ["--box-inner-line", "Inner frame line"],
     ],
   },
   {

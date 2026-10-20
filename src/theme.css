@@ -97,6 +97,22 @@
   --navbox-border-style: solid;
   --navbox-radius: 0px;
 
+  /* Look (M8): shapes and details. Keywords are read by style queries in
+   * styles/look.css; shadows are box-shadow values. */
+  --title-align: left;
+  --title-deco: none;
+  --heading-deco: line;
+  --ornament: var(--accent);
+  --box-inner-line: var(--infobox-border);
+  --infobox-frame: plain;
+  --infobox-shadow: 0 0 #0000;
+  --infobox-title-style: bar;
+  --toc-frame: plain;
+  --toc-shadow: 0 0 #0000;
+  --navbox-frame: plain;
+  --navbox-shadow: 0 0 #0000;
+  --quote-style: open;
+
   /* Tooltips (M8) */
   --tooltip-bg: #2e2f31;
   --tooltip-text: #ffffff;
@@ -106,6 +122,16 @@
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-heading: Georgia, "Linux Libertine", "Times New Roman", serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Each part of the page can have its own font (M8). */
+  --font-title: var(--font-heading);
+  --font-infobox-title: var(--font-body);
+  --font-infobox-header: var(--font-body);
+  --font-infobox-label: var(--font-body);
+  --font-infobox: var(--font-body);
+  --font-toc: var(--font-body);
+  --font-navbox-title: var(--font-body);
+  --font-quote: var(--font-body);
+  --font-caption: var(--font-body);
 
   /* Type scale */
   --text-xs: 12px;
@@ -118,6 +144,9 @@
   --text-display: 30px;
   --page-font-size: 15px;
   --page-line-height: 1.6;
+  --title-size: var(--text-title);
+  --heading-size: 1.55em;
+  --infobox-title-size: 125%;
   --editor-font-size: 15px;
 
   /* Layout */

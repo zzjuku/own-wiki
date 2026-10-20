@@ -1,0 +1,279 @@
+/* ---- M8: Look settings of themes ----
+ * Shapes and details chosen in the theme editor's Look and Boxes sections.
+ * Each setting is a variable holding a keyword (theme.css); the rules below
+ * read it with style queries, so a theme stays a list of variables. The
+ * defaults (left, none, line, plain, bar, open) change nothing. */
+
+/* Shadows: always set, "0 0 #0000" (none) by default. Double and ornate
+ * frames add a second, inner line through --frame-inset. */
+.markdown .infobox {
+  --frame-bg: var(--infobox-bg);
+  box-shadow: var(--frame-inset, 0 0 #0000), var(--infobox-shadow);
+}
+.markdown .toc,
+.toc-left {
+  --frame-bg: var(--toc-bg);
+  box-shadow: var(--frame-inset, 0 0 #0000), var(--toc-shadow);
+}
+.markdown details.embed-box {
+  --frame-bg: var(--navbox-bg);
+  box-shadow: var(--frame-inset, 0 0 #0000), var(--navbox-shadow);
+}
+
+/* ---- Double frame: an inner line a few pixels inside the border ---- */
+@container style(--infobox-frame: double) or style(--infobox-frame: ornate) {
+  .markdown .infobox {
+    --frame-inset: inset 0 0 0 3px var(--frame-bg), inset 0 0 0 4px var(--box-inner-line);
+    padding: 6px;
+  }
+}
+@container style(--toc-frame: double) or style(--toc-frame: ornate) {
+  .markdown .toc,
+  .toc-left {
+    --frame-inset: inset 0 0 0 3px var(--frame-bg), inset 0 0 0 4px var(--box-inner-line);
+    padding: 10px 12px;
+  }
+}
+@container style(--navbox-frame: double) or style(--navbox-frame: ornate) {
+  .markdown details.embed-box {
+    --frame-inset: inset 0 0 0 2px var(--frame-bg), inset 0 0 0 3px var(--box-inner-line);
+    padding: 3px;
+  }
+}
+
+/* ---- Ornate: small ornaments at the top corners: an ornament-coloured
+ * bracket, a frame-coloured bracket, a thin inner bracket and a small ring ---- */
+@container style(--infobox-frame: ornate) {
+  .markdown .infobox {
+    position: relative;
+  }
+  .markdown .infobox::before,
+  .markdown .infobox::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--ornament), var(--ornament)) 0 0 / 14px 2px no-repeat,
+      linear-gradient(var(--infobox-border), var(--infobox-border)) 0 0 / 2px 14px no-repeat,
+      linear-gradient(var(--box-inner-line), var(--box-inner-line)) 4px 4px / 8px 1px no-repeat,
+      linear-gradient(var(--box-inner-line), var(--box-inner-line)) 4px 4px / 1px 8px no-repeat,
+      radial-gradient(circle at 10px 10px, transparent 1.5px, var(--ornament) 1.5px 2.25px, transparent 2.25px);
+  }
+  .markdown .infobox::after {
+    left: auto;
+    right: 2px;
+    transform: scaleX(-1);
+  }
+}
+@container style(--toc-frame: ornate) {
+  /* The side panel is sticky, which already holds its ornaments in place. */
+  .markdown .toc {
+    position: relative;
+  }
+  .markdown .toc::before,
+  .markdown .toc::after,
+  .toc-left::before,
+  .toc-left::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--ornament), var(--ornament)) 0 0 / 14px 2px no-repeat,
+      linear-gradient(var(--toc-border), var(--toc-border)) 0 0 / 2px 14px no-repeat,
+      linear-gradient(var(--box-inner-line), var(--box-inner-line)) 4px 4px / 8px 1px no-repeat,
+      linear-gradient(var(--box-inner-line), var(--box-inner-line)) 4px 4px / 1px 8px no-repeat,
+      radial-gradient(circle at 10px 10px, transparent 1.5px, var(--ornament) 1.5px 2.25px, transparent 2.25px);
+  }
+  .markdown .toc::after,
+  .toc-left::after {
+    left: auto;
+    right: 2px;
+    transform: scaleX(-1);
+  }
+}
+@container style(--navbox-frame: ornate) {
+  .markdown details.embed-box {
+    position: relative;
+  }
+  .markdown details.embed-box > .embed-box-title::before,
+  .markdown details.embed-box > .embed-box-title::after {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--ornament), var(--ornament)) 0 0 / 14px 2px no-repeat,
+      linear-gradient(var(--ornament), var(--ornament)) 0 0 / 2px 14px no-repeat,
+      radial-gradient(circle at 8px 8px, transparent 1.5px, var(--ornament) 1.5px 2.25px, transparent 2.25px);
+  }
+  .markdown details.embed-box > .embed-box-title::after {
+    left: auto;
+    right: -1px;
+    transform: scaleX(-1);
+  }
+}
+
+/* ---- Infobox title without a bar: plain, a line under it ---- */
+@container style(--infobox-title-style: plain) or style(--infobox-title-style: accent) {
+  .markdown .infobox th.infobox-title {
+    position: relative;
+    background: none;
+    color: var(--heading-color);
+    font-weight: 400;
+    padding: 0.45em 0.5em 0.5em;
+    border-bottom: 1px solid var(--infobox-border);
+  }
+}
+@container style(--infobox-title-style: accent) {
+  .markdown .infobox th.infobox-title::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -2px;
+    width: 3em;
+    height: 2px;
+    background: var(--ornament);
+    transform: translateX(-50%);
+  }
+}
+
+/* ---- Section headings ---- */
+@container style(--heading-deco: none) {
+  .markdown h1,
+  .markdown h2 {
+    border-bottom: none;
+  }
+}
+@container style(--heading-deco: accent) {
+  /* flow-root instead of overflow: hidden still keeps the line clear of
+   * floating boxes, without cutting off the accent bar under it. */
+  .markdown h1,
+  .markdown h2 {
+    position: relative;
+    display: flow-root;
+    overflow: visible;
+  }
+  .markdown h1::after,
+  .markdown h2::after {
+    content: "";
+    position: absolute;
+    left: 0.5em;
+    bottom: -2px;
+    width: 2em;
+    height: 2px;
+    background: var(--ornament);
+  }
+}
+
+@container style(--heading-deco: accent) {
+  .toc-left-title {
+    position: relative;
+  }
+  .toc-left-title::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    bottom: -2px;
+    width: 1.8em;
+    height: 2px;
+    background: var(--ornament);
+  }
+}
+
+/* ---- Page title: its own font and size (pages and category pages, not app
+ * screens such as Templates), left or centred on its own row under the buttons ---- */
+.page > .page-head h1 {
+  font-family: var(--font-title);
+  font-size: var(--title-size);
+}
+@container style(--title-align: center) {
+  .page > .page-head {
+    flex-wrap: wrap;
+    row-gap: 2px;
+    padding-top: 10px;
+    border-bottom: none;
+  }
+  .page > .page-head > .page-titles {
+    order: 2;
+    flex: 1 0 100%;
+    align-items: center;
+    text-align: center;
+  }
+  .page > .page-head > .page-titles > h1 {
+    max-width: 100%;
+  }
+  .page > .page-head .breadcrumb {
+    justify-content: center;
+    margin-left: 0;
+  }
+}
+@container style(--title-deco: line) or style(--title-deco: accent) {
+  .page > .page-head {
+    border-bottom: none;
+  }
+  .page > .page-head > .page-titles > h1 {
+    position: relative;
+    align-self: stretch;
+    min-width: min(100%, 12em);
+    padding: 0 0.6em 0.2em;
+    border-bottom: 1px solid var(--heading-rule);
+  }
+}
+@container style(--title-align: center) and (style(--title-deco: line) or style(--title-deco: accent)) {
+  .page > .page-head > .page-titles > h1 {
+    align-self: center;
+    width: min(100%, 75%);
+  }
+}
+@container style(--title-deco: accent) {
+  .page > .page-head > .page-titles > h1 {
+    overflow: visible;
+  }
+  .page > .page-head > .page-titles > h1::after {
+    content: "";
+    position: absolute;
+    left: 0.4em;
+    bottom: -2px;
+    width: 3.3em;
+    height: 3px;
+    background: var(--ornament);
+  }
+}
+@container style(--title-align: center) and style(--title-deco: accent) {
+  .page > .page-head > .page-titles > h1::after {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+/* ---- Quote boxes: open (quotation marks only) or framed ---- */
+@container style(--quote-style: framed) {
+  .markdown .quote-box {
+    position: relative;
+    padding: 0.9em 1.15em 0.8em;
+    background: var(--infobox-bg);
+    border-top: 1px solid var(--infobox-border);
+    border-bottom: 1px solid var(--infobox-border);
+    box-shadow: inset 0 0 0 1px var(--box-inner-line);
+  }
+  .markdown .quote-box::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 1em;
+    width: 3.5em;
+    height: 2px;
+    background: var(--ornament);
+  }
+}

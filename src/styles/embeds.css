@@ -53,6 +53,7 @@
   background: var(--navbox-title-bg);
   color: var(--navbox-title-text);
   text-align: center;
+  font-family: var(--font-navbox-title);
   font-weight: 700;
   cursor: pointer;
   list-style: none;

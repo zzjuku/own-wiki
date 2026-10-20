@@ -121,7 +121,18 @@ export function ThemesView({ project, projectTheme = null, onProjectTheme, onClo
         const fromPlace = from ? parseRef(from) : null;
         const stored = fromPlace && fromPlace.kind !== "builtin" ? { project: storeOf(fromPlace, project), id: fromPlace.id } : null;
         const { name: _n, ...rest } = source;
-        const info = await api.createTheme(store, name, { ...rest, name, vars: { ...source.vars } }, stored);
+        const bundled = (source.fonts ?? []).filter((f) => f.url);
+        const copy: ThemeData = { ...rest, name, vars: { ...source.vars }, fonts: (source.fonts ?? []).filter((f) => !f.url) };
+        const info = await api.createTheme(store, name, copy, stored);
+        // A built-in theme's fonts come with the app: copy them into the new theme's folder.
+        if (bundled.length) {
+          for (const f of bundled) {
+            const data = new Uint8Array(await (await fetch(f.url!)).arrayBuffer());
+            const stored = await api.importFontData(store, info.id, f.file, data);
+            copy.fonts!.push({ ...stored, family: f.family });
+          }
+          await api.saveTheme(store, info.id, copy);
+        }
         await reloadLists();
         setSelected(refOf({ kind, id: info.id }));
       },

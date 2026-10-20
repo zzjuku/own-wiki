@@ -17,6 +17,7 @@ import "./styles/spoilers.css";
 import "./styles/embeds.css";
 import "./styles/tooltips.css";
 import "./styles/themes.css";
+import "./styles/look.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

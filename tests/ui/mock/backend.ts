@@ -142,7 +142,7 @@ export function createBackend(fixture: Fixture) {
     return out;
   }
 
-  const commands: Record<string, (a: any) => unknown> = {
+  const commands: Record<string, (a: any, options?: { headers?: Record<string, string> }) => unknown> = {
     get_settings: () => ({ libraryPath }),
     set_library_path: ({ path }) => ((libraryPath = path), { libraryPath }),
     list_projects: () => [...projects.values()].map((p) => ({ id: p.id, name: p.name })),
@@ -411,6 +411,10 @@ export function createBackend(fixture: Fixture) {
       const file = path.split("/").pop();
       return { family: file.replace(/\.[^.]+$/, "").split("-")[0], file, weight: "400", style: "normal" };
     },
+    import_font_data: (_args, options) => {
+      const file = decodeURIComponent(options?.headers?.name ?? "font.ttf");
+      return { family: file.replace(/\.[^.]+$/, "").split("-")[0], file, weight: "400", style: "normal" };
+    },
     installed_fonts: () => ["Font A", "Font B"],
     copy_installed_font: ({ family }) => [
       { family, file: `${family} Regular.ttf`, weight: "400", style: "normal" },
@@ -431,10 +435,10 @@ export function createBackend(fixture: Fixture) {
       return appTheme;
     },
     setNextOpen: (path: string | null) => void (nextOpen = path),
-    handle(cmd: string, args: any): unknown {
+    handle(cmd: string, args: any, options?: { headers?: Record<string, string> }): unknown {
       const fn = commands[cmd];
       if (!fn) throw new CommandError("invalid", `mock: no command ${cmd}`);
-      return fn(args ?? {});
+      return fn(args ?? {}, options);
     },
   };
 }

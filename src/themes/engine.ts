@@ -13,6 +13,8 @@ export interface ThemeFont {
   file: string;
   weight: string;
   style: string;
+  /** Built-in themes: where the app's own copy of the font is. */
+  url?: string;
 }
 
 /** Contents of a theme's theme.json. Unknown keys are kept by the Rust side. */

@@ -551,6 +551,21 @@ fn import_font(state: State<AppState>, project: Option<String>, id: String, path
     fonts::import(&state.theme_dir(project.as_deref(), &id)?, std::path::Path::new(&path))
 }
 
+/// Stores font bytes (request body) in a theme; `project`, `id` and `name`
+/// come as percent-encoded headers (`project` empty = app themes).
+#[tauri::command(async)]
+fn import_font_data(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> AppResult<fonts::FontFile> {
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err(AppError::Invalid("No font data.".into()));
+    };
+    let header = |k: &str| {
+        request.headers().get(k).and_then(|v| v.to_str().ok()).map(assets::percent_decode).unwrap_or_default()
+    };
+    let project = header("project");
+    let theme = state.theme_dir(Some(project.as_str()).filter(|p| !p.is_empty()), &header("id"))?;
+    fonts::import_data(&theme, std::path::Path::new(&header("name")), data)
+}
+
 /// Family names of the fonts installed on this computer (read once, off the main thread).
 #[tauri::command]
 async fn installed_fonts(state: State<'_, AppState>) -> AppResult<Vec<String>> {
@@ -681,6 +696,7 @@ pub fn run() {
             get_app_theme,
             set_app_theme,
             import_font,
+            import_font_data,
             installed_fonts,
             copy_installed_font,
             font_data,

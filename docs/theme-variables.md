@@ -91,10 +91,28 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 |---|---|
 | `--font-ui` | App interface |
 | `--font-body` | Page text |
-| `--font-heading` | Page title and section headings (Georgia by default) |
+| `--font-heading` | Section headings, app screen titles (Georgia by default) |
+| `--font-title` | The page title (follows `--font-heading`) |
+| `--font-infobox` / `--font-infobox-title` / `--font-infobox-header` / `--font-infobox-label` | Infobox text, title, section headings, labels (follow `--font-body`) |
+| `--font-toc` / `--font-navbox-title` / `--font-quote` / `--font-caption` | Contents, embed box titles, quote boxes, captions (follow `--font-body`) |
 | `--font-mono` | Code |
+| `--title-size` / `--heading-size` / `--infobox-title-size` | Page title, section headings (h2), infobox title |
 | `--text-xs` … `--text-display` | UI type scale (12, 13, 14, 15, 17, 20, 26, 30 px) |
 | `--page-font-size` / `--page-line-height` | Page text size and line spacing |
+
+## Look (M8)
+Keywords, read by style queries in `src/styles/look.css`; the defaults change nothing.
+| Variable | Values |
+|---|---|
+| `--title-align` | `left`, `center` (own row under the buttons) |
+| `--title-deco` | `none`, `line`, `accent` (line with an accent bar) |
+| `--heading-deco` | `line`, `accent`, `none` |
+| `--ornament` | Colour of accent bars and corner ornaments (follows `--accent`) |
+| `--box-inner-line` | The inner line of double and ornate frames |
+| `--infobox-frame` / `--toc-frame` / `--navbox-frame` | `plain`, `double`, `ornate` (double line plus corner ornaments) |
+| `--infobox-shadow` / `--toc-shadow` / `--navbox-shadow` | A box-shadow (`0 0 #0000` = none) |
+| `--infobox-title-style` | `bar`, `plain` (line under it), `accent` (line with accent bar) |
+| `--quote-style` | `open` (quotation marks only), `framed` |
 
 ## Layout
 | Variable | Used for |
