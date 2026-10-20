@@ -98,10 +98,11 @@ test("the sidebar can be hidden and shown again; remembered on this computer", a
   await expect(page.locator(".sidebar")).toBeHidden();
 });
 
-test("dragging the page edge sets the page width; double-click goes back to the theme's", async ({ page }) => {
+test("dragging the page edge sets the page width; the infobox stays put when the sidebar hides", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await openProject(page, data());
   const column = page.locator(".read-view > .read-column");
+  const box = page.locator(".read-view .infobox");
   const before = (await column.boundingBox())!.width;
   const handle = page.getByRole("separator", { name: "Page width" });
   const h = (await handle.boundingBox())!;
@@ -110,8 +111,58 @@ test("dragging the page edge sets the page width; double-click goes back to the 
   await page.mouse.move(h.x + h.width / 2 - 300, h.y + 40, { steps: 5 });
   await page.mouse.up();
   await expect.poll(async () => (await column.boundingBox())!.width).toBeLessThan(before - 250);
-  expect(await page.evaluate(() => localStorage.getItem("ownwiki.pageWidth"))).not.toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("ownwiki.pageRight"))).not.toBeNull();
+
+  // Hiding the sidebar: the infobox keeps its place, the text gets the room.
+  const boxX = (await box.boundingBox())!.x;
+  const textLeft = (await column.boundingBox())!.x;
+  await page.getByRole("button", { name: "Hide the sidebar" }).click();
+  await expect.poll(async () => (await column.boundingBox())!.x).toBeLessThan(textLeft - 200);
+  await expect.poll(async () => Math.abs((await box.boundingBox())!.x - boxX)).toBeLessThan(2);
+  await page.getByRole("button", { name: "Show the sidebar" }).click();
+  await expect.poll(async () => Math.abs((await box.boundingBox())!.x - boxX)).toBeLessThan(2);
+
   await handle.dblclick();
   await expect.poll(async () => (await column.boundingBox())!.width).toBeCloseTo(before, 0);
-  expect(await page.evaluate(() => localStorage.getItem("ownwiki.pageWidth"))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("ownwiki.pageRight"))).toBeNull();
+});
+
+test("Date, place and Date, text fields: date with text after it, several entries", async ({ page }) => {
+  const pageD: MockPage = {
+    id: "Page D.md",
+    title: "Page D",
+    infobox: {
+      fields: [
+        { label: "Born", type: "dateplace" },
+        { label: "Reign", type: "datetext", options: { ranges: true, multiple: true } },
+      ],
+    },
+  };
+  await openProject(page, oneProject([pageD, { id: "Page B.md", title: "Page B" }], { mainPage: "Page D" }));
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("tab", { name: "Infobox" }).click();
+  await page.getByLabel("Born: year").fill("283");
+  await page.getByLabel("Born: era").fill("AC");
+  await page.getByRole("textbox", { name: "Born: place" }).click();
+  await page.keyboard.type("[[Page B]]");
+  await page.getByLabel("Reign 1 from: year").fill("283");
+  await page.getByLabel("Reign 1 to: year").fill("298");
+  await page.getByRole("textbox", { name: "Reign 1: text" }).click();
+  await page.keyboard.type("King");
+  await formRow(page, "Reign").getByRole("button", { name: "+ Add entry" }).click();
+  await page.getByLabel("Reign 2 from: year").fill("300");
+  await page.getByRole("textbox", { name: "Reign 2: text" }).click();
+  await page.keyboard.type("Lord");
+  await expect
+    .poll(() => fieldValue(page, "Page D.md", "Reign"))
+    .toEqual([
+      { date: { start: { year: 283 }, end: { year: 298 } }, text: "King" },
+      { date: { start: { year: 300 } }, text: "Lord" },
+    ]);
+  expect(await fieldValue(page, "Page D.md", "Born")).toEqual({ date: { year: 283, era: "AC" }, text: "[[Page B]]" });
+  const preview = page.locator(".split-preview .infobox");
+  await expect(preview).toContainText("283 AC, Page B");
+  await expect(preview.locator(".infobox-date-note")).toHaveText(["King", "Lord"]);
+  await preview.screenshot({ path: "test-results/qol-date-text.png" });
+  await formRow(page, "Reign").screenshot({ path: "test-results/qol-date-text-form.png" });
 });

@@ -144,13 +144,19 @@ test("add from the reverse side: create the page, or keep a name only", async ({
   await openProject(page, data());
   await infoboxTab(page);
   let dialog = await addDialog(page, "Children", "Page N");
-  await expect(dialog).toContainText("Page N has no page yet.");
-  // Page A's template is suggested, so its fields are known.
-  await expect(dialog.getByLabel("Template")).toHaveValue(PERSON.id);
+  await expect(dialog).toContainText("Page doesn't exist yet");
+  await dialog.getByRole("button", { name: "Create page…" }).click();
+  // The same Create page dialog as anywhere, with Page A's template suggested.
+  const create = page.getByRole("dialog", { name: "Create page" });
+  await expect(create.getByLabel("Page title")).toHaveValue("Page N");
+  await expect(create.getByLabel("Template")).toHaveValue(PERSON.id);
+  await create.getByRole("button", { name: "Create" }).click();
+  await expect(create).toBeHidden();
+  // Back in the Add dialog, now with the new page's fields to choose from.
   await expect(dialog.getByRole("radio", { name: "Father" })).toBeChecked();
-  await expect(dialog).toContainText("Writes Page A into the new page");
+  await expect(dialog).toContainText("Writes Page A into Page N's page");
   await shot(page, "add-dialog-create");
-  await dialog.getByRole("button", { name: "Create page and add" }).click();
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(dialog).toBeHidden();
   const created = await storedPage(page, "Page N.md");
   expect(created.infobox.template).toBe(PERSON.id);

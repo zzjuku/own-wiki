@@ -36,7 +36,7 @@ use crate::wikilinks::{norm, parse_links, rewrite_links, spoiler_ranges};
 // Field types (all of them are listed for reference; the Rust side only
 // needs to treat some specially).
 #[allow(dead_code)]
-pub const ALL_KINDS: &[&str] = &[TEXT, LONG_TEXT, NUMBER, YES_NO, CHOICE, LIST, LINK, LINKS, LINKED_FROM, DATE, IMAGE, HEADING, DIVIDER];
+pub const ALL_KINDS: &[&str] = &[TEXT, LONG_TEXT, NUMBER, YES_NO, CHOICE, LIST, LINK, LINKS, LINKED_FROM, DATE, DATE_PLACE, DATE_TEXT, IMAGE, HEADING, DIVIDER];
 pub const TEXT: &str = "text";
 pub const LONG_TEXT: &str = "longtext";
 pub const NUMBER: &str = "number";
@@ -47,6 +47,20 @@ pub const LINK: &str = "link";
 pub const LINKS: &str = "links";
 pub const LINKED_FROM: &str = "linkedfrom";
 pub const DATE: &str = "date";
+/// A date (or range) with a place after it: `{date, text}`, or a list of them
+/// (option `multiple`).
+pub const DATE_PLACE: &str = "dateplace";
+/// A date (or range) with a smaller note after it; same value as [`DATE_PLACE`].
+pub const DATE_TEXT: &str = "datetext";
+
+/// The `{date, text}` entries of a Date, place / Date, text value.
+fn date_entries(v: &Value) -> Vec<&Value> {
+    match v {
+        Value::Array(a) => a.iter().filter(|e| e.is_object()).collect(),
+        Value::Object(_) => vec![v],
+        _ => Vec::new(),
+    }
+}
 pub const IMAGE: &str = "image";
 pub const HEADING: &str = "heading";
 /// A thin line in the box with an optional label (the field's label); no value.
@@ -234,6 +248,13 @@ pub fn field_links(ib: &Infobox) -> Vec<FieldLink> {
                     text_links(c, &mut out);
                 }
             }
+            DATE_PLACE | DATE_TEXT => {
+                for e in date_entries(v) {
+                    if let Some(t) = e.get("text").and_then(Value::as_str) {
+                        text_links(t, &mut out);
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -261,6 +282,7 @@ pub fn sortable_values(ib: &Infobox) -> BTreeMap<String, Vec<f64>> {
         let key = match (f.kind.as_str(), &f.value) {
             (NUMBER, Some(v)) => v.as_f64().map(|n| vec![n]),
             (DATE, Some(v)) if v.is_object() => date_key(v),
+            (DATE_PLACE | DATE_TEXT, Some(v)) => date_entries(v).first().and_then(|e| e.get("date")).and_then(date_key),
             _ => None,
         };
         if let Some(k) = key {
@@ -313,6 +335,13 @@ fn rewrite_field(f: &mut Field, old: &str, new: &str) -> usize {
     };
     match v {
         Value::String(s) => each(s),
+        Value::Array(a) if kind == DATE_PLACE || kind == DATE_TEXT => {
+            for e in a.iter_mut() {
+                if let Some(Value::String(t)) = e.get_mut("text") {
+                    n += rewrite_text(t, old, new);
+                }
+            }
+        }
         Value::Array(a) => a.iter_mut().for_each(|x| {
             if let Value::String(s) = x {
                 each(s)
@@ -321,6 +350,11 @@ fn rewrite_field(f: &mut Field, old: &str, new: &str) -> usize {
         Value::Object(o) if kind == IMAGE => {
             if let Some(Value::String(c)) = o.get_mut("caption") {
                 n += rewrite_text(c, old, new);
+            }
+        }
+        Value::Object(o) if kind == DATE_PLACE || kind == DATE_TEXT => {
+            if let Some(Value::String(t)) = o.get_mut("text") {
+                n += rewrite_text(t, old, new);
             }
         }
         _ => {}
@@ -345,7 +379,15 @@ const LIST_KINDS: &[&str] = &[LIST, LINKS, LINKED_FROM];
 pub fn convert_value(v: Value, to: &str) -> Value {
     let to_string = STRING_KINDS.contains(&to);
     let to_list = LIST_KINDS.contains(&to);
+    let date_text = to == DATE_PLACE || to == DATE_TEXT;
     match v {
+        // A date gets an empty text next to it; a date with no text is a plain date again.
+        Value::Object(o) if date_text && !o.contains_key("date") && !o.contains_key("text") => {
+            serde_json::json!({ "date": Value::Object(o) })
+        }
+        Value::Object(mut o) if to == DATE && o.contains_key("date") && o.get("text").is_none_or(is_empty_value) => {
+            o.remove("date").unwrap_or(Value::Null)
+        }
         Value::Array(a) if to_string && a.len() <= 1 && a.iter().all(Value::is_string) => {
             a.into_iter().next().unwrap_or(Value::Null)
         }
@@ -624,6 +666,27 @@ mod tests {
         assert_eq!(ib.fields[2].value, Some(json!("[[New|o]] [[Alias of Old]]")));
         assert_eq!(ib.fields[3].value, Some(json!({"file": "a.png", "caption": "[[New]]"})));
         assert_eq!(ib.hidden[0].value, Some(json!("New")));
+    }
+
+    #[test]
+    fn date_text_fields_links_sort_and_convert() {
+        let ib = Infobox {
+            fields: vec![
+                field(None, "Born", DATE_PLACE, Some(json!({ "date": { "year": 283 }, "text": "[[Page A]]" }))),
+                field(None, "Reign", DATE_TEXT, Some(json!([{ "date": { "start": { "year": 290 } }, "text": "King of [[Page B]]" }, { "text": "Lord" }]))),
+            ],
+            ..Default::default()
+        };
+        let got: Vec<(String, String)> = field_links(&ib).into_iter().map(|l| (l.field, l.target)).collect();
+        assert_eq!(got, [("Born".to_string(), "Page A".to_string()), ("Reign".into(), "Page B".into())]);
+        let v = sortable_values(&ib);
+        assert_eq!((v["born"].clone(), v["reign"].clone()), (vec![283.0, 0.0, 0.0], vec![290.0, 0.0, 0.0]));
+        let mut ib = ib;
+        assert_eq!(rewrite_infobox_links(&mut ib, "Page B", "Page C"), 1);
+        assert_eq!(ib.fields[1].value.as_ref().unwrap()[0]["text"], "King of [[Page C]]");
+        assert_eq!(convert_value(json!({ "year": 5 }), DATE_TEXT), json!({ "date": { "year": 5 } }));
+        assert_eq!(convert_value(json!({ "date": { "year": 5 } }), DATE), json!({ "year": 5 }));
+        assert_eq!(convert_value(json!({ "date": { "year": 5 }, "text": "x" }), DATE), json!({ "date": { "year": 5 }, "text": "x" }));
     }
 
     #[test]

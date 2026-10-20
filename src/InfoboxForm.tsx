@@ -21,7 +21,7 @@ import {
   type ImageValue,
 } from "./infobox";
 import { frameFor, useWiki } from "./wiki";
-import { DateInput, ImageFrameContext, ImageInput, PageLinksInput, PageNameInput, useListRows } from "./FieldInputs";
+import { DateInput, DateTextInput, ImageFrameContext, ImageInput, PageLinksInput, PageNameInput, useListRows } from "./FieldInputs";
 import { MiniEditor } from "./MiniEditor";
 import { FieldDef } from "./TemplatesView";
 import { Icon } from "./editorTheme";
@@ -176,7 +176,7 @@ export function InfoboxForm({ pageId, pageTitle, infobox: ib, error, templates, 
   }
 
   const hidden = ib.hidden ?? [];
-  const rel: RelationProps = { pageId, pageTitle, pageTemplate: ib.template ?? null, relations, onRelationsChanged };
+  const rel: RelationProps = { pageId, pageTitle, relations, onRelationsChanged };
 
   return (
     <ImageFrameContext.Provider value={frameFor(wiki, ib.template)}>
@@ -449,6 +449,19 @@ function ValueInput({ rel, field: f, onChange }: { rel: RelationProps; field: Fi
       return <ReverseFieldInput {...rel} field={f} onChange={onChange} />;
     case "date":
       return <DateInput label={f.label} value={v} ranges={!!f.options?.ranges} onChange={onChange} />;
+    case "dateplace":
+    case "datetext":
+      return (
+        <DateTextInput
+          pageId={pageId}
+          label={f.label}
+          value={v}
+          ranges={!!f.options?.ranges}
+          multiple={!!f.options?.multiple}
+          place={f.type === "dateplace"}
+          onChange={onChange}
+        />
+      );
     case "image":
       return <ImageInput pageId={pageId} label={f.label} value={v as ImageValue | undefined} onChange={onChange} />;
     default:

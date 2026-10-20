@@ -690,16 +690,8 @@ export function ProjectView({ project, onBack }: Props) {
   const targetHint = targetGroup ? `in ${displayGroup(targetGroup)}` : "at the top level";
 
   // Stable functions for the context, always calling the latest versions.
-  /** Creates a page without opening it (e.g. a child added from its parent's page). */
-  async function createPageQuietly(title: string, group: string, template: string | null, allowLong: boolean) {
-    await flushAll();
-    const page = await api.createPage(project.id, group, title, allowLong, template);
-    await reload();
-    return page;
-  }
-
-  const actions = useRef({ follow, createFromLink, openCategory, createCategory, createPageQuietly });
-  actions.current = { follow, createFromLink, openCategory, createCategory, createPageQuietly };
+  const actions = useRef({ follow, createFromLink, openCategory, createCategory });
+  actions.current = { follow, createFromLink, openCategory, createCategory };
   const wiki = useMemo<Wiki>(
     () => ({
       project: project.id,
@@ -707,7 +699,6 @@ export function ProjectView({ project, onBack }: Props) {
       follow: (t) => actions.current.follow(t),
       createFromLink: (title, from, opts) => actions.current.createFromLink(title, from, opts),
       noteTemplate: (pageId, template) => void pageTemplates.current.set(pageId, template),
-      createPage: (title, group, template, allowLong) => actions.current.createPageQuietly(title, group, template, allowLong),
       groupOptions,
       templates: templates.templates,
       imageFrame,

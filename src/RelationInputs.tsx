@@ -4,13 +4,12 @@
 // that lives on another page writes that page (src-tauri/src/relations.rs):
 // "Alex is John's: Father / Mother" writes Alex into John's Father field.
 import { useEffect, useMemo, useState } from "react";
-import { api, errorText, isLongPath, type Field, type Infobox, type Page, type Relations, type RelationEdit } from "./api";
+import { api, errorText, type Field, type Infobox, type Page, type Relations, type RelationEdit } from "./api";
 import { useDialogs } from "./dialogs";
 import { PageNameInput } from "./FieldInputs";
-import { instantiate, isLayout, kindLabel } from "./infobox";
+import { isLayout, kindLabel } from "./infobox";
 import { useReportError } from "./notify";
 import { reverseEntries, twoWayExtras, type RelationEntry } from "./relations";
-import { parentOf } from "./tree";
 import { useWiki } from "./wiki";
 import { norm } from "./wikilinks";
 
@@ -19,8 +18,6 @@ export interface RelationProps {
   pageId: string;
   /** The page's title (written into the other page). */
   pageTitle: string;
-  /** The page's own template (suggested for pages created from here). */
-  pageTemplate: string | null;
   relations: Relations;
   /** A relation was written into another page: re-read the relations. */
   onRelationsChanged: () => void;
@@ -219,7 +216,6 @@ const selectable = (s: Slot) => s.status !== "wrongType" && s.status !== "here";
 function AddRelationDialog({
   pageId,
   pageTitle,
-  pageTemplate,
   field,
   close,
   addTyped,
@@ -232,11 +228,8 @@ function AddRelationDialog({
   const targetId = target?.page.id ?? null;
   // The other page as it is now (to see what its fields hold).
   const [page, setPage] = useState<{ id: string; page: Page | null; error: string | null } | null>(null);
-  const [template, setTemplate] = useState<string>(pageTemplate && wiki.templates.some((t) => t.id === pageTemplate) ? pageTemplate : "");
-  const [group, setGroup] = useState(parentOf(pageId));
   const [choice, setChoice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [longWarning, setLongWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -252,17 +245,14 @@ function AddRelationDialog({
   }, [targetId, wiki.project]);
 
   const loaded = targetId && page?.id === targetId ? page : null;
-  const creating = !!name.trim() && !target;
+  const missing = !!name.trim() && !target;
   const otherTitle = target?.page.title ?? name.trim();
   const thisPage = (n: string) => wiki.names.resolve(n)?.page.id === pageId;
-  const slots = useMemo(() => {
-    if (creating) {
-      const t = wiki.templates.find((x) => x.id === template);
-      return slotsFor(t ? instantiate(t) : null, from, thisPage);
-    }
-    return loaded?.page && !loaded.error ? slotsFor(loaded.page.infobox, from, thisPage) : [];
+  const slots = useMemo(
+    () => (loaded?.page && !loaded.error ? slotsFor(loaded.page.infobox, from, thisPage) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [creating, template, loaded, from.join("\n"), wiki.templates, wiki.names]);
+    [loaded, from.join("\n"), wiki.names],
+  );
   // The one picked, else the first usable field in `from` order (a taken one
   // shows its warning rather than quietly picking another field).
   const picked = slots.find((s) => s.label === choice && selectable(s)) ?? slots.find(selectable) ?? null;
@@ -273,17 +263,7 @@ function AddRelationDialog({
     setBusy(true);
     setError(null);
     try {
-      let id = targetId;
-      if (creating) {
-        try {
-          id = (await wiki.createPage(name.trim(), group, template || null, longWarning !== null)).id;
-        } catch (e) {
-          if (!isLongPath(e) || longWarning !== null) throw e;
-          setLongWarning(errorText(e));
-          return;
-        }
-      }
-      await api.setRelation(wiki.project, id!, picked.label, pageId, edit);
+      await api.setRelation(wiki.project, targetId!, picked.label, pageId, edit);
       onRelationsChanged();
       close();
     } catch (e) {
@@ -298,7 +278,7 @@ function AddRelationDialog({
       case "empty":
         return "empty now";
       case "missing":
-        return creating ? "added to the new page" : `added to ${otherTitle}'s page as a new field`;
+        return `added to ${otherTitle}'s page as a new field`;
       case "taken":
         return `now: ${s.current.join(", ")}`;
       case "here":
@@ -326,7 +306,7 @@ function AddRelationDialog({
     }
     return (
       <button type="button" className="primary" onClick={() => void write("add")}>
-        {creating ? (longWarning ? "Create anyway" : `Create page and add`) : "Add"}
+        Add
       </button>
     );
   })();
@@ -342,43 +322,18 @@ function AddRelationDialog({
         <h2>Add to {field.label}</h2>
         <label className="field">
           <span>Page</span>
-          <PageNameInput label="Page" value={name} autoFocus onChange={setName} />
+          {/* A missing page gets "Create page…" (the open page's template suggested); then the choice below. */}
+          <PageNameInput label="Page" value={name} autoFocus fromPage={pageId} onChange={setName} />
         </label>
 
         {self && <p className="dialog-error">A page can't be listed in its own field.</p>}
         {target && !self && loaded?.error && <p className="dialog-error">{loaded.error}</p>}
 
-        {creating && (
-          <div className="relation-create">
-            <p className="dialog-note">
-              <strong>{name.trim()}</strong> has no page yet. Create it here, or keep the name only (typed in on {pageTitle}'s page).
-            </p>
-            <div className="relation-create-row">
-              <label className="field">
-                <span>Template</span>
-                <select value={template} onChange={(e) => setTemplate(e.target.value)}>
-                  <option value="">No template</option>
-                  {[...wiki.templates]
-                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Group</span>
-                <select value={group} onChange={(e) => setGroup(e.target.value)}>
-                  {wiki.groupOptions.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
+        {missing && (
+          <p className="dialog-note relation-missing">
+            Create the page with <strong>Create page…</strong> under the name, then choose where {pageTitle} goes. Or keep the name only (typed in on{" "}
+            {pageTitle}'s page).
+          </p>
         )}
 
         {slots.length > 0 && !self && (
@@ -410,14 +365,13 @@ function AddRelationDialog({
         )}
         {picked && !self && (
           <p className="dialog-note relation-writes">
-            Writes {pageTitle} into {creating ? "the new page" : `${otherTitle}'s page`}. Nothing is stored on {pageTitle}'s page.
+            Writes {pageTitle} into {otherTitle}'s page. Nothing is stored on {pageTitle}'s page.
           </p>
         )}
-        {longWarning && <p className="dialog-warning">{longWarning}</p>}
         {error && <p className="dialog-error">{error}</p>}
 
         <div className="dialog-actions">
-          {creating && (
+          {missing && (
             <button
               type="button"
               className="relation-typed"

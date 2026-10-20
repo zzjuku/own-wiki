@@ -17,7 +17,7 @@ import { useLinkContext, useWiki } from "./wiki";
 import { norm } from "./wikilinks";
 
 /** Field types offered. */
-export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "links", "linkedfrom", "date", "image", "heading", "divider"];
+export const READY_KINDS: FieldKind[] = ["text", "longtext", "number", "yesno", "choice", "list", "links", "linkedfrom", "date", "dateplace", "datetext", "image", "heading", "divider"];
 
 /** The project's templates, saved a moment after each change. */
 export function useTemplates(project: string) {
@@ -587,10 +587,16 @@ export function FieldDef({
             <span>Also show it in the box, as a normal row</span>
           </label>
         )}
-        {f.type === "date" && (
+        {(f.type === "date" || f.type === "dateplace" || f.type === "datetext") && (
           <label className="check">
             <input type="checkbox" checked={!!options.ranges} onChange={(e) => setOptions({ ...options, ranges: e.target.checked })} />
             <span>Allow ranges (start and end date)</span>
+          </label>
+        )}
+        {(f.type === "dateplace" || f.type === "datetext") && (
+          <label className="check">
+            <input type="checkbox" checked={!!options.multiple} onChange={(e) => setOptions({ ...options, multiple: e.target.checked })} />
+            <span>Several entries (e.g. one per reign)</span>
           </label>
         )}
         <input

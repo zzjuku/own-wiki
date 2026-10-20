@@ -103,6 +103,25 @@ describe("infoboxHtml", () => {
     expect(infoboxHtml({ fields: [f("Count", "number", 3, { options: { place: "above" } })] }, ctx)).toContain("infobox-label");
   });
 
+  it("Date, place and Date, text fields: a date with text after it, one entry or several", () => {
+    const ib: Infobox = {
+      fields: [
+        f("Born", "dateplace", { date: { year: 283, era: "AC" }, text: "[[Page B]]" }),
+        f("Reign", "datetext", [
+          { date: { start: { year: 283 }, end: { year: 298, era: "AC" } }, text: "King" },
+          { date: { year: 300, era: "AC" }, text: "Lord" },
+        ], { options: { multiple: true, ranges: true } }),
+      ],
+    };
+    const html = infoboxHtml(ib, ctx);
+    expect(html).toMatch(/283 AC, <a class="wikilink"[^>]*>Page B<\/a>/);
+    expect(html).toContain('283 – 298 AC <span class="infobox-date-note">King</span><br>300 AC <span class="infobox-date-note">Lord</span>');
+    expect(valueProblem(ib.fields[1])).toBeNull();
+    expect(valueProblem(f("X", "datetext", "text"))).not.toBeNull();
+    expect(convertValue({ year: 5 }, "dateplace")).toEqual({ date: { year: 5 } });
+    expect(convertValue({ date: { year: 5 } }, "date")).toEqual({ year: 5 });
+  });
+
   it("merges linked-from and two-way entries", () => {
     const ib: Infobox = {
       fields: [

@@ -28,6 +28,10 @@ export const KINDS: KindInfo[] = [
   { kind: "link", label: "Page link (one page)", hasValue: true },
   { kind: "linkedfrom", label: "Linked from", hasValue: true },
   { kind: "date", label: "Date", hasValue: true },
+  // A date (or range) with text after it: a place ("283 AC, Winterfell"), or a
+  // smaller note ("283 – 298 AC  King of the Andals"); optionally several entries.
+  { kind: "dateplace", label: "Date, place", hasValue: true },
+  { kind: "datetext", label: "Date, text", hasValue: true },
   { kind: "image", label: "Image", hasValue: true },
   { kind: "heading", label: "Section heading", hasValue: false },
   { kind: "divider", label: "Divider", hasValue: false },
@@ -121,6 +125,11 @@ export function valueProblem(f: Field): string | null {
       return isStringArray(v) ? null : "This value doesn't fit a " + kindLabel(f.type) + " field.";
     case "date":
       return typeof v === "object" && !Array.isArray(v) ? null : "This isn't a date.";
+    case "dateplace":
+    case "datetext": {
+      const ok = (x: unknown) => typeof x === "object" && x !== null && !Array.isArray(x);
+      return (Array.isArray(v) ? v.every(ok) : ok(v)) ? null : "This value doesn't fit a " + kindLabel(f.type) + " field.";
+    }
     case "image": {
       const file = typeof v === "object" && !Array.isArray(v) ? (v as { file?: unknown }).file : null;
       return file === undefined || typeof file === "string" ? null : "This isn't an image.";
@@ -148,6 +157,7 @@ export function valueText(f: Field): string {
   if (!valueProblem(f)) {
     if (f.type === "yesno") return v ? "Yes" : "No";
     if (f.type === "date") return formatDate(v);
+    if (isDateTextKind(f.type)) return dateEntries(v).map((e) => [formatDate(e.date), e.text].filter(Boolean).join(", ")).join("; ");
     if (f.type === "image") return (v as { file?: string })?.file ?? "";
   }
   return rawValueText(v);
@@ -159,6 +169,10 @@ const LIST_KINDS = ["list", "links", "linkedfrom"];
 /** A value moved to another field type, converted where nothing is lost
  * (same rules as convert_value in src-tauri/src/infobox.rs). */
 export function convertValue(v: unknown, to: string): unknown {
+  const obj = typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  // A date gets an empty text next to it; a date with no text is a plain date again.
+  if (obj && isDateTextKind(to) && !("date" in obj) && !("text" in obj)) return { date: obj };
+  if (obj && to === "date" && "date" in obj && isEmptyValue(obj.text)) return obj.date;
   const toString = STRING_KINDS.includes(to);
   const toList = LIST_KINDS.includes(to);
   if (Array.isArray(v) && toString && v.length <= 1 && v.every((x) => typeof x === "string")) return v[0] ?? null;
@@ -183,6 +197,21 @@ export function cleanValue(v: unknown): unknown {
 }
 
 // ---- dates ----
+
+/** One entry of a Date, place or Date, text field. */
+export interface DateEntry {
+  date?: unknown;
+  /** A place, or a note; Markdown (links, bold…). */
+  text?: string;
+}
+
+export const isDateTextKind = (k: string) => k === "dateplace" || k === "datetext";
+
+/** The entries of a Date, place / Date, text value (one entry or a list of them). */
+export function dateEntries(v: unknown): DateEntry[] {
+  const list = Array.isArray(v) ? v : v && typeof v === "object" ? [v] : [];
+  return list.filter((e): e is DateEntry => !!e && typeof e === "object" && !Array.isArray(e));
+}
 
 export type Qualifier = "c" | "before" | "after";
 
@@ -403,6 +432,17 @@ function valueHtml(f: Field, ctx: BoxContext): string {
     }
     case "date":
       return escapeHtml(formatDate(v));
+    case "dateplace":
+    case "datetext":
+      return dateEntries(v)
+        .map((e) => {
+          const date = escapeHtml(formatDate(e.date));
+          const text = e.text?.trim() ? renderInline(e.text, ctx.links) : "";
+          if (f.type === "dateplace") return [date, text].filter(Boolean).join(", ");
+          return [date, text && `<span class="infobox-date-note">${text}</span>`].filter(Boolean).join(" ");
+        })
+        .filter(Boolean)
+        .join("<br>");
     default:
       return escapeHtml(rawValueText(v));
   }

@@ -373,3 +373,9 @@ body.reordering * {
   user-select: none;
 }
 
+
+/* Date, text fields: the note after the date, smaller. */
+.infobox-date-note {
+  font-size: 82%;
+  margin-left: 0.15em;
+}

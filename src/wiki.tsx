@@ -33,8 +33,6 @@ export interface Wiki {
   createFromLink: (title: string, fromPage?: string, opts?: CreateOptions) => void;
   /** An open page tells which template its infobox uses (suggested for pages created from it). */
   noteTemplate: (pageId: string, template: string | null) => void;
-  /** Creates a page (without opening it) and re-reads the page list. */
-  createPage: (title: string, group: string, template: string | null, allowLong: boolean) => Promise<PageInfo>;
   /** Every group, in sidebar order, for group drop-downs ("" = top level). */
   groupOptions: { id: string; label: string }[];
   /** The project's templates. */

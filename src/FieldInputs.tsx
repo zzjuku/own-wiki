@@ -6,7 +6,7 @@ import { api, errorText, type Frame } from "./api";
 import { useFileDrop } from "./dropFiles";
 import { FIELD_IMAGE_EXTENSIONS, hasExtension } from "./images";
 import { AdjustPicture, styleObject } from "./AdjustPicture";
-import { cleanValue, imageUrl, isRange, pictureStyle, type Crop, type DatePoint, type DateRange, type ImageValue, type Qualifier } from "./infobox";
+import { cleanValue, dateEntries, imageUrl, isRange, pictureStyle, type Crop, type DateEntry, type DatePoint, type DateRange, type ImageValue, type Qualifier } from "./infobox";
 import { MiniEditor } from "./MiniEditor";
 import { displayGroup } from "./tree";
 import { DEFAULT_FRAME, useWiki } from "./wiki";
@@ -297,6 +297,73 @@ export function DateInput({
           <span>present</span>
         </label>
       </div>
+    </div>
+  );
+}
+
+/** Date, place / Date, text fields: a date (or range) and a text after it;
+ * with `multiple`, a list of such entries. */
+export function DateTextInput({
+  pageId,
+  value,
+  ranges,
+  multiple,
+  place,
+  onChange,
+  label,
+}: {
+  pageId: string;
+  value: unknown;
+  ranges: boolean;
+  multiple: boolean;
+  /** Date, place (else Date, text). */
+  place: boolean;
+  onChange: (v: unknown) => void;
+  label: string;
+}) {
+  const initial = dateEntries(value);
+  // A list stays a list even if the field was switched back to one entry, so nothing is dropped.
+  const several = multiple || initial.length > 1;
+  const nextId = useRef(0);
+  const [rows, setRows] = useState(() => (initial.length ? initial : [{}]).map((e) => ({ e, id: nextId.current++ })));
+  const save = (next: { e: DateEntry; id: number }[]) => {
+    setRows(next);
+    const entries = next.map((r) => r.e).filter((e) => cleanValue(e.date) !== undefined || e.text?.trim());
+    onChange(several ? entries : entries[0]);
+  };
+  const set = (i: number, e: DateEntry) => save(rows.map((r, j) => (j === i ? { ...r, e: { ...(cleanValue(e.date) !== undefined ? { date: e.date } : {}), ...(e.text?.trim() ? { text: e.text } : {}) } } : r)));
+  return (
+    <div className="ib-list date-text-list">
+      {rows.map((r, i) => (
+        <div key={r.id} className="date-text-entry">
+          <div className="date-text-fields">
+            <DateInput label={several ? `${label} ${i + 1}` : label} value={r.e.date} ranges={ranges} onChange={(date) => set(i, { ...r.e, date })} />
+            <MiniEditor
+              pageId={pageId}
+              label={`${label}${several ? ` ${i + 1}` : ""}: ${place ? "place" : "text"}`}
+              placeholder={place ? "Place" : "Text"}
+              value={r.e.text ?? ""}
+              onChange={(text) => set(i, { ...r.e, text })}
+            />
+          </div>
+          {several && (
+            <button
+              type="button"
+              className="plain remove"
+              title="Remove entry"
+              aria-label="Remove entry"
+              onClick={() => save(rows.length > 1 ? rows.filter((_, j) => j !== i) : [{ e: {}, id: nextId.current++ }])}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      ))}
+      {several && (
+        <button type="button" className="plain add-entry" onClick={() => setRows([...rows, { e: {}, id: nextId.current++ }])}>
+          + Add entry
+        </button>
+      )}
     </div>
   );
 }

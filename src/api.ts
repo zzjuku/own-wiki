@@ -100,6 +100,8 @@ export type FieldKind =
   | "links"
   | "linkedfrom"
   | "date"
+  | "dateplace"
+  | "datetext"
   | "image"
   | "heading"
   | "divider";
@@ -132,6 +134,8 @@ export interface FieldOptions {
   place?: string;
   /** With place above/below: also keep the field's row in the box. */
   inBox?: boolean;
+  /** Date, place / Date, text: several entries (a list). */
+  multiple?: boolean;
   ranges?: boolean;
   [extra: string]: unknown;
 }

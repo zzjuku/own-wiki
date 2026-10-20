@@ -20,9 +20,6 @@ import "./styles/embeds.css";
 import "./styles/tooltips.css";
 import "./styles/themes.css";
 import "./styles/look.css";
-import { applyStoredPageWidth } from "./layoutPrefs";
-
-applyStoredPageWidth();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
