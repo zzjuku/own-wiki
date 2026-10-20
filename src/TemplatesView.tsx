@@ -7,7 +7,7 @@ import { api, type Field, type FieldKind, type Frame, type PageInfo, type Templa
 import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
 import { Chips, ColorPicker, DragHandle, moveItem, useReorder } from "./controls";
 import { useDialogs } from "./dialogs";
-import { infoboxHtml, instantiate, isLayout, KINDS, newFieldKey, newFieldLabel, newTemplateId } from "./infobox";
+import { infoboxHtml, instantiate, isLayout, KINDS, newFieldKey, newFieldLabel, newTemplateId, PLACES } from "./infobox";
 import { MiniEditor } from "./MiniEditor";
 import { renameFieldInTemplates } from "./relations";
 import { ApplyDialog, CopyTemplatesDialog } from "./TemplateDialogs";
@@ -449,6 +449,9 @@ function FrameInputs({ value, onChange, label }: { value: Frame; onChange: (f: F
   );
 }
 
+const PLACE_LABELS = { above: "Above the title", below: "Below the title", beside: "Beside the title" };
+const PLACE_HINTS = { text: "smaller, e.g. a title or nickname", image: "small, left and right (two such fields: one each side)" };
+
 /** Labels of the fields of every template whose type is one of `kinds` (each name once). */
 function labelsOf(templates: Template[], kinds: string[]): string[] {
   const set = new Map<string, string>();
@@ -560,6 +563,24 @@ export function FieldDef({
           </label>
         )}
         {f.type === "linkedfrom" && <LinkedFromOptions options={options} setOptions={setOptions} templates={wiki.templates} />}
+        {PLACES[f.type] && (
+          <label className="field-option">
+            <span>Show</span>
+            <select
+              aria-label="Show"
+              value={typeof options.place === "string" && PLACES[f.type].includes(options.place as never) ? options.place : ""}
+              onChange={(e) => setOptions({ ...options, place: e.target.value || undefined })}
+            >
+              <option value="">In the box</option>
+              {PLACES[f.type].map((p) => (
+                <option key={p} value={p}>
+                  {PLACE_LABELS[p]}
+                </option>
+              ))}
+            </select>
+            <span className="muted">{options.place ? PLACE_HINTS[f.type === "image" ? "image" : "text"] : ""}</span>
+          </label>
+        )}
         {f.type === "date" && (
           <label className="check">
             <input type="checkbox" checked={!!options.ranges} onChange={(e) => setOptions({ ...options, ranges: e.target.checked })} />

@@ -461,11 +461,12 @@ export function createBackend(fixture: Fixture) {
     list_themes: ({ project }) =>
       [...themeStore(project)].map(([id, t]) => ({ id, name: t.name })).sort((a, b) => a.name.localeCompare(b.name)),
     read_theme: ({ project, id }) => JSON.parse(JSON.stringify(theme(themeStore(project), id))),
-    create_theme: ({ project, name, data }) => {
+    create_theme: ({ project, name, data, bundled }) => {
       const store = themeStore(project);
       themeFree(store, name);
       const id = name.trim();
-      store.set(id, { ...data, name: id });
+      const fonts = [...(data.fonts ?? []), ...((bundled ?? []) as { family: string; file: string }[]).map((f) => ({ ...f, weight: "400", style: "normal" }))];
+      store.set(id, { ...data, fonts, name: id });
       return { id, name: id };
     },
     save_theme: ({ project, id, data }) => {
@@ -485,10 +486,6 @@ export function createBackend(fixture: Fixture) {
     set_app_theme: ({ choice }) => void (appTheme = choice),
     import_font: ({ path }) => {
       const file = path.split("/").pop();
-      return { family: file.replace(/\.[^.]+$/, "").split("-")[0], file, weight: "400", style: "normal" };
-    },
-    import_font_data: (_args, options) => {
-      const file = decodeURIComponent(options?.headers?.name ?? "font.ttf");
       return { family: file.replace(/\.[^.]+$/, "").split("-")[0], file, weight: "400", style: "normal" };
     },
     installed_fonts: () => ["Font A", "Font B"],

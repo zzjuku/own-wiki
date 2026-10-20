@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::error::{AppError, AppResult};
@@ -104,9 +104,18 @@ fn check_name_free(dir: &Path, name: &str, except: Option<&str>) -> AppResult<St
     Ok(id)
 }
 
+/// A font that comes with the app, for a copy of a built-in theme.
+#[derive(Debug, Deserialize)]
+pub struct BundledFont {
+    pub family: String,
+    pub file: String,
+}
+
 /// Creates theme `name` in `dir` with `data` (the theme's settings). With
-/// `fonts_from`, the font files of that theme folder are copied along.
-pub fn create(dir: &Path, name: &str, data: Value, fonts_from: Option<&Path>) -> AppResult<ThemeInfo> {
+/// `fonts_from`, the font files of that theme folder are copied along;
+/// `bundled` fonts (a built-in theme's) are written from the app and added
+/// to the theme's font list. Nothing is left behind if any of it fails.
+pub fn create(dir: &Path, name: &str, data: Value, fonts_from: Option<&Path>, bundled: &[BundledFont]) -> AppResult<ThemeInfo> {
     let id = check_name_free(dir, name, None)?;
     let name = name.trim().to_string();
     let mut map = as_object(data)?;
@@ -123,6 +132,16 @@ pub fn create(dir: &Path, name: &str, data: Value, fonts_from: Option<&Path>) ->
                 if entry.file_type()?.is_file() && !entry.file_name().to_string_lossy().starts_with('.') {
                     fs::copy(entry.path(), dst.join(entry.file_name()))?;
                 }
+            }
+        }
+        for b in bundled {
+            let data = crate::fonts::bundled(&b.file)
+                .ok_or_else(|| AppError::NotFound(format!("The font file \"{}\" doesn't come with this app version.", b.file)))?;
+            let f = crate::fonts::import_data(&theme, Path::new(&b.file), data)?;
+            let entry = serde_json::json!({ "family": b.family, "file": f.file, "weight": f.weight, "style": f.style });
+            match map.entry("fonts").or_insert_with(|| Value::Array(Vec::new())) {
+                Value::Array(list) => list.push(entry),
+                other => *other = Value::Array(vec![entry]),
             }
         }
         write_file(&theme, &map)
@@ -197,15 +216,31 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn copy_of_builtin_theme_writes_bundled_fonts() {
+        let lib = tempfile::tempdir().unwrap();
+        let dir = lib.path().join(APP_THEMES_DIR);
+        let fonts = [BundledFont { family: "Marcellus".into(), file: "Marcellus-Regular.ttf".into() }];
+        let t = create(&dir, "Theme A", json!({ "vars": {}, "fonts": [] }), None, &fonts).unwrap();
+        let data = read(&dir, &t.id).unwrap();
+        assert_eq!(data["fonts"][0]["family"], "Marcellus");
+        assert_eq!(data["fonts"][0]["file"], "Marcellus-Regular.ttf");
+        assert!(dir.join("Theme A/fonts/Marcellus-Regular.ttf").is_file());
+        // An unknown font: the half-made theme is removed again.
+        let bad = [BundledFont { family: "X".into(), file: "Missing.ttf".into() }];
+        assert!(create(&dir, "Theme B", json!({}), None, &bad).is_err());
+        assert!(!dir.join("Theme B").exists());
+    }
+
+    #[test]
     fn create_list_read_save_rename_delete() {
         let lib = tempfile::tempdir().unwrap();
         let dir = lib.path().join(APP_THEMES_DIR);
         assert!(list(&dir).unwrap().is_empty());
 
-        let t = create(&dir, " Theme A ", json!({ "vars": { "--bg": "#000000" } }), None).unwrap();
+        let t = create(&dir, " Theme A ", json!({ "vars": { "--bg": "#000000" } }), None, &[]).unwrap();
         assert_eq!(t, ThemeInfo { id: "Theme A".into(), name: "Theme A".into() });
-        create(&dir, "Theme B", json!({}), None).unwrap();
-        assert!(matches!(create(&dir, "theme a", json!({}), None), Err(AppError::Exists(_))));
+        create(&dir, "Theme B", json!({}), None, &[]).unwrap();
+        assert!(matches!(create(&dir, "theme a", json!({}), None, &[]), Err(AppError::Exists(_))));
         let names: Vec<_> = list(&dir).unwrap().into_iter().map(|t| t.name).collect();
         assert_eq!(names, ["Theme A", "Theme B"]);
 
@@ -237,11 +272,11 @@ mod tests {
     fn copy_takes_fonts_along() {
         let lib = tempfile::tempdir().unwrap();
         let dir = lib.path().join(APP_THEMES_DIR);
-        create(&dir, "Theme A", json!({}), None).unwrap();
+        create(&dir, "Theme A", json!({}), None, &[]).unwrap();
         fs::create_dir_all(dir.join("Theme A/fonts")).unwrap();
         fs::write(dir.join("Theme A/fonts/Font A.ttf"), b"font").unwrap();
         let project_themes = lib.path().join("Project A").join(PROJECT_THEMES_DIR);
-        create(&project_themes, "Theme A", json!({}), Some(&dir.join("Theme A"))).unwrap();
+        create(&project_themes, "Theme A", json!({}), Some(&dir.join("Theme A")), &[]).unwrap();
         assert_eq!(fs::read(project_themes.join("Theme A/fonts/Font A.ttf")).unwrap(), b"font");
     }
 

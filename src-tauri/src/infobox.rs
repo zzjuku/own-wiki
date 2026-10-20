@@ -271,11 +271,11 @@ pub fn sortable_values(ib: &Infobox) -> BTreeMap<String, Vec<f64>> {
 }
 
 /// The file (inside `assets/`) of the first image field with an image that
-/// isn't a spoiler (hover cards show it).
+/// isn't a spoiler and isn't a small picture beside the title (hover cards show it).
 pub fn first_image(ib: &Infobox) -> Option<String> {
     ib.fields
         .iter()
-        .filter(|f| f.kind == IMAGE && !f.is_spoiler())
+        .filter(|f| f.kind == IMAGE && !f.is_spoiler() && f.options.get("place").and_then(Value::as_str) != Some("beside"))
         .filter_map(|f| f.value.as_ref()?.get("file")?.as_str())
         .map(str::trim)
         .find(|s| !s.is_empty())
@@ -520,8 +520,10 @@ mod tests {
     fn first_image_skips_spoiler_fields() {
         let mut a = field(Some("a"), "Picture A", IMAGE, Some(serde_json::json!({ "file": "a.png" })));
         a.extra.insert("spoiler".into(), Value::Bool(true));
+        let mut beside = field(Some("c"), "Arms", IMAGE, Some(serde_json::json!({ "file": "c.png" })));
+        beside.options.insert("place".into(), json!("beside"));
         let b = field(Some("b"), "Picture B", IMAGE, Some(serde_json::json!({ "file": "b.png" })));
-        let ib = Infobox { template: None, color: None, own_color: false, fields: vec![a, b], hidden: vec![], extra: Map::new() };
+        let ib = Infobox { template: None, color: None, own_color: false, fields: vec![a, beside, b], hidden: vec![], extra: Map::new() };
         assert_eq!(first_image(&ib), Some("b.png".into()));
     }
 

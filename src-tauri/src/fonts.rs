@@ -142,6 +142,18 @@ fn check_extension(path: &Path) -> AppResult<String> {
         .ok_or_else(|| AppError::Invalid("Fonts can be .ttf, .otf, .woff or .woff2 files.".into()))
 }
 
+/// Fonts that come with the app (src/themes/fonts, SIL Open Font License),
+/// used by built-in themes. Copying such a theme writes them from here.
+const BUNDLED: &[(&str, &[u8])] = &[
+    ("Marcellus-Regular.ttf", include_bytes!("../../src/themes/fonts/Marcellus-Regular.ttf")),
+    ("UncialAntiqua-Regular.ttf", include_bytes!("../../src/themes/fonts/UncialAntiqua-Regular.ttf")),
+];
+
+/// The bytes of a font that comes with the app, by file name.
+pub fn bundled(file: &str) -> Option<&'static [u8]> {
+    BUNDLED.iter().find(|(f, _)| *f == file).map(|(_, d)| *d)
+}
+
 /// Stores font bytes that came with the file name `name` (e.g. a built-in
 /// theme's font when the theme is copied) in the theme folder `theme`.
 pub fn import_data(theme: &Path, name: &Path, data: &[u8]) -> AppResult<FontFile> {

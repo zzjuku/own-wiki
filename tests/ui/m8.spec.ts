@@ -199,6 +199,12 @@ test("AWOIAF look: centred title, its own fonts, ornate Contents, framed quotes"
   expect(accent).toBe("rgb(143, 92, 20)");
   expect(await page.locator(".toc-left").evaluate((el) => getComputedStyle(el, "::before").backgroundImage)).toContain("gradient");
   await expect(page.locator(".markdown .infobox").first()).not.toHaveCSS("box-shadow", "none");
+  // AWOIAF infobox: corner ornaments, softer labels, roomier rows, wider box.
+  const box = page.locator(".markdown .infobox").first();
+  expect(await box.evaluate((el) => getComputedStyle(el, "::before").backgroundImage)).toContain("radial-gradient");
+  await expect(box.locator("th.infobox-label").first()).toHaveCSS("color", "rgb(84, 89, 93)");
+  await expect(box.locator("th.infobox-label").first()).toHaveCSS("font-weight", "600");
+  expect((await box.boundingBox())!.width).toBeGreaterThan(360);
   await page.waitForTimeout(300);
   await shot(page, "awoiaf-page");
 });
@@ -226,4 +232,49 @@ test("every part of the page can have its own font", async ({ page }) => {
   expect(await page.locator(".theme-sample .toc").evaluate((el) => getComputedStyle(el, "::before").backgroundImage)).toContain("gradient");
   await infoboxTitle.selectOption("follow");
   await expect.poll(async () => (await storedAppTheme(page, "Theme A"))?.vars?.["--font-infobox-title"]).toBeUndefined();
+});
+
+test("fields shown above, below and beside the infobox title", async ({ page }) => {
+  const template = {
+    id: "template-t-a1b2",
+    name: "Template T",
+    fields: [
+      { key: "f-ti", label: "Title", type: "text" as const },
+      { key: "f-ni", label: "Nickname", type: "text" as const },
+      { key: "f-ar", label: "Arms", type: "image" as const },
+    ],
+  };
+  const pageT = {
+    id: "Page T.md",
+    title: "Page T",
+    body: "Text.",
+    infobox: {
+      template: template.id,
+      fields: [
+        { key: "f-ti", label: "Title", type: "text" as const, value: "Example title", options: { place: "above" } },
+        { key: "f-ni", label: "Nickname", type: "text" as const, value: "Example nickname", options: { place: "below" } },
+        { key: "f-ar", label: "Arms", type: "image" as const, value: { file: "Picture A.png" }, options: { place: "beside" } },
+      ],
+    },
+  };
+  await openProject(page, { ...oneProject([...PAGES, pageT], { mainPage: "Page T", templates: [template] }), appTheme: "builtin:awoiaf" });
+  const title = page.locator(".markdown .infobox th.infobox-title");
+  await expect(title.locator(".infobox-title-above")).toHaveText("Example title");
+  await expect(title.locator(".infobox-title-name")).toHaveText("Page T");
+  await expect(title.locator(".infobox-title-below")).toHaveText("Example nickname");
+  await expect(title.locator("img.infobox-title-picture")).toHaveCount(2);
+  await expect(page.locator(".markdown .infobox th.infobox-label")).toHaveCount(0);
+  await page.locator(".markdown .infobox").screenshot({ path: "test-results/m8-infobox-title-area.png" });
+
+  // The setting in the template editor.
+  await page.getByRole("button", { name: "Templates" }).click();
+  const defs = page.locator(".field-defs > li");
+  const nickname = defs.filter({ has: page.locator('input[aria-label="Field label"][value="Nickname"]') });
+  await nickname.getByLabel("Show").selectOption("below");
+  const arms = defs.filter({ has: page.locator('input[aria-label="Field label"][value="Arms"]') });
+  await expect(arms.getByLabel("Show").locator("option")).toHaveText(["In the box", "Beside the title"]);
+  await expect(page.locator(".template-preview .infobox-title-below")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate((p) => (window as any).__mock.projects.get(p).templates[0].fields[1].options, PROJECT))
+    .toEqual({ place: "below" });
 });

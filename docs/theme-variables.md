@@ -58,9 +58,11 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--infobox-bg` / `--infobox-border` | Box background and border |
 | `--infobox-header-bg` / `--infobox-header-text` | Title bar and section headers |
 | `--infobox-label` | Field labels |
+| `--infobox-label-weight` | Field label weight (`700` bold, `600` semi-bold, `400` normal) |
 | `--infobox-width` | Box width (floats right of the page text) |
 | `--infobox-font-size` | Text size inside the box |
-| `--infobox-padding` | Cell padding |
+| `--infobox-row-space` | Space above and below each row's text |
+| `--infobox-padding` | Cell padding (follows `--infobox-row-space`) |
 | `--infobox-gap` | Space between the box and the text beside it |
 | `--thumb-bg` / `--thumb-border` | Frame around images in the text and gallery cells |
 | `--thumb-caption` | Image and gallery captions |
@@ -109,9 +111,10 @@ Keywords, read by style queries in `src/styles/look.css`; the defaults change no
 | `--heading-deco` | `line`, `accent`, `none` |
 | `--ornament` | Colour of accent bars and corner ornaments (follows `--accent`) |
 | `--box-inner-line` | The inner line of double and ornate frames |
-| `--infobox-frame` / `--toc-frame` / `--navbox-frame` | `plain`, `double`, `ornate` (double line plus corner ornaments) |
+| `--infobox-frame` / `--toc-frame` / `--navbox-frame` | `plain`, `double`, `ornate` (double line plus corner ornaments; on the infobox at all four corners) |
 | `--infobox-shadow` / `--toc-shadow` / `--navbox-shadow` | A box-shadow (`0 0 #0000` = none) |
 | `--infobox-title-style` | `bar`, `plain` (line under it), `accent` (line with accent bar) |
+| `--infobox-heading-style` | Infobox section headings: `bar`, `lined` (larger, thin lines above and below) |
 | `--quote-style` | `open` (quotation marks only), `framed` |
 
 ## Layout

@@ -76,6 +76,29 @@ describe("infoboxHtml", () => {
     expect(html).toContain("&lt;i&gt;not a number&lt;/i&gt;");
   });
 
+  it("shows fields placed above, below and beside the title in the title area", () => {
+    const ib: Infobox = {
+      fields: [
+        f("Title", "text", "Example title", { options: { place: "above" } }),
+        f("Nickname", "text", "the [[Page B]]", { options: { place: "below" }, spoiler: true }),
+        f("Arms", "image", { file: "Arms.png" }, { options: { place: "beside" } }),
+        f("Example field", "text", "Example value"),
+      ],
+    };
+    const html = infoboxHtml(ib, ctx);
+    const title = html.slice(html.indexOf("infobox-title"), html.indexOf("Example field"));
+    expect(title).toMatch(/infobox-title-above">Example title<\/div><div class="infobox-title-name">Page A<\/div><div class="infobox-title-below"><span class="spoiler"/);
+    // One picture: on both sides, the copy marked as such.
+    expect(title.match(/<img class="infobox-title-picture/g)?.length).toBe(2);
+    expect(title).toContain("infobox-title-copy");
+    // Placed fields don't show again as rows.
+    expect(html.match(/infobox-label/g)?.length).toBe(1);
+    // Only title-area fields: the box still shows.
+    expect(infoboxHtml({ fields: [ib.fields[0]] }, ctx)).toContain("Example title");
+    // A place the type can't have is ignored.
+    expect(infoboxHtml({ fields: [f("Count", "number", 3, { options: { place: "above" } })] }, ctx)).toContain("infobox-label");
+  });
+
   it("merges linked-from and two-way entries", () => {
     const ib: Infobox = {
       fields: [

@@ -243,13 +243,25 @@ fn import_image(state: State<'_, AppState>, project: String, path: String, svg: 
 /// `name` come as percent-encoded headers.
 #[tauri::command(async)]
 fn import_image_data(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> AppResult<String> {
-    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
-        return Err(AppError::Invalid("No image data.".into()));
-    };
+    let data = request_bytes(&request).ok_or_else(|| AppError::Invalid("No image data.".into()))?;
     let header = |k: &str| {
         request.headers().get(k).and_then(|v| v.to_str().ok()).map(assets::percent_decode).unwrap_or_default()
     };
-    assets::import_image_data(&state.library()?, &header("project"), &header("name"), data, true)
+    assets::import_image_data(&state.library()?, &header("project"), &header("name"), &data, true)
+}
+
+/// The bytes sent with a command: raw, or, when the window had to fall back
+/// to its second message channel, the same bytes as a JSON list of numbers.
+fn request_bytes<'a>(request: &'a tauri::ipc::Request<'_>) -> Option<std::borrow::Cow<'a, [u8]>> {
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(data) => Some(std::borrow::Cow::Borrowed(data)),
+        tauri::ipc::InvokeBody::Json(serde_json::Value::Array(list)) => list
+            .iter()
+            .map(|v| v.as_u64().and_then(|n| u8::try_from(n).ok()))
+            .collect::<Option<Vec<u8>>>()
+            .map(std::borrow::Cow::Owned),
+        _ => None,
+    }
 }
 
 #[tauri::command]
@@ -525,7 +537,8 @@ fn read_theme(state: State<AppState>, project: Option<String>, id: String) -> Ap
     themes::read(&state.themes_dir(project.as_deref())?, &id)
 }
 
-/// `from`: the stored theme being copied, whose font files come along.
+/// `from`: the stored theme being copied, whose font files come along;
+/// `bundled`: fonts that come with the app (copying a built-in theme).
 #[tauri::command]
 fn create_theme(
     state: State<AppState>,
@@ -533,9 +546,10 @@ fn create_theme(
     name: String,
     data: serde_json::Value,
     from: Option<ThemeSource>,
+    bundled: Option<Vec<themes::BundledFont>>,
 ) -> AppResult<themes::ThemeInfo> {
     let fonts_from = from.map(|f| state.theme_dir(f.project.as_deref(), &f.id)).transpose()?;
-    themes::create(&state.themes_dir(project.as_deref())?, &name, data, fonts_from.as_deref())
+    themes::create(&state.themes_dir(project.as_deref())?, &name, data, fonts_from.as_deref(), &bundled.unwrap_or_default())
 }
 
 #[tauri::command]
@@ -567,21 +581,6 @@ fn set_app_theme(state: State<AppState>, choice: Option<String>) -> AppResult<()
 #[tauri::command]
 fn import_font(state: State<AppState>, project: Option<String>, id: String, path: String) -> AppResult<fonts::FontFile> {
     fonts::import(&state.theme_dir(project.as_deref(), &id)?, std::path::Path::new(&path))
-}
-
-/// Stores font bytes (request body) in a theme; `project`, `id` and `name`
-/// come as percent-encoded headers (`project` empty = app themes).
-#[tauri::command(async)]
-fn import_font_data(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> AppResult<fonts::FontFile> {
-    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
-        return Err(AppError::Invalid("No font data.".into()));
-    };
-    let header = |k: &str| {
-        request.headers().get(k).and_then(|v| v.to_str().ok()).map(assets::percent_decode).unwrap_or_default()
-    };
-    let project = header("project");
-    let theme = state.theme_dir(Some(project.as_str()).filter(|p| !p.is_empty()), &header("id"))?;
-    fonts::import_data(&theme, std::path::Path::new(&header("name")), data)
 }
 
 /// Family names of the fonts installed on this computer (read once, off the main thread).
@@ -715,7 +714,6 @@ pub fn run() {
             get_app_theme,
             set_app_theme,
             import_font,
-            import_font_data,
             installed_fonts,
             copy_installed_font,
             font_data,

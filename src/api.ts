@@ -128,6 +128,8 @@ export interface FieldOptions {
   templates?: string[];
   /** Linked from: sort by this number or date field of the listed pages; none = by title. */
   sortBy?: string;
+  /** Shown in the title area instead of the box: "above"/"below" (text, choice, list), "beside" (image). */
+  place?: string;
   ranges?: boolean;
   [extra: string]: unknown;
 }
@@ -349,9 +351,14 @@ export const api = {
   // Themes (M8). `project` null = the app-wide themes in the library folder.
   listThemes: (project: string | null) => invoke<ThemeInfo[]>("list_themes", { project }),
   readTheme: (project: string | null, id: string) => invoke<ThemeData>("read_theme", { project, id }),
-  /** `from`: the stored theme being copied (its font files come along). */
-  createTheme: (project: string | null, name: string, data: ThemeData, from: { project: string | null; id: string } | null) =>
-    invoke<ThemeInfo>("create_theme", { project, name, data, from }),
+  /** `from`: the stored theme being copied (its font files come along); `bundled`: fonts that come with the app (a built-in theme's). */
+  createTheme: (
+    project: string | null,
+    name: string,
+    data: ThemeData,
+    from: { project: string | null; id: string } | null,
+    bundled: { family: string; file: string }[] = [],
+  ) => invoke<ThemeInfo>("create_theme", { project, name, data, from, bundled }),
   saveTheme: (project: string | null, id: string, data: ThemeData) => invoke<void>("save_theme", { project, id, data }),
   renameTheme: (project: string | null, id: string, name: string) => invoke<ThemeInfo>("rename_theme", { project, id, name }),
   deleteTheme: (project: string | null, id: string) => invoke<void>("delete_theme", { project, id }),
@@ -359,11 +366,6 @@ export const api = {
   getAppTheme: () => invoke<string | null>("get_app_theme"),
   setAppTheme: (choice: string | null) => invoke<void>("set_app_theme", { choice }),
   importFont: (project: string | null, id: string, path: string) => invoke<ThemeFont>("import_font", { project, id, path }),
-  /** Stores font bytes (e.g. a built-in theme's font) in a theme. */
-  importFontData: (project: string | null, id: string, name: string, data: Uint8Array) =>
-    invoke<ThemeFont>("import_font_data", data, {
-      headers: { project: encodeURIComponent(project ?? ""), id: encodeURIComponent(id), name: encodeURIComponent(name) },
-    }),
   /** Family names of the fonts installed on this computer. */
   installedFonts: () => invoke<string[]>("installed_fonts"),
   copyInstalledFont: (project: string | null, id: string, family: string) =>

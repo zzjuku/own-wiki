@@ -58,6 +58,42 @@
   font-weight: 700;
   padding: 0.25em 0.4em;
 }
+/* Title area: lines above and below the title (titles, nicknames) and
+ * small pictures beside it (e.g. a coat of arms), as on AWOIAF. */
+.infobox-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+.infobox-title-text {
+  flex: 1;
+  min-width: 0;
+}
+.infobox-title-above,
+.infobox-title-below {
+  font-size: 78%;
+  font-weight: 400;
+  line-height: 1.35;
+}
+.infobox-title-name {
+  line-height: 1.2;
+  padding: 0.1em 0;
+}
+.infobox-title-side {
+  flex: none;
+  align-self: flex-start;
+  width: 2.8em;
+}
+.infobox-title-picture {
+  display: block;
+  width: 100%;
+  max-height: 3.4em;
+  object-fit: contain;
+}
+.infobox-title-side .infobox-image-placeholder {
+  height: 3em;
+}
+
 .markdown .infobox th.infobox-heading {
   background: var(--infobox-header-bg);
   color: var(--infobox-header-text);
@@ -71,7 +107,7 @@
 .markdown .infobox th.infobox-label {
   width: 38%;
   font-family: var(--font-infobox-label);
-  font-weight: 700;
+  font-weight: var(--infobox-label-weight);
   color: var(--infobox-label);
 }
 .markdown .infobox td.infobox-image {

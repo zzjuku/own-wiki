@@ -35,7 +35,7 @@ export function ImageViewer() {
       const root = img.closest(CONTENT)!;
       const gallery = img.closest(".wiki-gallery");
       const all = [...(gallery ?? root).querySelectorAll<HTMLImageElement>("img")].filter(
-        (i) => (gallery || !i.closest(".wiki-gallery")) && !i.closest(".broken") && !isHiddenSpoiler(i),
+        (i) => (gallery || !i.closest(".wiki-gallery")) && !i.closest(".broken") && !i.classList.contains("infobox-title-copy") && !isHiddenSpoiler(i),
       );
       const index = Math.max(0, all.indexOf(img));
       e.preventDefault();

@@ -66,9 +66,11 @@
   --infobox-header-bg: #cedff2;
   --infobox-header-text: #202122;
   --infobox-label: var(--page-text);
-  --infobox-width: 22em;
+  --infobox-label-weight: 700;
+  --infobox-width: 24em;
   --infobox-font-size: 88%;
-  --infobox-padding: 0.2em 0.4em;
+  --infobox-row-space: 0.2em;
+  --infobox-padding: var(--infobox-row-space) 0.4em;
   --infobox-gap: 1.4em;
 
   /* Images in the text, galleries and the image viewer (M6) */
@@ -107,6 +109,7 @@
   --infobox-frame: plain;
   --infobox-shadow: 0 0 #0000;
   --infobox-title-style: bar;
+  --infobox-heading-style: bar;
   --toc-frame: plain;
   --toc-shadow: 0 0 #0000;
   --navbox-frame: plain;

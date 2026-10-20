@@ -36,6 +36,18 @@ export const KINDS: KindInfo[] = [
 /** Section headings and dividers: they lay out the box and hold no value. */
 export const isLayout = (k: string) => k === "heading" || k === "divider";
 
+/** Where a field shows: in the box (default), or in the title area. Text,
+ * Choice and List fields can go above or below the title (titles,
+ * nicknames); Image fields beside it (e.g. a coat of arms). */
+export type Place = "above" | "below" | "beside";
+export const PLACES: Record<string, Place[]> = { text: ["above", "below"], choice: ["above", "below"], list: ["above", "below"], image: ["beside"] };
+
+/** A field's place in the title area, if it has one (and its type allows it). */
+export function titlePlace(f: Field): Place | null {
+  const p = f.options?.place;
+  return typeof p === "string" && (PLACES[f.type] ?? []).includes(p as Place) ? (p as Place) : null;
+}
+
 /** A new field's starting label. */
 export const newFieldLabel = (k: string) => (k === "heading" ? "New section" : k === "divider" ? "" : "New field");
 
@@ -402,7 +414,9 @@ const PLACEHOLDER = '<span class="infobox-placeholder">…</span>';
 export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): string {
   if (!ib) return "";
   const rows: { html: string; heading?: boolean; divider?: boolean }[] = [];
+  const title = titleArea(ib, ctx);
   for (const f of ib.fields) {
+    if (titlePlace(f)) continue;
     if (f.type === "heading") {
       rows.push({ heading: true, html: `<tr><th colspan="2" class="infobox-heading">${escapeHtml(f.label)}</th></tr>` });
       continue;
@@ -457,7 +471,7 @@ export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): st
         return !!prev && !!next && !prev.heading && !prev.divider && !next.heading && !next.divider;
       });
   const isValue = (r: (typeof rows)[number]) => !r.heading && !r.divider;
-  if (!shown.some(isValue) && !ctx.placeholders) {
+  if (!shown.some(isValue) && !title.extra && !ctx.placeholders) {
     if (!ctx.showEmpty) return "";
     shown.length = 0;
     shown.push({ html: `<tr><td colspan="2" class="infobox-empty">Fill in values in the Infobox tab.</td></tr>` });
@@ -465,8 +479,48 @@ export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): st
   const style = [colorStyle(ib.color), ctx.frame ? `--frame-width:${ctx.frame.width}px` : ""].filter(Boolean).join(";");
   return (
     `<div class="infobox"${style ? ` style="${style}"` : ""}><table><tbody>` +
-    `<tr><th colspan="2" class="infobox-title">${escapeHtml(ctx.title)}</th></tr>` +
+    `<tr><th colspan="2" class="infobox-title">${title.html}</th></tr>` +
     shown.map((r) => r.html).join("") +
     `</tbody></table></div>`
   );
+}
+
+/** The title cell's content: the title, with lines above and below it and
+ * pictures beside it from fields placed there. `extra`: any of those shows. */
+function titleArea(ib: Infobox, ctx: BoxContext): { html: string; extra: boolean } {
+  const lines: Record<"above" | "below", string[]> = { above: [], below: [] };
+  const pictures: string[] = [];
+  for (const f of ib.fields) {
+    const place = titlePlace(f);
+    if (!place) continue;
+    if (place === "beside") {
+      const img = f.value as ImageValue | undefined;
+      if (img?.file && !valueProblem(f)) {
+        const pic =
+          `<img class="infobox-title-picture" src="${escapeHtml(imageUrl(ctx.project, img.file, 60))}" ` +
+          `data-full="${escapeHtml(imageUrl(ctx.project, img.file))}" alt="${escapeHtml(img.caption || f.label)}">`;
+        pictures.push(f.spoiler ? `<span class="spoiler spoiler-media" title="Spoiler: click to show">${pic}</span>` : pic);
+      } else if (ctx.placeholders) {
+        pictures.push(`<span class="infobox-title-picture infobox-image-placeholder"></span>`);
+      }
+      continue;
+    }
+    let value = valueHtml(f, ctx);
+    if (!value && ctx.placeholders) value = PLACEHOLDER;
+    if (!value) continue;
+    if (f.spoiler && value !== PLACEHOLDER) value = spoilerHtml(value);
+    lines[place].push(`<div class="infobox-title-${place}">${value}</div>`);
+  }
+  const name = escapeHtml(ctx.title);
+  if (!lines.above.length && !lines.below.length && !pictures.length) return { html: name, extra: false };
+  // One picture shows on both sides (the copy is skipped by the image viewer); two go left and right.
+  const [left, right] = pictures.length === 1 ? [pictures[0], pictures[0].replace('class="infobox-title-picture"', 'class="infobox-title-picture infobox-title-copy"')] : pictures;
+  const side = (pic: string | undefined) => (pic ? `<span class="infobox-title-side">${pic}</span>` : "");
+  return {
+    html:
+      `<div class="infobox-title-row">${side(left)}<div class="infobox-title-text">` +
+      `${lines.above.join("")}<div class="infobox-title-name">${name}</div>${lines.below.join("")}` +
+      `</div>${side(right)}</div>`,
+    extra: true,
+  };
 }
