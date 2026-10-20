@@ -25,8 +25,10 @@ import { categoryOf } from "./categories";
 interface Props {
   value: string;
   onChange: (text: string) => void;
-  /** Several lines (Long text, starter text); otherwise Enter does nothing. */
+  /** Several lines (Long text, starter text); otherwise Enter does nothing… */
   multiline?: boolean;
+  /** …or this (one-line editors, e.g. starting the next list entry). */
+  onEnter?: () => void;
   placeholder?: string;
   /** The page being edited (links to it are fine, they just don't go anywhere). */
   pageId?: string;
@@ -64,7 +66,9 @@ const singleLine = EditorState.transactionFilter.of((tr) => {
   return [tr, { changes: { from: 0, to: tr.newDoc.length, insert: text }, sequential: true }];
 });
 
-export function MiniEditor({ value, onChange, multiline, placeholder, pageId, toolbar, label, autoFocus, className, children }: Props) {
+export function MiniEditor({ value, onChange, multiline, onEnter, placeholder, pageId, toolbar, label, autoFocus, className, children }: Props) {
+  const onEnterRef = useRef(onEnter);
+  onEnterRef.current = onEnter;
   const wiki = useWiki();
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -100,7 +104,13 @@ export function MiniEditor({ value, onChange, multiline, placeholder, pageId, to
       },
       multiline
         ? { key: "Enter", run: cmd(insertNewlineContinueMarkupCommand({ nonTightLists: false })) }
-        : { key: "Enter", run: () => true },
+        : {
+            key: "Enter",
+            run: () => {
+              onEnterRef.current?.();
+              return true;
+            },
+          },
     ];
     if (toolbar) {
       keys.push(

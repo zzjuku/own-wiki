@@ -7,6 +7,17 @@ import { ROOT } from "./tree";
 
 const BACK_KEYS = IS_MAC ? "⌘[" : "Alt+←";
 const FORWARD_KEYS = IS_MAC ? "⌘]" : "Alt+→";
+const HIDE_KEYS = IS_MAC ? "⌘\\" : "Ctrl+\\";
+
+/** A window with a side panel (hide or show the sidebar). */
+export function SidebarIcon() {
+  return (
+    <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" className="stroke" />
+      <path d="M6 3v10" className="stroke" />
+    </svg>
+  );
+}
 
 export function SidebarHeader({
   projectName,
@@ -21,6 +32,7 @@ export function SidebarHeader({
   revealAll,
   setRevealAll,
   onSettings,
+  onHideSidebar,
 }: {
   projectName: string;
   mainPageTitle: string | null;
@@ -35,6 +47,7 @@ export function SidebarHeader({
   revealAll: boolean;
   setRevealAll: (on: boolean) => void;
   onSettings: () => void;
+  onHideSidebar: () => void;
 }) {
   return (
     <>
@@ -69,6 +82,9 @@ export function SidebarHeader({
             onClick={() => onGo(1)}
           >
             <NavIcon name="forward" />
+          </button>
+          <button className="plain nav" title={`Hide the sidebar (${HIDE_KEYS})`} aria-label="Hide the sidebar" onClick={onHideSidebar}>
+            <SidebarIcon />
           </button>
         </div>
       </div>

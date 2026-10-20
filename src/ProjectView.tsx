@@ -10,10 +10,11 @@ import { NameIndex } from "./names";
 import { useReportError } from "./notify";
 import { PageView } from "./PageView";
 import { IS_MAC, isQuickOpenKey, QuickOpen, QUICK_OPEN_KEYS } from "./QuickOpen";
-import { DEFAULT_FRAME, WikiContext, type FollowTarget, type Wiki } from "./wiki";
+import { DEFAULT_FRAME, WikiContext, type CreateOptions, type FollowTarget, type Wiki } from "./wiki";
 import { useGlobalReveal } from "./spoilers";
+import { useSidebarHidden } from "./layoutPrefs";
 import { Sidebar, type MenuItem } from "./Sidebar";
-import { SidebarHeader } from "./SidebarHeader";
+import { SidebarHeader, SidebarIcon } from "./SidebarHeader";
 import { TemplatesView, useTemplates } from "./TemplatesView";
 import { ProjectSettingsDialog } from "./ProjectSettings";
 import { useThemes } from "./themes/runtime";
@@ -113,6 +114,19 @@ export function ProjectView({ project, onBack }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Show every spoiler everywhere (this computer only).
   const [revealAll, setRevealAll] = useGlobalReveal();
+  // The sidebar can be hidden for more room (this computer only).
+  const [sidebarHidden, setSidebarHidden] = useSidebarHidden();
+  const sidebarRef = useRef({ hidden: sidebarHidden, set: setSidebarHidden });
+  sidebarRef.current = { hidden: sidebarHidden, set: setSidebarHidden };
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (!(IS_MAC ? e.metaKey : e.ctrlKey) || e.altKey || e.shiftKey || (e.key !== "\\" && e.code !== "Backslash")) return;
+      e.preventDefault();
+      sidebarRef.current.set(!sidebarRef.current.hidden);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, []);
   useEffect(() => {
     api.getImageFrame(project.id).then(setImageFrameState, () => {});
     api.getProjectSettings(project.id).then(setSettings, () => {});
@@ -355,8 +369,9 @@ export function ProjectView({ project, onBack }: Props) {
 
   // ---- actions ----
 
-  /** The template drop-down of the New page and Create page dialogs (none without templates). */
-  function templateSelect() {
+  /** The template drop-down of the New page and Create page dialogs (none
+   * without templates), starting on `initial` if that template exists. */
+  function templateSelect(initial: string | null = null) {
     if (!templates.templates.length) return [];
     const sorted = [...templates.templates].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     return [
@@ -364,10 +379,14 @@ export function ProjectView({ project, onBack }: Props) {
         key: "template",
         label: "Template",
         options: [{ id: "", label: "No template" }, ...sorted.map((t) => ({ id: t.id, label: t.name }))],
-        initial: "",
+        initial: initial && sorted.some((t) => t.id === initial) ? initial : "",
       },
     ];
   }
+
+  // The template of each open page's infobox (pages report it), so pages
+  // created from there start with the same template.
+  const pageTemplates = useRef(new Map<string, string | null>());
 
   function newPage(group: string) {
     dialogs.prompt({
@@ -393,20 +412,26 @@ export function ProjectView({ project, onBack }: Props) {
     [index],
   );
 
-  /** A red link was clicked: create the page it points to, in a group of the user's choice. */
-  function createFromLink(title: string, fromPage?: string) {
+  /** A red link was clicked: create the page it points to, in a group of the
+   * user's choice, with the template of the page the link is on suggested.
+   * With `stay`, the new page isn't opened (e.g. created from an infobox field). */
+  function createFromLink(title: string, fromPage?: string, opts: CreateOptions = {}) {
     dialogs.prompt({
       title: "Create page",
       label: "Page title",
       initial: title,
-      note: <>This page doesn't exist yet.</>,
-      selects: [{ key: "group", label: "Group", options: groupOptions, initial: fromPage ? parentOf(fromPage) : ROOT }, ...templateSelect()],
+      note: <>This page doesn't exist yet.{opts.stay && " You stay on this page."}</>,
+      selects: [
+        { key: "group", label: "Group", options: groupOptions, initial: fromPage ? parentOf(fromPage) : ROOT },
+        ...templateSelect(fromPage ? (pageTemplates.current.get(fromPage) ?? null) : null),
+      ],
       confirmLabel: "Create",
       submit: async (t, allowLong, { selected: sel }) => {
         await flushAll();
         const page = await api.createPage(project.id, sel.group ?? ROOT, t, allowLong, sel.template || null);
         await reload();
-        await openPage(page.id, true);
+        if (opts.stay) opts.onCreated?.(page);
+        else await openPage(page.id, true);
       },
     });
   }
@@ -680,7 +705,8 @@ export function ProjectView({ project, onBack }: Props) {
       project: project.id,
       names,
       follow: (t) => actions.current.follow(t),
-      createFromLink: (title, from) => actions.current.createFromLink(title, from),
+      createFromLink: (title, from, opts) => actions.current.createFromLink(title, from, opts),
+      noteTemplate: (pageId, template) => void pageTemplates.current.set(pageId, template),
       createPage: (title, group, template, allowLong) => actions.current.createPageQuietly(title, group, template, allowLong),
       groupOptions,
       templates: templates.templates,
@@ -700,8 +726,8 @@ export function ProjectView({ project, onBack }: Props) {
 
   return (
     <WikiContext.Provider value={wiki}>
-    <div className={`project ${revealAll ? "reveal-spoilers" : ""}`}>
-      <aside className="sidebar">
+    <div className={`project ${revealAll ? "reveal-spoilers" : ""} ${sidebarHidden ? "sidebar-hidden" : ""}`}>
+      <aside className="sidebar" hidden={sidebarHidden}>
         <SidebarHeader
           projectName={project.name}
           mainPageTitle={mainPage?.title ?? null}
@@ -715,6 +741,7 @@ export function ProjectView({ project, onBack }: Props) {
           revealAll={revealAll}
           setRevealAll={setRevealAll}
           onSettings={() => setSettingsOpen(true)}
+          onHideSidebar={() => setSidebarHidden(true)}
         />
         <div className="row">
           <button
@@ -770,6 +797,16 @@ export function ProjectView({ project, onBack }: Props) {
       </aside>
 
       <main className="content">
+        {sidebarHidden && (
+          <button
+            className="plain nav show-sidebar"
+            title={`Show the sidebar (${IS_MAC ? "⌘" : "Ctrl+"}\\)`}
+            aria-label="Show the sidebar"
+            onClick={() => setSidebarHidden(false)}
+          >
+            <SidebarIcon />
+          </button>
+        )}
         {panel === "categories" ? (
           <CategoriesList onOpen={(name) => void openCategory(name)} onCreate={(name) => void createCategory(name)} />
         ) : category ? (

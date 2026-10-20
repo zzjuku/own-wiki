@@ -130,6 +130,8 @@ export interface FieldOptions {
   sortBy?: string;
   /** Shown in the title area instead of the box: "above"/"below" (text, choice, list), "beside" (image). */
   place?: string;
+  /** With place above/below: also keep the field's row in the box. */
+  inBox?: boolean;
   ranges?: boolean;
   [extra: string]: unknown;
 }

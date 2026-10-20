@@ -569,7 +569,7 @@ export function FieldDef({
             <select
               aria-label="Show"
               value={typeof options.place === "string" && PLACES[f.type].includes(options.place as never) ? options.place : ""}
-              onChange={(e) => setOptions({ ...options, place: e.target.value || undefined })}
+              onChange={(e) => setOptions({ ...options, place: e.target.value || undefined, inBox: e.target.value && e.target.value !== "beside" ? options.inBox : undefined })}
             >
               <option value="">In the box</option>
               {PLACES[f.type].map((p) => (
@@ -579,6 +579,12 @@ export function FieldDef({
               ))}
             </select>
             <span className="muted">{options.place ? PLACE_HINTS[f.type === "image" ? "image" : "text"] : ""}</span>
+          </label>
+        )}
+        {PLACES[f.type] && (options.place === "above" || options.place === "below") && (
+          <label className="check">
+            <input type="checkbox" checked={!!options.inBox} onChange={(e) => setOptions({ ...options, inBox: e.target.checked })} />
+            <span>Also show it in the box, as a normal row</span>
           </label>
         )}
         {f.type === "date" && (

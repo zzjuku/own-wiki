@@ -95,6 +95,10 @@ describe("infoboxHtml", () => {
     expect(html.match(/infobox-label/g)?.length).toBe(1);
     // Only title-area fields: the box still shows.
     expect(infoboxHtml({ fields: [ib.fields[0]] }, ctx)).toContain("Example title");
+    // "Also in the box": shown in the title area and as a row.
+    const both = infoboxHtml({ fields: [f("Title", "text", "Example title", { options: { place: "above", inBox: true } })] }, ctx);
+    expect(both.match(/Example title/g)?.length).toBe(2);
+    expect(both).toContain("infobox-label");
     // A place the type can't have is ignored.
     expect(infoboxHtml({ fields: [f("Count", "number", 3, { options: { place: "above" } })] }, ctx)).toContain("infobox-label");
   });

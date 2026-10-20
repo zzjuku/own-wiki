@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PageWidthHandle } from "./PageWidthHandle";
 import { api, errorText, type Infobox, type Page, type Relations } from "./api";
 import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
 import { renderWithEmbeds, useEmbedEnv } from "./embeds";
@@ -113,6 +114,9 @@ export function PageView(props: Props) {
   }
 
   const wiki = useWiki();
+  // Pages created from this one (red links, infobox fields) start with its template.
+  const template = infobox?.template ?? null;
+  useEffect(() => wiki.noteTemplate(pageId, template), [wiki, pageId, template]);
   const links = useLinkContext(pageId);
   // How many pages link here (refreshed when pages change).
   const [linkingPages, setLinkingPages] = useState<number | null>(null);
@@ -314,6 +318,7 @@ export function PageView(props: Props) {
             <TocPanel toc={rendered.toc} scrollRef={readRef} storageKey={`ownwiki.tocFolded.${project}/${pageId}`} />
           )}
           <div className="read-column">
+            <PageWidthHandle />
             <div className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: boxHtml + rendered.html }} />
             {!wiki.settings.hideCategoryBox && <CategoryChips variant="box" values={categories} save={saveCategories} />}
           </div>
@@ -321,6 +326,7 @@ export function PageView(props: Props) {
       ) : (
         <div className="read-view empty-page">
           <div className="read-column">
+            <PageWidthHandle />
             <p className="empty">This page is empty. Click Edit to write.</p>
             {!wiki.settings.hideCategoryBox && <CategoryChips variant="box" values={categories} save={saveCategories} />}
           </div>

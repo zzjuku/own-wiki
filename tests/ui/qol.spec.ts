@@ -1,0 +1,117 @@
+// Small additions from the M9 checkpoint review: creating a missing page from
+// an infobox field, the open page's template suggested for new pages, Enter
+// for the next list entry, hiding the sidebar, dragging the page width.
+import { expect, test, type Page } from "@playwright/test";
+import type { Field } from "../../src/api";
+import { oneProject, openProject, storedPage } from "./fixtures";
+import { TEMPLATE } from "./fixtures-data";
+import type { MockPage } from "./mock/backend";
+
+const OTHER = { id: "template-b-z9y8", name: "Template B", fields: [{ key: "f-b", label: "Field B", type: "text" as const }] };
+const PAGE_A: MockPage = {
+  id: "Page A.md",
+  title: "Page A",
+  body: "Text with a [[Missing page]].",
+  infobox: {
+    template: TEMPLATE.id,
+    fields: [
+      { key: "f-lnk", label: "Linked page", type: "links", value: ["Page N"] },
+      { key: "f-ls", label: "Example list", type: "list", value: ["First"] },
+    ],
+  },
+};
+const data = () => oneProject([PAGE_A, { id: "Page B.md", title: "Page B" }], { templates: [TEMPLATE, OTHER], mainPage: "Page A" });
+const formRow = (page: Page, label: string) =>
+  page.locator(".infobox-form .ib-row").filter({ has: page.locator(".ib-label", { hasText: new RegExp(`^${label}$`) }) });
+const fieldValue = async (page: Page, id: string, label: string) =>
+  (await storedPage(page, id))?.infobox?.fields.find((f: Field) => f.label === label)?.value;
+
+test("a missing page in a Page link field can be created there, with this page's template", async ({ page }) => {
+  await openProject(page, data());
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("tab", { name: "Infobox" }).click();
+  const row = formRow(page, "Linked page");
+  await expect(row.locator(".missing-note")).toContainText("Page doesn't exist yet");
+  await row.getByRole("button", { name: "Create page…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Create page" });
+  await expect(dialog.getByLabel("Page title")).toHaveValue("Page N");
+  await expect(dialog.getByLabel("Template")).toHaveValue(TEMPLATE.id);
+  await expect(dialog).toContainText("You stay on this page.");
+  await dialog.getByRole("button", { name: "Create" }).click();
+  await expect(dialog).toBeHidden();
+  expect((await storedPage(page, "Page N.md")).infobox.template).toBe(TEMPLATE.id);
+  // Still editing Page A's infobox; the name is no longer red.
+  await expect(page.getByRole("tab", { name: "Infobox" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Page A", level: 1 })).toBeVisible();
+  await expect(row.locator(".missing-note")).toHaveCount(0);
+  await expect(page.locator(".split-preview .infobox a", { hasText: "Page N" })).not.toHaveClass(/\bnew\b/);
+});
+
+test("a red link suggests the template of the page it's on, and waits for Create", async ({ page }) => {
+  await openProject(page, data());
+  await page.locator(".read-view .markdown a.new", { hasText: "Missing page" }).click();
+  const dialog = page.getByRole("dialog", { name: "Create page" });
+  await expect(dialog.getByLabel("Template")).toHaveValue(TEMPLATE.id);
+  // Not created yet; the template can still be changed.
+  expect(await storedPage(page, "Missing page.md")).toBeNull();
+  await dialog.getByLabel("Template").selectOption(OTHER.id);
+  await dialog.getByRole("button", { name: "Create" }).click();
+  await expect.poll(async () => (await storedPage(page, "Missing page.md"))?.infobox?.template).toBe(OTHER.id);
+});
+
+test("Enter in a list entry starts the next entry", async ({ page }) => {
+  await openProject(page, data());
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("tab", { name: "Infobox" }).click();
+  const list = formRow(page, "Example list");
+  await list.locator(".cm-content").first().click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Second");
+  await expect.poll(() => fieldValue(page, "Page A.md", "Example list")).toEqual(["First", "Second"]);
+  // Enter on an empty entry doesn't add another one.
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(list.locator(".ib-list-item")).toHaveCount(3);
+
+  const links = formRow(page, "Linked page");
+  await links.getByRole("textbox").first().press("Escape");
+  await links.getByRole("textbox").first().press("Enter");
+  await expect(links.locator(".ib-list-item")).toHaveCount(2);
+  await expect(links.getByRole("textbox").nth(1)).toBeFocused();
+  await page.keyboard.type("Page B");
+  await expect.poll(() => fieldValue(page, "Page A.md", "Linked page")).toEqual(["Page N", "Page B"]);
+});
+
+test("the sidebar can be hidden and shown again; remembered on this computer", async ({ page }) => {
+  await openProject(page, data());
+  await page.getByRole("button", { name: "Hide the sidebar" }).click();
+  await expect(page.locator(".sidebar")).toBeHidden();
+  await page.screenshot({ path: "test-results/qol-sidebar-hidden.png" });
+  await page.reload();
+  await page.getByText("Project A", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Show the sidebar" })).toBeVisible();
+  await expect(page.locator(".sidebar")).toBeHidden();
+  await page.getByRole("button", { name: "Show the sidebar" }).click();
+  await expect(page.locator(".sidebar")).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+Backslash");
+  await expect(page.locator(".sidebar")).toBeHidden();
+});
+
+test("dragging the page edge sets the page width; double-click goes back to the theme's", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await openProject(page, data());
+  const column = page.locator(".read-view > .read-column");
+  const before = (await column.boundingBox())!.width;
+  const handle = page.getByRole("separator", { name: "Page width" });
+  const h = (await handle.boundingBox())!;
+  await page.mouse.move(h.x + h.width / 2, h.y + 40);
+  await page.mouse.down();
+  await page.mouse.move(h.x + h.width / 2 - 300, h.y + 40, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await column.boundingBox())!.width).toBeLessThan(before - 250);
+  expect(await page.evaluate(() => localStorage.getItem("ownwiki.pageWidth"))).not.toBeNull();
+  await handle.dblclick();
+  await expect.poll(async () => (await column.boundingBox())!.width).toBeCloseTo(before, 0);
+  expect(await page.evaluate(() => localStorage.getItem("ownwiki.pageWidth"))).toBeNull();
+});

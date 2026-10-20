@@ -130,7 +130,7 @@ export const MAIN_SETTINGS: { title: string; settings: Setting[] }[] = [
       { name: "--infobox-title-size", label: "Infobox title size", type: size(100, 180, 5, "%") },
       { name: "--infobox-width", label: "Infobox width", type: size(16, 32, 0.5, "em") },
       { name: "--infobox-row-space", label: "Infobox row spacing", type: size(0, 1, 0.02, "em") },
-      { name: "--page-width", label: "Page width", hint: "Widest the page text gets, infobox included", type: px(700, 2000, 10) },
+      { name: "--page-width", label: "Page width", hint: "Widest the page text gets, infobox included. Dragging a page's right edge overrides it on this computer (double-click the edge to undo).", type: px(700, 2000, 10) },
     ],
   },
 ];

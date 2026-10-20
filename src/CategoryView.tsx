@@ -2,6 +2,7 @@
 // written with the normal editor), its subcategories, and its pages under
 // letter headings. Also the list of all categories (sidebar → Categories).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PageWidthHandle } from "./PageWidthHandle";
 import { NO_RELATIONS } from "./relations";
 import { api, errorText, type CategoryChange, type CategoryPage } from "./api";
 import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
@@ -245,6 +246,7 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted }
       ) : (
         <div className="read-view" ref={readRef} onClickCapture={revealOne}>
           <div className="read-column">
+            <PageWidthHandle />
             <div className="markdown category-body" onClick={onContentClick}>
               {!data.exists && (
                 <p className="notice">

@@ -19,11 +19,17 @@ export function PageNameInput({
   onChange,
   label,
   autoFocus,
+  fromPage,
+  onEnter,
 }: {
   value: string;
   onChange: (name: string) => void;
   label: string;
   autoFocus?: boolean;
+  /** The page being edited: a missing page can then be created from here (staying on it). */
+  fromPage?: string;
+  /** Enter while no suggestion list is open (e.g. start the next entry). */
+  onEnter?: () => void;
 }) {
   const wiki = useWiki();
   const [text, setText] = useState(value);
@@ -56,7 +62,13 @@ export function PageNameInput({
         }}
         onBlur={() => setTimeout(() => setSuggest(false), 150)}
         onKeyDown={(e) => {
-          if (!suggestions.length) return;
+          if (!suggestions.length) {
+            if (e.key === "Enter" && onEnter) {
+              e.preventDefault();
+              onEnter();
+            }
+            return;
+          }
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
             setActive((a) => (a + (e.key === "ArrowDown" ? 1 : -1) + suggestions.length) % suggestions.length);
@@ -91,48 +103,72 @@ export function PageNameInput({
           ))}
         </ul>
       )}
-      {missing && !suggestions.length && <span className="ib-note missing-note">Page doesn't exist yet (red link)</span>}
+      {missing && !suggestions.length && (
+        <span className="ib-note missing-note">
+          Page doesn't exist yet (red link)
+          {fromPage !== undefined && (
+            <button
+              type="button"
+              className="plain create-missing"
+              onClick={() => wiki.createFromLink(text.trim(), fromPage, { stay: true, onCreated: (p) => set(p.title) })}
+            >
+              Create page…
+            </button>
+          )}
+        </span>
+      )}
     </div>
   );
 }
 
-/** Several page names (Page links fields). */
-export function PageLinksInput({ value, onChange, label }: { value: string[]; onChange: (v: unknown) => void; label: string }) {
-  const [items, setItems] = useState<string[]>(value.length ? value : [""]);
-  const [focusLast, setFocusLast] = useState(false);
-  const update = (next: string[]) => {
-    setItems(next);
-    onChange(next);
+/** Rows of a list input (List and Page link fields) with stable keys, so a
+ * row inserted in the middle gets its own, focused input. An empty row stays
+ * while it's being typed. */
+export function useListRows(value: string[], onChange: (v: unknown) => void) {
+  const nextId = useRef(0);
+  const [rows, setRows] = useState(() => (value.length ? value : [""]).map((item) => ({ item, id: nextId.current++ })));
+  const [focus, setFocus] = useState<number | null>(null);
+  const update = (next: { item: string; id: number }[], save = true) => {
+    setRows(next);
+    if (save) onChange(next.map((r) => r.item));
   };
+  /** A new empty row after row `i`, focused. */
+  const insert = (i: number) => {
+    const id = nextId.current++;
+    update([...rows.slice(0, i + 1), { item: "", id }, ...rows.slice(i + 1)], false);
+    setFocus(id);
+  };
+  return {
+    rows: rows.map((r) => ({ ...r, focus: r.id === focus })),
+    set: (i: number, item: string) => update(rows.map((r, j) => (j === i ? { ...r, item } : r))),
+    remove: (i: number) => update(rows.length > 1 ? rows.filter((_, j) => j !== i) : [{ item: "", id: rows[0].id }]),
+    add: () => insert(rows.length - 1),
+    /** Enter in row `i`: the next row starts (not after an empty one). */
+    enter: (i: number) => void (rows[i].item.trim() && insert(i)),
+  };
+}
+
+/** Several page names (Page links fields). */
+export function PageLinksInput({ value, onChange, label, fromPage }: { value: string[]; onChange: (v: unknown) => void; label: string; fromPage?: string }) {
+  const list = useListRows(value, onChange);
   return (
     <div className="ib-list">
-      {items.map((item, i) => (
-        <div key={i} className="ib-list-item">
+      {list.rows.map((r, i) => (
+        <div key={r.id} className="ib-list-item">
           <PageNameInput
             label={`${label} ${i + 1}`}
-            value={item}
-            autoFocus={focusLast && i === items.length - 1}
-            onChange={(t) => update(items.map((x, j) => (j === i ? t : x)))}
+            value={r.item}
+            autoFocus={r.focus}
+            fromPage={fromPage}
+            onEnter={() => list.enter(i)}
+            onChange={(t) => list.set(i, t)}
           />
-          <button
-            type="button"
-            className="plain remove"
-            title="Remove page"
-            aria-label="Remove page"
-            onClick={() => update(items.length > 1 ? items.filter((_, j) => j !== i) : [""])}
-          >
+          <button type="button" className="plain remove" title="Remove page" aria-label="Remove page" onClick={() => list.remove(i)}>
             ×
           </button>
         </div>
       ))}
-      <button
-        type="button"
-        className="plain add-entry"
-        onClick={() => {
-          setItems([...items, ""]);
-          setFocusLast(true);
-        }}
-      >
+      <button type="button" className="plain add-entry" onClick={() => list.add()}>
         + Add page
       </button>
     </div>

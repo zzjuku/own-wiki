@@ -48,6 +48,9 @@ export function titlePlace(f: Field): Place | null {
   return typeof p === "string" && (PLACES[f.type] ?? []).includes(p as Place) ? (p as Place) : null;
 }
 
+/** A field shown above or below the title that also keeps its row in the box. */
+export const alsoInBox = (f: Field) => titlePlace(f) !== "beside" && f.options?.inBox === true;
+
 /** A new field's starting label. */
 export const newFieldLabel = (k: string) => (k === "heading" ? "New section" : k === "divider" ? "" : "New field");
 
@@ -416,7 +419,7 @@ export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): st
   const rows: { html: string; heading?: boolean; divider?: boolean }[] = [];
   const title = titleArea(ib, ctx);
   for (const f of ib.fields) {
-    if (titlePlace(f)) continue;
+    if (titlePlace(f) && !alsoInBox(f)) continue;
     if (f.type === "heading") {
       rows.push({ heading: true, html: `<tr><th colspan="2" class="infobox-heading">${escapeHtml(f.label)}</th></tr>` });
       continue;

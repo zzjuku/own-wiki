@@ -21,7 +21,7 @@ import {
   type ImageValue,
 } from "./infobox";
 import { frameFor, useWiki } from "./wiki";
-import { DateInput, ImageFrameContext, ImageInput, PageLinksInput, PageNameInput } from "./FieldInputs";
+import { DateInput, ImageFrameContext, ImageInput, PageLinksInput, PageNameInput, useListRows } from "./FieldInputs";
 import { MiniEditor } from "./MiniEditor";
 import { FieldDef } from "./TemplatesView";
 import { Icon } from "./editorTheme";
@@ -434,14 +434,14 @@ function ValueInput({ rel, field: f, onChange }: { rel: RelationProps; field: Fi
     case "link":
       return (
         <>
-          <PageNameInput label={f.label} value={typeof v === "string" ? v : ""} onChange={onChange} />
+          <PageNameInput label={f.label} value={typeof v === "string" ? v : ""} fromPage={pageId} onChange={onChange} />
           <TwoWayExtras {...rel} field={f} />
         </>
       );
     case "links":
       return (
         <>
-          <PageLinksInput label={f.label} value={Array.isArray(v) ? (v as string[]) : []} onChange={onChange} />
+          <PageLinksInput label={f.label} value={Array.isArray(v) ? (v as string[]) : []} fromPage={pageId} onChange={onChange} />
           <TwoWayExtras {...rel} field={f} />
         </>
       );
@@ -479,29 +479,25 @@ function NumberInput({ label, value, onChange }: { label: string; value: number 
 }
 
 function ListInput({ pageId, label, value, onChange }: { pageId: string; label: string; value: string[]; onChange: (v: unknown) => void }) {
-  // Entries are edited in place; an empty entry stays while it's being typed.
-  const [items, setItems] = useState<string[]>(value.length ? value : [""]);
-  const update = (next: string[]) => {
-    setItems(next);
-    onChange(next);
-  };
+  const list = useListRows(value, onChange);
   return (
     <div className="ib-list">
-      {items.map((item, i) => (
-        <div key={i} className="ib-list-item">
-          <MiniEditor pageId={pageId} label={`${label} ${i + 1}`} value={item} onChange={(t) => update(items.map((x, j) => (j === i ? t : x)))} />
-          <button
-            type="button"
-            className="plain remove"
-            title="Remove entry"
-            aria-label="Remove entry"
-            onClick={() => update(items.length > 1 ? items.filter((_, j) => j !== i) : [""])}
-          >
+      {list.rows.map((r, i) => (
+        <div key={r.id} className="ib-list-item">
+          <MiniEditor
+            pageId={pageId}
+            label={`${label} ${i + 1}`}
+            value={r.item}
+            autoFocus={r.focus}
+            onEnter={() => list.enter(i)}
+            onChange={(t) => list.set(i, t)}
+          />
+          <button type="button" className="plain remove" title="Remove entry" aria-label="Remove entry" onClick={() => list.remove(i)}>
             ×
           </button>
         </div>
       ))}
-      <button type="button" className="plain add-entry" onClick={() => setItems([...items, ""])}>
+      <button type="button" className="plain add-entry" onClick={() => list.add()}>
         + Add entry
       </button>
     </div>

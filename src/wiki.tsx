@@ -17,13 +17,22 @@ export interface FollowTarget {
   via?: string | null;
 }
 
+export interface CreateOptions {
+  /** Don't open the new page: stay where you are. */
+  stay?: boolean;
+  /** Called with the created page (its title may differ from the one suggested). */
+  onCreated?: (page: PageInfo) => void;
+}
+
 export interface Wiki {
   project: string;
   names: NameIndex;
   /** Opens another page (recorded for back/forward). */
   follow: (target: FollowTarget) => void;
-  /** A red link was clicked: offer to create the page. `fromPage` decides the suggested group. */
-  createFromLink: (title: string, fromPage?: string) => void;
+  /** A red link was clicked: offer to create the page. `fromPage` decides the suggested group and template. */
+  createFromLink: (title: string, fromPage?: string, opts?: CreateOptions) => void;
+  /** An open page tells which template its infobox uses (suggested for pages created from it). */
+  noteTemplate: (pageId: string, template: string | null) => void;
   /** Creates a page (without opening it) and re-reads the page list. */
   createPage: (title: string, group: string, template: string | null, allowLong: boolean) => Promise<PageInfo>;
   /** Every group, in sidebar order, for group drop-downs ("" = top level). */
