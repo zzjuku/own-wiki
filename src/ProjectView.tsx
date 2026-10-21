@@ -11,9 +11,12 @@ import { useReportError } from "./notify";
 import { PageView, type Arrival } from "./PageView";
 import { catKey, GRAPH_KEY, HISTORY_LIMIT, historyKey, keyCategory, keySearch, SEARCH_KEY, type History } from "./history";
 import { GraphView, isGraphKey } from "./graph/GraphView";
+import { LocalGraph } from "./graph/LocalGraph";
+import { useLocalPrefs } from "./graph/prefs";
 import { usePageActions } from "./pageActions";
 import { ConflictsView } from "./ConflictsView";
 import { useProjectSync } from "./projectSync";
+import { useExpanded } from "./expanded";
 import { norm } from "./wikilinks";
 import { isSearchKey, NO_SEARCH, SearchView, type SearchState } from "./SearchView";
 import { IS_MAC, isQuickOpenKey, QuickOpen } from "./QuickOpen";
@@ -46,26 +49,6 @@ interface Props {
 }
 
 
-// Which groups are open is remembered on this computer only (not synced).
-const expandedKey = (project: string) => `ownwiki.expanded.${project}`;
-
-function loadExpanded(project: string): Set<string> {
-  try {
-    const raw = localStorage.getItem(expandedKey(project));
-    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveExpanded(project: string, ids: Set<string>) {
-  try {
-    localStorage.setItem(expandedKey(project), JSON.stringify([...ids]));
-  } catch {
-    // Not being able to remember open groups is harmless.
-  }
-}
-
 function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
@@ -74,7 +57,7 @@ export function ProjectView({ project, onBack }: Props) {
   const dialogs = useDialogs();
   const report = useReportError();
   const [tree, setTree] = useState<Tree | null>(null);
-  const [expanded, setExpandedState] = useState(() => loadExpanded(project.id));
+  const { expanded, setExpanded, toggle } = useExpanded(project.id);
   const [selected, setSelected] = useState<string | null>(null);
   // A clicked group (or ROOT after clicking the project name). null = follow
   // the open page: new pages then go into that page's group.
@@ -92,6 +75,9 @@ export function ProjectView({ project, onBack }: Props) {
   const [search, setSearch] = useState<SearchState>(NO_SEARCH);
   // Bumped to put the focus into the Search screen's box.
   const [searchFocus, setSearchFocus] = useState(0);
+  // "Open in Graph" from the local graph: the page the Graph screen opens centred on.
+  const [graphFocus, setGraphFocus] = useState<{ id: string; key: number } | null>(null);
+  const [localGraph] = useLocalPrefs();
   const [imageFrame, setImageFrameState] = useState<Frame>(DEFAULT_FRAME);
   const [settings, setSettings] = useState<ProjectSettings>({ hideCategoryBox: false });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -149,16 +135,6 @@ export function ProjectView({ project, onBack }: Props) {
   const rows = useMemo(() => visibleRows(index, expanded), [index, expanded]);
   const names = useMemo(() => new NameIndex(index.pages.values()), [index]);
   const mainPage = tree?.mainPage ? names.resolve(tree.mainPage)?.page : undefined;
-
-  const setExpanded = useCallback(
-    (update: (prev: Set<string>) => Set<string>) =>
-      setExpandedState((prev) => {
-        const next = update(prev);
-        saveExpanded(project.id, next);
-        return next;
-      }),
-    [project.id],
-  );
 
   /** Re-reads the tree. `after` runs in the same render, so a changed
    * selection never points at a page the tree doesn't have yet. */
@@ -344,8 +320,9 @@ export function ProjectView({ project, onBack }: Props) {
   const openSearchRef = useRef(openSearch);
   openSearchRef.current = openSearch;
 
-  /** The Graph screen (Cmd+Alt+G, the sidebar's graph button). */
-  async function openGraph({ record = true }: { record?: boolean } = {}) {
+  /** The Graph screen (Cmd+Alt+G, the sidebar's graph button); `focus`: centred on that page. */
+  async function openGraph({ record = true, focus = null }: { record?: boolean; focus?: string | null } = {}) {
+    setGraphFocus(focus ? { id: focus, key: Date.now() } : null);
     if (panel === "graph") return;
     if (record) remember(GRAPH_KEY);
     await openPanel("graph");
@@ -426,15 +403,6 @@ export function ProjectView({ project, onBack }: Props) {
     // Only once, when the tree first arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tree]);
-
-  function toggle(group: string, open: boolean) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (open) next.add(group);
-      else next.delete(group);
-      return next;
-    });
-  }
 
   /** After a group was renamed or moved, keep its open state and the selection. */
   function remapGroup(from: string, to: string) {
@@ -735,7 +703,13 @@ export function ProjectView({ project, onBack }: Props) {
             }
           />
         ) : panel === "graph" ? (
-          <GraphView revealAll={revealAll} dataKey={tree} onOpenPage={(id) => void openPage(id)} />
+          <GraphView
+            key={graphFocus?.key ?? 0}
+            revealAll={revealAll}
+            focusPage={graphFocus}
+            onOpenPage={(id) => void openPage(id)}
+            changeSettings={changeSettings}
+          />
         ) : panel === "conflicts" ? (
           <ConflictsView onResolved={conflictResolved} />
         ) : panel === "relations" ? (
@@ -755,6 +729,7 @@ export function ProjectView({ project, onBack }: Props) {
             openPage={(id) => void openPage(id)}
           />
         ) : selected && (selectedExists || deletedOpen === selected) ? (
+          <div className="page-with-graph">
           <PageView
             key={`${selected}\n${pageVersion}`}
             project={project.id}
@@ -782,6 +757,15 @@ export function ProjectView({ project, onBack }: Props) {
               void reload();
             }}
           />
+          {localGraph.open && selectedExists && (
+            <LocalGraph
+              pageId={selected}
+              revealAll={revealAll}
+              onOpenPage={(id) => void openPage(id)}
+              onOpenInGraph={(id) => void openGraph({ focus: id })}
+            />
+          )}
+          </div>
         ) : (
           <p className="empty center">
             {index.pages.size ? "Select a page on the left." : "Create a page to get started."}

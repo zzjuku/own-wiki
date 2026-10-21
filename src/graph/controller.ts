@@ -9,6 +9,7 @@ import Graph from "graphology";
 import Sigma from "sigma";
 import { EdgeArrowProgram, EdgeDoubleArrowProgram, EdgeRectangleProgram } from "sigma/rendering";
 import type { CameraState } from "sigma/types";
+import { toRgba } from "./colors";
 import { NodeGlowProgram } from "./glow";
 import { edgeLabel, type Model, type ModelEdge, type ModelNode } from "./model";
 import { LINK_DISTANCE, Physics } from "./physics";
@@ -112,6 +113,8 @@ export class GraphController {
   private everSettled = false;
   /** Show the whole graph once a new layout has settled. */
   private fitWhenSettled = false;
+  /** Show the whole graph after a change if some of it has gone out of view. */
+  private fitIfOutside = false;
   private onVisibility = () => this.physics.pause(document.hidden);
 
   constructor(container: HTMLElement, colors: GraphColors, private events: ControllerEvents) {
@@ -183,9 +186,25 @@ export class GraphController {
     this.sigma.refresh({ skipIndexation: true });
   }
 
+  /** Rule colours as sigma reads them (rgba), by the colour as written. */
+  private ruleColors = new Map<string, string>();
+
   private kindColor(n: ModelNode): string {
     const c = this.colors;
+    if (n.color) {
+      let rgba = this.ruleColors.get(n.color);
+      if (!rgba) this.ruleColors.set(n.color, (rgba = toRgba(n.color)));
+      return rgba;
+    }
     return n.kind === "missing" ? c.missing : n.kind === "category" ? c.category : n.kind === "group" ? c.group : c.node;
+  }
+
+  /** The local graph's page: always highlighted. */
+  private center: string | null = null;
+
+  setCenter(key: string | null) {
+    this.center = key;
+    this.sigma.refresh({ skipIndexation: true });
   }
 
   private nodeLook(key: string, a: NodeAttrs) {
@@ -197,6 +216,7 @@ export class GraphController {
       // The rest steps back: paler and a little smaller, names gone.
       return { ...base, size: a.size * (1 - 0.25 * f), color: mix(base.color, this.colors.faded, f), label: f > 0.3 ? "" : a.label, zIndex: 0 };
     }
+    if (key === this.center) return { ...base, size: a.size * 1.4, color: this.colors.active, forceLabel: true, zIndex: 3 };
     if (this.marked.has(key)) return { ...base, color: this.colors.active, forceLabel: true, zIndex: 2 };
     if (key === this.dragged) return { ...base, forceLabel: true, zIndex: 2 };
     return { ...base, zIndex: 1 };
@@ -266,13 +286,20 @@ export class GraphController {
   /**
    * Shows `model`. Nodes already shown keep their place; others take their
    * remembered place from `saved`, else start next to their neighbours (or
-   * anywhere, the first time). Then the physics settles them in.
+   * anywhere, the first time). Then the physics settles them in. False:
+   * nothing to move (only names, sizes or colours changed).
    */
-  setModel(model: Model, saved: SavedLayout | null) {
+  setModel(model: Model, saved: SavedLayout | null): boolean {
     const g = this.graph;
+    // Showing all of it now: keep showing all of it once the change has settled.
+    const allShown = g.order > 0 && this.allInView();
     const wanted = new Set(model.nodes.map((n) => n.key));
+    const before = g.size;
+    let changed = false;
     g.forEachNode((key) => {
-      if (!wanted.has(key)) g.dropNode(key);
+      if (wanted.has(key)) return;
+      g.dropNode(key);
+      changed = true;
     });
     const fresh: string[] = [];
     let known = 0;
@@ -285,23 +312,37 @@ export class GraphController {
       }
       const p = saved?.positions[n.key];
       g.addNode(n.key, { x: p ? p[0] : 0, y: p ? p[1] : 0, size, label: n.label, node: n });
+      changed = true;
       if (p) known++;
       else fresh.push(n.key);
     }
     const edges = new Set(model.edges.map((e) => e.key));
     g.forEachEdge((key) => {
-      if (!edges.has(key)) g.dropEdge(key);
+      if (edges.has(key)) return;
+      g.dropEdge(key);
+      changed = true;
     });
     for (const e of model.edges) {
       const size = e.kind === "link" ? 0.9 : 0.6;
       if (g.hasEdge(e.key)) g.mergeEdgeAttributes(e.key, { edge: e, size });
-      else if (!g.hasEdge(e.source, e.target)) g.addEdgeWithKey(e.key, e.source, e.target, { edge: e, size });
+      else if (!g.hasEdge(e.source, e.target)) {
+        g.addEdgeWithKey(e.key, e.source, e.target, { edge: e, size });
+        changed = true;
+      }
+    }
+    // Only names, sizes or colours changed: no need to stir the graph.
+    if (!changed && g.size === before && g.order) {
+      this.sigma.refresh();
+      return false;
     }
     if (!known) this.scatter(g.nodes());
     else this.placeNear(fresh);
     this.fitWhenSettled = !known;
+    // (Several changes in a row: what counts is the view before the first of them.)
+    this.fitIfOutside ||= allShown;
     // Nothing new: only a little settling. New pages: more. Everything new: a whole layout.
     this.startPhysics(!known ? 1 : fresh.length ? 0.3 : 0.08);
+    return true;
   }
 
   /** Lays everything out anew. */
@@ -382,8 +423,9 @@ export class GraphController {
     g.updateEachNodeAttributes((_, a) => a, { attributes: ["x", "y"] });
     if (settled) {
       // A new layout ends with a smooth move to show all of it.
-      if (!this.everSettled && this.fitWhenSettled) void this.fitNodes(700);
+      if (this.fitWhenSettled || (this.fitIfOutside && !this.allInView())) void this.fitNodes(700);
       this.fitWhenSettled = false;
+      this.fitIfOutside = false;
       this.everSettled = true;
       this.save();
     }
@@ -446,6 +488,25 @@ export class GraphController {
     this.measure();
   }
 
+  /** Moves the view to show every node once the graph has settled (the local graph, after each change). */
+  fitSoon() {
+    this.fitWhenSettled = true;
+  }
+
+  /** Every node is on screen. */
+  private allInView(): boolean {
+    const { width, height } = this.sigma.getDimensions();
+    let inside = true;
+    this.graph.forEachNode((key) => {
+      if (!inside) return;
+      const d = this.sigma.getNodeDisplayData(key);
+      if (!d) return;
+      const p = this.sigma.framedGraphToViewport(d);
+      if (p.x < 0 || p.y < 0 || p.x > width || p.y > height) inside = false;
+    });
+    return inside;
+  }
+
   /** Moves the view so every node shows. */
   private fitNodes(duration: number) {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -460,6 +521,13 @@ export class GraphController {
     if (!Number.isFinite(minX)) return;
     const ratio = Math.min(Math.max(Math.max(maxX - minX, maxY - minY) * 1.15, 0.15), 1.5);
     return this.sigma.getCamera().animate({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, ratio, angle: 0 }, { duration });
+  }
+
+  /** The box changed size. */
+  resized() {
+    this.sigma.resize();
+    this.sigma.refresh({ skipIndexation: true });
+    this.measure();
   }
 
   /** Moves the view to a node (search). */

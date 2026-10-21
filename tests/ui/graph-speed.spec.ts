@@ -104,6 +104,38 @@ test("5,000 pages, 25,000 links", async ({ page }) => {
   await page.screenshot({ path: "test-results/graph-speed.png" });
 
   console.log(JSON.stringify({ reopenMs: again, relayout }));
+
+  // The local graph beside a page: how fast it opens, and whether saves make it stutter.
+  await page.keyboard.press("ControlOrMeta+o");
+  await page.keyboard.type("Page 17");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".page-head h1")).toHaveText("Page 17");
+  const t2 = Date.now();
+  await page.getByRole("button", { name: "Local graph", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__localGraph?.graph.order ?? 0), { intervals: [10] }).toBeGreaterThan(1);
+  const localMs = Date.now() - t2;
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("ControlOrMeta+End");
+  const before = await page.evaluate(() => window.__localGraph!.graph.order);
+  await page.evaluate(() => {
+    (window as any).__frames = [];
+    let last = performance.now();
+    const tick = (t: number) => {
+      (window as any).__frames.push(t - last);
+      last = t;
+      if ((window as any).__frames.length < 240) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  // A save without new links, then one with a new link.
+  await page.keyboard.type(" more words");
+  await page.waitForTimeout(1500);
+  await page.keyboard.type(" [[Page 4321]]");
+  await expect.poll(() => page.evaluate(() => window.__localGraph!.graph.order), { timeout: 10000 }).toBeGreaterThan(before);
+  await page.waitForTimeout(500);
+  const saveFrames: number[] = await page.evaluate(() => (window as any).__frames.slice(5));
+  console.log(JSON.stringify({ localOpenMs: localMs, worstFrameWhileSavingMs: Math.max(...saveFrames) }));
   expect(shown).toBeLessThan(2500);
   expect(again).toBeLessThan(1000);
   expect(relayout).toBe(false);

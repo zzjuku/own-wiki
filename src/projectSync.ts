@@ -2,7 +2,7 @@
 // and keep this computer's "open here" marker fresh (removed on close), so
 // the other computer warns before opening it too.
 import { useEffect } from "react";
-import { api, type FilesChanged } from "./api";
+import { api, notifyIndexChanged, type FilesChanged } from "./api";
 import { useFilesChanged } from "./fileEvents";
 import { loadPageEdge } from "./layoutPrefs";
 
@@ -24,5 +24,8 @@ export function useProjectSync(project: string, onChange: (c: FilesChanged) => v
       void api.markClosed(project).catch(() => {});
     };
   }, [project]);
-  useFilesChanged(project, onChange);
+  useFilesChanged(project, (c) => {
+    notifyIndexChanged();
+    onChange(c);
+  });
 }

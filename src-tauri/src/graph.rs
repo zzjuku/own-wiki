@@ -150,6 +150,26 @@ pub fn graph(idx: &ProjectIndex) -> GraphData {
     GraphData { pages, missing, links: lines.into_values().collect() }
 }
 
+/// The graph, or only its fingerprint when the window already has it.
+#[derive(Debug, Serialize)]
+pub struct GraphReply {
+    pub hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<GraphData>,
+}
+
+/// The graph of the project; `known`: the fingerprint the window has (then
+/// the data is left out if nothing changed, e.g. a save that changed no link).
+pub fn reply(idx: &ProjectIndex, known: Option<&str>) -> GraphReply {
+    use std::hash::{Hash, Hasher};
+    let data = graph(idx);
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_vec(&data).unwrap_or_default().hash(&mut h);
+    let hash = format!("{:016x}", h.finish());
+    let data = (known != Some(hash.as_str())).then_some(data);
+    GraphReply { hash, data }
+}
+
 /// The remembered node positions (whatever the window stored), if any.
 pub fn layout(project_dir: &Path) -> Option<serde_json::Value> {
     let text = fs::read_to_string(crate::projects::cache_dir(project_dir).join(LAYOUT_FILE)).ok()?;
@@ -234,6 +254,16 @@ mod tests {
         assert_eq!(g.missing, vec!["Missing X".to_string()]);
         assert_eq!(g.links.len(), 2);
         assert!(g.links.iter().all(|l| l.b == 2 && l.ab && !l.ba));
+    }
+
+    #[test]
+    fn reply_leaves_out_unchanged_data() {
+        let (_lib, idx) = setup(&[("Page A.md", "[[Page B]]\n"), ("Page B.md", "x\n")]);
+        let first = reply(&idx, None);
+        assert!(first.data.is_some());
+        let again = reply(&idx, Some(&first.hash));
+        assert_eq!(again.hash, first.hash);
+        assert!(again.data.is_none());
     }
 
     #[test]

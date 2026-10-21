@@ -64,6 +64,9 @@ struct ProjectFile {
     /// The story's "today", which ages are counted to (a date: year, month, day, era).
     #[serde(rename = "presentDay", default, skip_serializing_if = "Option::is_none")]
     present_day: Option<serde_json::Value>,
+    /// The graph's colour rules (M11): `{kind: template|group|category, value, color}`, first match wins.
+    #[serde(rename = "graphColors", default, skip_serializing_if = "Vec::is_empty")]
+    graph_colors: Vec<serde_json::Value>,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -151,6 +154,9 @@ pub struct ProjectSettings {
     /// See [`ProjectFile::present_day`].
     #[serde(default)]
     pub present_day: Option<serde_json::Value>,
+    /// See [`ProjectFile::graph_colors`].
+    #[serde(default)]
+    pub graph_colors: Vec<serde_json::Value>,
     /// project.json's version when read; saving sends it back (not stored).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
@@ -159,7 +165,13 @@ pub struct ProjectSettings {
 pub fn settings(dir: &Path) -> AppResult<ProjectSettings> {
     let version = file_version(&dir.join(PROJECT_FILE));
     let file = read_project_file(dir)?;
-    Ok(ProjectSettings { hide_category_box: file.hide_category_box, theme: file.theme, present_day: file.present_day, version })
+    Ok(ProjectSettings {
+        hide_category_box: file.hide_category_box,
+        theme: file.theme,
+        present_day: file.present_day,
+        graph_colors: file.graph_colors,
+        version,
+    })
 }
 
 pub fn set_settings(dir: &Path, s: &ProjectSettings) -> AppResult<()> {
@@ -168,6 +180,7 @@ pub fn set_settings(dir: &Path, s: &ProjectSettings) -> AppResult<()> {
     file.hide_category_box = s.hide_category_box;
     file.theme = s.theme.clone().filter(|t| !t.trim().is_empty());
     file.present_day = s.present_day.clone().filter(|d| !crate::infobox::is_empty_value(d));
+    file.graph_colors = s.graph_colors.clone();
     write_project_file(dir, &file)
 }
 
@@ -272,6 +285,7 @@ pub fn create_project(library: &Path, name: &str) -> AppResult<ProjectInfo> {
             hide_category_box: false,
             theme: None,
             present_day: None,
+            graph_colors: Vec::new(),
             extra: Default::default(),
         },
     )?;
@@ -335,13 +349,26 @@ mod tests {
         let dir = lib.path().join("Project A");
         assert!(!settings(&dir).unwrap().hide_category_box);
         let today = serde_json::json!({ "year": 300, "era": "AC" });
-        set_settings(&dir, &ProjectSettings { hide_category_box: true, theme: Some("project:Theme A".into()), present_day: Some(today.clone()), version: None }).unwrap();
+        let rules = vec![serde_json::json!({ "kind": "template", "value": "template-a", "color": "#aa3355", "extra": 1 })];
+        set_settings(
+            &dir,
+            &ProjectSettings {
+                hide_category_box: true,
+                theme: Some("project:Theme A".into()),
+                present_day: Some(today.clone()),
+                graph_colors: rules.clone(),
+                version: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(settings(&dir).unwrap().graph_colors, rules);
         assert!(settings(&dir).unwrap().hide_category_box);
         assert_eq!(settings(&dir).unwrap().present_day, Some(today));
         assert_eq!(settings(&dir).unwrap().theme.as_deref(), Some("project:Theme A"));
         let json = fs::read_to_string(dir.join(PROJECT_FILE)).unwrap();
         assert!(json.contains("\"hideCategoryBox\": true") && json.contains("\"theme\": \"project:Theme A\""));
-        set_settings(&dir, &ProjectSettings { hide_category_box: false, theme: None, present_day: None, version: None }).unwrap();
+        set_settings(&dir, &ProjectSettings { hide_category_box: false, theme: None, present_day: None, graph_colors: Vec::new(), version: None }).unwrap();
+        assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("graphColors"));
         assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("theme"));
         assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("presentDay"));
         // The app's themes folder name is not available for projects.

@@ -22,6 +22,8 @@ export const BUILTIN_THEMES: { id: string; data: ThemeData }[] = [
     data: {
       name: "Parchment",
       vars: {
+        "--graph-category": "#a86a24",
+        "--graph-group": "#5d7a3a",
         "--bg": "#f4ecd8",
         "--sidebar-bg": "#ebdfc2",
         "--text": "#3b2f20",
@@ -58,6 +60,8 @@ export const BUILTIN_THEMES: { id: string; data: ThemeData }[] = [
         { family: "Uncial Antiqua", file: "UncialAntiqua-Regular.ttf", weight: "400", style: "normal", url: uncialUrl },
       ],
       vars: {
+        "--graph-category": "#b07a1e",
+        "--graph-group": "#4d7a5a",
         "--sidebar-bg": "#f8f5ee",
         "--accent": "#8f5c14",
         "--tooltip-bg": "#3b3127",
@@ -113,6 +117,8 @@ export const BUILTIN_THEMES: { id: string; data: ThemeData }[] = [
       // the title, corner brackets instead of ornaments.
       fonts: [{ family: "Jost", file: "Jost-Variable.ttf", weight: "100 900", style: "normal", url: jostUrl }],
       vars: {
+        "--graph-category": "#b8862e",
+        "--graph-group": "#3f7f74",
         "--sidebar-bg": "#f2f4f6",
         "--accent": "#3a6b85",
         "--tooltip-bg": "#1f262d",
@@ -173,6 +179,8 @@ export const BUILTIN_THEMES: { id: string; data: ThemeData }[] = [
         { family: "EB Garamond", file: "EBGaramond-Italic-Variable.ttf", weight: "400 800", style: "italic", url: garamondItalicUrl },
       ],
       vars: {
+        "--graph-category": "#a5741f",
+        "--graph-group": "#4f6f4a",
         "--bg": "#fcfbf7",
         "--sidebar-bg": "#f3efe6",
         "--text": "#1e1b16",
@@ -221,6 +229,8 @@ export const BUILTIN_THEMES: { id: string; data: ThemeData }[] = [
       // shadows, indigo bars beside headings and quotes.
       fonts: [{ family: "Inter", file: "Inter-Variable.ttf", weight: "100 900", style: "normal", url: interUrl }],
       vars: {
+        "--graph-category": "#bf8700",
+        "--graph-group": "#2f8a5b",
         "--sidebar-bg": "#f4f5f7",
         "--text": "#1f2328",
         "--accent": "#5b5bd6",
@@ -263,6 +273,9 @@ export const BUILTIN_THEMES: { id: string; data: ThemeData }[] = [
       // Dark, for reading at night: deep blue-grey, soft light text, blue
       // accents, rounded boxes.
       vars: {
+        "--graph-category": "#e3b341",
+        "--graph-group": "#57ab5a",
+        "--graph-node-active": "#82aaff",
         "--bg": "#14171c",
         "--sidebar-bg": "#1a1e24",
         "--text": "#d4d9df",

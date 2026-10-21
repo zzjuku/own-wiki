@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildModel, DEFAULT_FILTERS, edgeLabel, type GraphData, type GraphFilters } from "./model";
+import { buildModel, DEFAULT_FILTERS, edgeLabel, localModel, ruleFor, type GraphColorRule, type GraphData, type GraphFilters } from "./model";
 
 // Nodes 0–3 are pages, 4 is a red link.
 const DATA: GraphData = {
@@ -81,5 +81,37 @@ describe("graph model", () => {
     expect(edgeLabel(e, false)).toBe("Father");
     expect(edgeLabel(e, true)).toBe("Father, Secret");
     expect(edgeLabel(build({ redLinks: true }).edges.find((x) => x.key === "l:0:4")!, true)).toBe("");
+  });
+
+  it("colours pages by the first rule they match", () => {
+    const rules: GraphColorRule[] = [
+      { kind: "category", value: "CATEGORY B", color: "#0000ff" },
+      { kind: "group", value: "Group A", color: "#00ff00" },
+      { kind: "template", value: "t-1", color: "#ff0000" },
+      { kind: "template", value: "", color: "#999999" },
+    ];
+    const [a, b, c, d] = DATA.pages;
+    expect(ruleFor(a, rules)?.color).toBe("#ff0000");
+    // In Category B and in Group A: the category rule comes first.
+    expect(ruleFor(b, rules)?.color).toBe("#0000ff");
+    // Group rules include subgroups.
+    expect(ruleFor(c, rules)?.color).toBe("#00ff00");
+    expect(ruleFor(d, rules)).toBeNull();
+    const m = buildModel(DATA, { ...EXTRAS, rules }, DEFAULT_FILTERS);
+    expect(m.nodes.map((n) => n.color)).toEqual(["#ff0000", "#0000ff", "#00ff00", undefined]);
+  });
+
+  it("the local graph reaches as many lines deep as asked", () => {
+    const m = build({ redLinks: true });
+    expect(localModel(m, "p:Page A.md", 1).nodes.map((n) => n.key)).toEqual(["p:Page A.md", "p:Group A/Page B.md", "r:missing x"]);
+    const two = localModel(m, "p:Page A.md", 2);
+    expect(two.nodes.map((n) => n.key)).toEqual(["p:Page A.md", "p:Group A/Page B.md", "p:Group A/Sub/Page C.md", "r:missing x"]);
+    expect(two.edges.length).toBe(3);
+    // Degrees count only the lines shown.
+    expect(localModel(m, "p:Group A/Sub/Page C.md", 1).nodes.map((n) => [n.key, n.degree])).toEqual([
+      ["p:Group A/Page B.md", 1],
+      ["p:Group A/Sub/Page C.md", 1],
+    ]);
+    expect(localModel(m, "p:Page D.md", 3).nodes.map((n) => n.key)).toEqual(["p:Page D.md"]);
   });
 });

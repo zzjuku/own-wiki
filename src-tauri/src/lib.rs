@@ -692,10 +692,10 @@ fn search(state: State<'_, AppState>, project: String, request: search::Request)
 
 // ---- categories ----
 
-/// Every page and line for the graph view (M11).
+/// Every page and line for the graph view (M11), unless the window has them already.
 #[tauri::command(async)]
-fn graph_data(state: State<'_, AppState>, project: String) -> AppResult<graph::GraphData> {
-    state.with_index(&project, false, |_, idx| Ok(graph::graph(idx)))
+fn graph_data(state: State<'_, AppState>, project: String, known: Option<String>) -> AppResult<graph::GraphReply> {
+    state.with_index(&project, false, |_, idx| Ok(graph::reply(idx, known.as_deref())))
 }
 
 /// Where the graph's nodes were left on this computer (none yet: null).

@@ -19,6 +19,8 @@ import { CategoryChips } from "./CategoryChips";
 import { FindBar, useFindBar } from "./FindBar";
 import { usePageSync } from "./PageSync";
 import { hasSpoilers, useSpoilerReveal } from "./spoilers";
+import { GraphIcon } from "./graph/GraphIcon";
+import { useLocalPrefs } from "./graph/prefs";
 
 interface Props {
   project: string;
@@ -188,6 +190,7 @@ export function PageView(props: Props) {
   const [linkingPages, setLinkingPages] = useState<number | null>(null);
   const [backlinksOpen, setBacklinksOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [localGraph, setLocalGraph] = useLocalPrefs();
   useEffect(() => {
     let live = true;
     // Pages linking here, and pages showing this one through its own relations (counted once).
@@ -326,6 +329,15 @@ export function PageView(props: Props) {
             {revealAll ? "Hide spoilers" : "Reveal spoilers"}
           </button>
         )}
+        <button
+          className={`plain nav local-graph-button ${localGraph.open ? "active" : ""}`}
+          title={localGraph.open ? "Hide the local graph" : "Local graph: this page and its neighbours, beside the page"}
+          aria-label="Local graph"
+          aria-pressed={localGraph.open}
+          onClick={() => setLocalGraph({ open: !localGraph.open })}
+        >
+          <GraphIcon />
+        </button>
         <button title="Pages that link to this page" onClick={() => setBacklinksOpen(true)}>
           Links here{linkingPages !== null && <span className="count">{linkingPages}</span>}
         </button>

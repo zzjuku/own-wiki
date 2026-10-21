@@ -1,8 +1,24 @@
 // Thin typed wrappers around the Rust commands in src-tauri/src/lib.rs.
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as invokeRaw, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
 import type { SavedLayout } from "./graph/controller";
-import type { GraphData } from "./graph/model";
+import type { GraphColorRule, GraphData } from "./graph/model";
 import type { ThemeData, ThemeFont } from "./themes/engine";
+
+/** Commands after which pages, links or groups may have changed (the graph reads them again). */
+const CHANGES = new Set([
+  "create_page", "save_page", "rename_page", "move_page", "delete_page", "set_aliases", "save_infobox", "apply_template",
+  "set_relation", "set_page_categories", "create_category", "set_category_parents", "change_category", "create_group",
+  "rename_group", "move_group", "delete_group", "keep_mine", "restore_page", "resolve_conflict",
+]);
+
+/** Fired after a command that may have changed pages (and on changes from outside, see projectSync). */
+export const indexEvents = new EventTarget();
+export const notifyIndexChanged = () => indexEvents.dispatchEvent(new Event("changed"));
+
+function invoke<T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions): Promise<T> {
+  const p = invokeRaw<T>(cmd, args, options);
+  return CHANGES.has(cmd) ? p.then((r) => (notifyIndexChanged(), r)) : p;
+}
 
 export interface Settings {
   libraryPath: string | null;
@@ -158,6 +174,8 @@ export interface ProjectSettings {
   theme?: string | null;
   /** The story's "today", which ages are counted to ({year, month, day, era}). */
   presentDay?: Record<string, unknown> | null;
+  /** The graph's colour rules, first match wins (M11). */
+  graphColors?: GraphColorRule[];
   /** project.json's version when read (sent back when saving). */
   version?: string | null;
 }
@@ -431,7 +449,7 @@ export const api = {
 
   // Link index
   /** Every page and line for the graph view (M11). */
-  graphData: (project: string) => invoke<GraphData>("graph_data", { project }),
+  graphData: (project: string, known: string | null) => invoke<{ hash: string; data?: GraphData }>("graph_data", { project, known }),
   /** Where the graph's nodes were left on this computer. */
   graphLayout: (project: string) => invoke<SavedLayout | null>("graph_layout", { project }),
   saveGraphLayout: (project: string, layout: SavedLayout) => invoke<void>("save_graph_layout", { project, layout }),

@@ -551,7 +551,11 @@ export function createBackend(fixture: Fixture) {
       return search([...p.pages.values()], [...p.catTexts.values()], request, parent);
     },
     search_prepare: () => undefined,
-    graph_data: ({ project }) => graphData(proj(project)),
+    graph_data: ({ project, known }) => {
+      const data = graphData(proj(project));
+      const hash = String([...JSON.stringify(data)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
+      return hash === known ? { hash } : { hash, data };
+    },
     graph_layout: ({ project }) => graphLayouts.get(project) ?? null,
     save_graph_layout: ({ project, layout }) => void graphLayouts.set(project, layout),
     list_categories: ({ project }) => [...categories(proj(project)).values()].map(catInfo),

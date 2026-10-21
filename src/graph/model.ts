@@ -76,6 +76,8 @@ export interface ModelNode {
   ref: string;
   /** Lines at this node. */
   degree: number;
+  /** Pages: the colour of the first colour rule they match. */
+  color?: string;
 }
 
 export interface ModelEdge {
@@ -99,6 +101,27 @@ export interface Model {
 export interface Extras {
   /** Every category with its parent categories. */
   categories: { name: string; parents: string[] }[];
+  /** The project's colour rules (project.json `graphColors`). */
+  rules?: GraphColorRule[];
+}
+
+/** A colour rule: pages from a template, in a group (with subgroups) or directly in a category get `color`. */
+export interface GraphColorRule {
+  kind: "template" | "group" | "category";
+  /** Template id, group id or category name. */
+  value: string;
+  color: string;
+}
+
+/** The first rule page `p` matches (rules are tried in order). */
+export function ruleFor(p: GraphPage, rules: GraphColorRule[]): GraphColorRule | null {
+  for (const r of rules) {
+    if (!r.value || !r.color) continue;
+    if (r.kind === "template" && p.template === r.value) return r;
+    if (r.kind === "group" && inGroup(p.id, r.value)) return r;
+    if (r.kind === "category" && (p.categories ?? []).some((c) => norm(c) === norm(r.value))) return r;
+  }
+  return null;
 }
 
 export const pageKey = (id: string) => `p:${id}`;
@@ -154,7 +177,8 @@ export function buildModel(data: GraphData, extras: Extras, f: GraphFilters): Mo
   data.pages.forEach((p, i) => {
     if (!shown[i] || (f.hideOrphans && !linked[i])) return;
     visible.push(p);
-    nodes.push({ key: pageKey(p.id), kind: "page", label: p.title, ref: p.id, degree: 0 });
+    const rule = extras.rules?.length ? ruleFor(p, extras.rules) : null;
+    nodes.push({ key: pageKey(p.id), kind: "page", label: p.title, ref: p.id, degree: 0, ...(rule ? { color: rule.color } : {}) });
   });
   data.missing.forEach((name, j) => {
     if (linked[n + j]) nodes.push({ key: missingKey(name), kind: "missing", label: name, ref: name, degree: 0 });
@@ -228,4 +252,42 @@ export function edgeLabel(e: ModelEdge, spoilers: boolean): string {
     .filter((x) => spoilers || !x.spoiler)
     .map((x) => x.name)
     .join(", ");
+}
+
+/**
+ * The local graph (M11): the node `center` and everything up to `depth`
+ * lines away from it in `model`, with the lines between them.
+ */
+export function localModel(model: Model, center: string, depth: number): Model {
+  const around = new Map<string, string[]>();
+  const link = (a: string, b: string) => {
+    let list = around.get(a);
+    if (!list) around.set(a, (list = []));
+    list.push(b);
+  };
+  for (const e of model.edges) {
+    link(e.source, e.target);
+    link(e.target, e.source);
+  }
+  const reached = new Set([center]);
+  let ring = [center];
+  for (let d = 0; d < depth && ring.length; d++) {
+    const next: string[] = [];
+    for (const k of ring) {
+      for (const nb of around.get(k) ?? []) {
+        if (reached.has(nb)) continue;
+        reached.add(nb);
+        next.push(nb);
+      }
+    }
+    ring = next;
+  }
+  const edges = model.edges.filter((e) => reached.has(e.source) && reached.has(e.target));
+  const degree = new Map<string, number>();
+  for (const e of edges) {
+    degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+    degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
+  }
+  const nodes = model.nodes.filter((n) => reached.has(n.key)).map((n) => ({ ...n, degree: degree.get(n.key) ?? 0 }));
+  return { nodes, edges };
 }
