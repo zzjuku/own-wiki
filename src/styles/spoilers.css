@@ -153,6 +153,8 @@ button.ib-spoiler.active {
 }
 .markdown .quote-box .quote-text::before,
 .markdown .quote-box .quote-text::after {
+  /* Hidden by the "bar" quote style (styles/look.css). */
+  display: var(--show-quote-marks, block);
   position: absolute;
   font-family: var(--font-heading);
   font-size: 3.4em;

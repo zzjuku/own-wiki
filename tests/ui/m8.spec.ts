@@ -14,6 +14,8 @@ async function openThemes(page: Page) {
   await page.getByRole("button", { name: "Themes" }).click();
   await expect(page.getByRole("heading", { name: "Themes", level: 1 })).toBeVisible();
 }
+/** AWOIAF, not AWOIAF Modern. */
+const AWOIAF = /^AWOIAF(?! Modern)/;
 const themeItem = (page: Page, name: string | RegExp) => page.getByRole("navigation", { name: "Themes" }).getByRole("button", { name });
 
 test("tooltips: app-styled, fade in on hover, system title put back after", async ({ page }) => {
@@ -41,7 +43,7 @@ test("tooltips: app-styled, fade in on hover, system title put back after", asyn
 test("built-in themes: read-only, used as app theme", async ({ page }) => {
   await startApp(page, oneProject(PAGES));
   await openThemes(page);
-  for (const name of ["Default", "Parchment", "AWOIAF"]) await expect(themeItem(page, name)).toBeVisible();
+  for (const name of ["Default", "Parchment", AWOIAF]) await expect(themeItem(page, name)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Default", level: 2 })).toBeVisible();
   await shot(page, "themes-default");
 
@@ -58,7 +60,7 @@ test("built-in themes: read-only, used as app theme", async ({ page }) => {
   expect(await appTheme(page)).toBe("builtin:parchment");
   await shot(page, "themes-parchment");
 
-  await themeItem(page, "AWOIAF").click();
+  await themeItem(page, AWOIAF).click();
   await page.getByRole("button", { name: "Use as app theme" }).click();
   await expect.poll(() => rootVar(page, "--link")).toBe("#1088b7");
   await shot(page, "themes-awoiaf");
@@ -166,7 +168,7 @@ test("fonts: copy an installed font or import a file into a theme", async ({ pag
 test("copy a built-in theme into the project", async ({ page }) => {
   await openProject(page, oneProject(PAGES, { mainPage: "Page A" }));
   await openThemes(page);
-  await themeItem(page, "AWOIAF").click();
+  await themeItem(page, AWOIAF).click();
   await page.getByRole("button", { name: "Copy…" }).click();
   const dialog = page.getByRole("dialog", { name: "Copy theme" });
   await expect(dialog.getByLabel("Theme name")).toHaveValue("AWOIAF copy");
@@ -212,8 +214,8 @@ test("AWOIAF look: centred title, its own fonts, ornate Contents, framed quotes"
 test("Default look stays as it was: no ornaments, title at the left", async ({ page }) => {
   await openProject(page, oneProject(PAGES, { mainPage: "Page A" }));
   await expect(page.locator(".page > .page-head h1")).not.toHaveCSS("text-align", "center");
-  expect(await page.locator(".toc-left").evaluate((el) => getComputedStyle(el, "::before").content)).toBe("none");
-  expect(await page.locator(".markdown h2").first().evaluate((el) => getComputedStyle(el, "::after").content)).toBe("none");
+  expect(await page.locator(".toc-left").evaluate((el) => getComputedStyle(el, "::before").display)).toBe("none");
+  expect(await page.locator(".markdown h2").first().evaluate((el) => getComputedStyle(el, "::after").display)).toBe("none");
 });
 
 test("every part of the page can have its own font", async ({ page }) => {

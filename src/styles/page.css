@@ -98,16 +98,39 @@
   margin: 0.1em 0;
 }
 .markdown table {
-  border-collapse: collapse;
+  /* Separate borders (each cell draws its right and bottom line) so the
+   * corners can be rounded by the theme's --box-radius. */
+  border-collapse: separate;
+  border-spacing: 0;
   margin: 1em 0;
   background: var(--table-bg);
   border: 1px solid var(--table-border);
+  border-radius: var(--box-radius);
 }
 .markdown th,
 .markdown td {
-  border: 1px solid var(--table-border);
+  border: 0 solid var(--table-border);
+  border-width: 0 1px 1px 0;
   padding: 0.25em 0.5em;
   vertical-align: top;
+}
+.markdown tr > :last-child {
+  border-right-width: 0;
+}
+.markdown table > :last-child > tr:last-child > * {
+  border-bottom-width: 0;
+}
+.markdown table > :first-child > tr:first-child > :first-child {
+  border-top-left-radius: max(0px, calc(var(--box-radius) - 1px));
+}
+.markdown table > :first-child > tr:first-child > :last-child {
+  border-top-right-radius: max(0px, calc(var(--box-radius) - 1px));
+}
+.markdown table > :last-child > tr:last-child > :first-child {
+  border-bottom-left-radius: max(0px, calc(var(--box-radius) - 1px));
+}
+.markdown table > :last-child > tr:last-child > :last-child {
+  border-bottom-right-radius: max(0px, calc(var(--box-radius) - 1px));
 }
 .markdown th {
   background: var(--table-header-bg);

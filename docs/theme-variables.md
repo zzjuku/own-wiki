@@ -81,7 +81,7 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--embed-hover` | Faint highlight of an embedded page under the mouse |
 | `--navbox-bg` / `--navbox-border` | Collapsible embed boxes (infobox colours by default) |
 | `--navbox-title-bg` / `--navbox-title-text` | Their title bar |
-| `--navbox-border-width` / `--navbox-border-style` / `--navbox-radius` | Their frame: width, style (solid, dashed, dotted, double, none), corner rounding (M8) |
+| `--navbox-border-width` / `--navbox-border-style` / `--navbox-radius` | Their frame: width, style (solid, dashed, dotted, double, none), own corner rounding (follows `--box-radius`) |
 
 ## Tooltips (M8)
 | Variable | Used for |
@@ -99,23 +99,26 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--font-toc` / `--font-navbox-title` / `--font-quote` / `--font-caption` | Contents, embed box titles, quote boxes, captions (follow `--font-body`) |
 | `--font-mono` | Code |
 | `--title-size` / `--heading-size` / `--infobox-title-size` | Page title, section headings (h2), infobox title |
+| `--title-weight` / `--heading-weight` | Weight of the page title and of section headings (h1, h2): `400`, `500`, `600`, `700` |
 | `--text-xs` … `--text-display` | UI type scale (12, 13, 14, 15, 17, 20, 26, 30 px) |
 | `--page-font-size` / `--page-line-height` | Page text size and line spacing |
 
 ## Look (M8)
-Keywords, read by style queries in `src/styles/look.css`; the defaults change nothing.
+Keywords, read by style queries in `src/styles/look.css`; the defaults change nothing. Ornaments drawn as pseudo-elements always exist there and are only shown through a `--show-…` variable the query sets (WebKit doesn't redraw a pseudo-element when a query around it stops matching).
 | Variable | Values |
 |---|---|
 | `--title-align` | `left`, `center` (own row under the buttons) |
-| `--title-deco` | `none`, `line`, `accent` (line with an accent bar) |
-| `--heading-deco` | `line`, `accent`, `none` |
+| `--title-deco` | `none`, `line`, `accent` (line with an accent bar), `double` |
+| `--title-case` / `--heading-case` / `--infobox-heading-case` | Letters of the page title / section headings (and the Contents panel title) / infobox section headings: `normal`, `caps` (capitals, spaced), `small-caps` |
+| `--heading-deco` | `line`, `accent`, `double`, `bar` (accent bar at the left, no line), `none` |
 | `--ornament` | Colour of accent bars and corner ornaments (follows `--accent`) |
 | `--box-inner-line` | The inner line of double and ornate frames |
-| `--infobox-frame` / `--toc-frame` / `--navbox-frame` | `plain`, `double`, `ornate` (double line plus corner ornaments; on the infobox at all four corners) |
+| `--infobox-frame` / `--toc-frame` / `--navbox-frame` | `plain`, `double`, `ornate` (double line plus corner ornaments; on the infobox at all four corners), `bracket` (thin frame, bold corner marks in the ornament colour), `rule` (no side lines: an ornament-coloured line on top, a thin one below) |
+| `--box-radius` | Corner rounding of every box on the page (infobox, contents, embed boxes, framed quote boxes, tables, picture frames, galleries, categories box; code blocks at least `--radius`), with any frame; `0px` by default. Ornate and bracket frames stay square |
 | `--infobox-shadow` / `--toc-shadow` / `--navbox-shadow` | A box-shadow (`0 0 #0000` = none) |
 | `--infobox-title-style` | `bar`, `plain` (line under it), `accent` (line with accent bar) |
 | `--infobox-heading-style` | Infobox section headings: `bar`, `lined` (larger, thin lines above and below) |
-| `--quote-style` | `open` (quotation marks only), `framed` |
+| `--quote-style` | `open` (quotation marks only), `framed`, `bar` (accent bar at the left, italic, no marks) |
 
 ## Layout
 | Variable | Used for |

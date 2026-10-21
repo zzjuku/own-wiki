@@ -147,6 +147,10 @@ fn check_extension(path: &Path) -> AppResult<String> {
 const BUNDLED: &[(&str, &[u8])] = &[
     ("Marcellus-Regular.ttf", include_bytes!("../../src/themes/fonts/Marcellus-Regular.ttf")),
     ("UncialAntiqua-Regular.ttf", include_bytes!("../../src/themes/fonts/UncialAntiqua-Regular.ttf")),
+    ("Jost-Variable.ttf", include_bytes!("../../src/themes/fonts/Jost-Variable.ttf")),
+    ("Inter-Variable.ttf", include_bytes!("../../src/themes/fonts/Inter-Variable.ttf")),
+    ("EBGaramond-Variable.ttf", include_bytes!("../../src/themes/fonts/EBGaramond-Variable.ttf")),
+    ("EBGaramond-Italic-Variable.ttf", include_bytes!("../../src/themes/fonts/EBGaramond-Italic-Variable.ttf")),
 ];
 
 /// The bytes of a font that comes with the app, by file name.

@@ -3,6 +3,7 @@ import { BUILTIN_THEMES, builtinTheme } from "./builtin";
 import { mix, parseColor, readableOn, toHex6, withAlpha } from "./color";
 import { cssFor, effectiveValue, firstFamily, followsWhat, fontStack, resolveVars, scopedFamily } from "./engine";
 import { ALL_COLORS, DEFAULTS, MAIN_SETTINGS } from "./vars";
+import rust from "../../src-tauri/src/fonts.rs?raw";
 
 describe("colours", () => {
   it("reads and mixes CSS colours", () => {
@@ -86,6 +87,29 @@ describe("theme variables", () => {
   it("built-in themes only set known variables", () => {
     for (const t of BUILTIN_THEMES) {
       for (const k of Object.keys(t.data.vars)) expect(DEFAULTS[k], `${t.id} ${k}`).toBeDefined();
+    }
+  });
+
+  it("built-in themes use choices the editor offers", () => {
+    const settings = MAIN_SETTINGS.flatMap((g) => g.settings);
+    for (const t of BUILTIN_THEMES) {
+      for (const [k, v] of Object.entries(t.data.vars)) {
+        const s = settings.find((x) => x.name === k);
+        if (s?.type.kind === "select") expect(s.type.options.map((o) => o.value), `${t.id} ${k}`).toContain(v);
+      }
+    }
+  });
+
+  it("built-in themes' fonts come with the app and are the families they use", () => {
+    for (const t of BUILTIN_THEMES) {
+      const families = new Set((t.data.fonts ?? []).map((f) => f.family));
+      for (const f of t.data.fonts ?? []) {
+        expect(rust, `${t.id} ${f.file}`).toContain(`include_bytes!("../../src/themes/fonts/${f.file}")`);
+        expect(Object.values(t.data.vars).some((v) => firstFamily(v) === f.family), `${t.id} uses ${f.family}`).toBe(true);
+      }
+      for (const [k, v] of Object.entries(t.data.vars)) {
+        if (k.startsWith("--font-") && !families.has(firstFamily(v))) expect(firstFamily(v), `${t.id} ${k}`).toMatch(/^(-apple-system|Georgia|Palatino Linotype|Times New Roman|Arial|Verdana|Trebuchet MS|Courier New)$/);
+      }
     }
   });
 });

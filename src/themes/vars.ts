@@ -27,13 +27,23 @@ const size = (min: number, max: number, step: number, unit: "px" | "em" | "%" | 
 const px = (min: number, max: number, step = 1) => size(min, max, step, "px");
 const select = (...options: [string, string][]) => ({ kind: "select", options: options.map(([value, label]) => ({ value, label })) }) as const;
 
-const FRAMES = select(["plain", "Plain"], ["double", "Double line"], ["ornate", "Ornate corners"]);
+const FRAMES = select(
+  ["plain", "Plain"],
+  ["double", "Double line"],
+  ["ornate", "Ornate corners"],
+  ["bracket", "Corner brackets"],
+  ["rule", "Lines above and below"],
+);
+const LETTERS = select(["normal", "Normal"], ["caps", "Capitals"], ["small-caps", "Small capitals"]);
+const WEIGHTS = select(["400", "Normal"], ["500", "Medium"], ["600", "Semi-bold"], ["700", "Bold"]);
 /** Shadow choices: the values are CSS box-shadows ("0 0 #0000" = none). */
 export const SHADOWS = select(
   ["0 0 #0000", "None"],
   ["0 1px 3px rgb(0 0 0 / 0.12)", "Soft"],
   ["2px 2px 0 rgb(96 76 48 / 0.06), 0 4px 11px rgb(35 27 18 / 0.09)", "Medium"],
   ["0 1px 0 rgb(96 76 48 / 0.1), 0 8px 22px rgb(35 27 18 / 0.15)", "Deep"],
+  ["0 1px 2px rgb(16 24 32 / 0.08), 0 6px 18px rgb(16 24 32 / 0.11)", "Crisp"],
+  ["0 2px 12px rgb(0 0 0 / 0.45)", "Dark"],
 );
 
 /** The main settings, up front in the editor. Everything else follows them. */
@@ -66,8 +76,14 @@ export const MAIN_SETTINGS: { title: string; settings: Setting[] }[] = [
     title: "Look",
     settings: [
       { name: "--title-align", label: "Page title", type: select(["left", "Left"], ["center", "Centred, own row"]) },
-      { name: "--title-deco", label: "Line under the title", type: select(["none", "None"], ["line", "Line"], ["accent", "Line with accent"]) },
-      { name: "--heading-deco", label: "Line under section headings", type: select(["line", "Line"], ["accent", "Line with accent"], ["none", "None"]) },
+      { name: "--title-deco", label: "Line under the title", type: select(["none", "None"], ["line", "Line"], ["accent", "Line with accent"], ["double", "Double line"]) },
+      { name: "--title-case", label: "Title letters", type: LETTERS },
+      {
+        name: "--heading-deco",
+        label: "Line under section headings",
+        type: select(["line", "Line"], ["accent", "Line with accent"], ["double", "Double line"], ["bar", "Bar at the left, no line"], ["none", "None"]),
+      },
+      { name: "--heading-case", label: "Section heading letters", type: LETTERS },
       { name: "--ornament", label: "Ornaments", hint: "Accent bars and corner ornaments", type: color },
       { name: "--box-inner-line", label: "Inner frame line", hint: "The second line of double and ornate frames", type: color },
     ],
@@ -75,14 +91,21 @@ export const MAIN_SETTINGS: { title: string; settings: Setting[] }[] = [
   {
     title: "Boxes",
     settings: [
+      {
+        name: "--box-radius",
+        label: "Corner rounding",
+        hint: "Every box: infobox, contents, embed boxes, framed quotes, tables, pictures, categories. Ornate and bracket frames stay square.",
+        type: px(0, 24),
+      },
       { name: "--infobox-frame", label: "Infobox frame", type: FRAMES },
       { name: "--infobox-shadow", label: "Infobox shadow", type: SHADOWS },
       { name: "--infobox-title-style", label: "Infobox title style", hint: "A page's own infobox colour shows on the bar", type: select(["bar", "Coloured bar"], ["plain", "Plain with line"], ["accent", "Plain with accent"]) },
       { name: "--infobox-heading-style", label: "Infobox section headings", type: select(["bar", "Coloured bar"], ["lined", "Bar with lines above and below"]) },
+      { name: "--infobox-heading-case", label: "Infobox section heading letters", type: LETTERS },
       { name: "--infobox-label-weight", label: "Infobox labels", type: select(["700", "Bold"], ["600", "Semi-bold"], ["400", "Normal"]) },
       { name: "--toc-frame", label: "Contents frame", type: FRAMES },
       { name: "--toc-shadow", label: "Contents shadow", type: SHADOWS },
-      { name: "--quote-style", label: "Quote boxes", type: select(["open", "Quotation marks"], ["framed", "Framed"]) },
+      { name: "--quote-style", label: "Quote boxes", type: select(["open", "Quotation marks"], ["framed", "Framed"], ["bar", "Bar at the left"]) },
     ],
   },
   {
@@ -99,7 +122,7 @@ export const MAIN_SETTINGS: { title: string; settings: Setting[] }[] = [
         label: "Frame style",
         type: select(["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"], ["double", "Double"], ["none", "None"]),
       },
-      { name: "--navbox-radius", label: "Corner rounding", type: px(0, 16) },
+      { name: "--navbox-radius", label: "Own corner rounding", hint: "Only for embed boxes", type: px(0, 24) },
     ],
   },
   {
@@ -125,7 +148,9 @@ export const MAIN_SETTINGS: { title: string; settings: Setting[] }[] = [
       { name: "--page-font-size", label: "Text size", type: px(12, 24) },
       { name: "--page-line-height", label: "Line spacing", type: size(1.2, 2.2, 0.05, "") },
       { name: "--title-size", label: "Title size", type: px(16, 52) },
+      { name: "--title-weight", label: "Title weight", type: WEIGHTS },
       { name: "--heading-size", label: "Section heading size", type: size(1, 2.4, 0.05, "em") },
+      { name: "--heading-weight", label: "Section heading weight", type: WEIGHTS },
       { name: "--infobox-font-size", label: "Infobox text size", type: size(70, 110, 1, "%") },
       { name: "--infobox-title-size", label: "Infobox title size", type: size(100, 180, 5, "%") },
       { name: "--infobox-width", label: "Infobox width", type: size(16, 32, 0.5, "em") },

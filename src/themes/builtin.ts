@@ -1,11 +1,19 @@
 // Built-in themes (Juku, 2026-10-20): Default (the app's own look), Parchment
-// and AWOIAF. They can't be changed or deleted, only copied. Their fonts come
-// with Mac and Windows or with the app itself (AWOIAF's, copied along when the
-// theme is copied).
+// and AWOIAF; AWOIAF Modern, Folio, Slate and Midnight added 2026-10-21. They
+// can't be changed or deleted, only copied. Their fonts come with Mac and
+// Windows or with the app itself (copied along when the theme is copied).
 import type { ThemeData } from "./engine";
 // Free fonts (SIL Open Font License, see fonts/OFL-*.txt) that come with the app.
 import marcellusUrl from "./fonts/Marcellus-Regular.ttf?url";
 import uncialUrl from "./fonts/UncialAntiqua-Regular.ttf?url";
+import jostUrl from "./fonts/Jost-Variable.ttf?url";
+import interUrl from "./fonts/Inter-Variable.ttf?url";
+import garamondUrl from "./fonts/EBGaramond-Variable.ttf?url";
+import garamondItalicUrl from "./fonts/EBGaramond-Italic-Variable.ttf?url";
+
+const JOST = '"Jost", "Trebuchet MS", sans-serif';
+const INTER = '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+const GARAMOND = '"EB Garamond", Garamond, Georgia, serif';
 
 export const BUILTIN_THEMES: { id: string; data: ThemeData }[] = [
   { id: "default", data: { name: "Default", vars: {} } },
@@ -93,6 +101,196 @@ export const BUILTIN_THEMES: { id: string; data: ThemeData }[] = [
         "--heading-size": "1.65em",
         "--infobox-font-size": "90%",
         "--infobox-width": "25.5em",
+      },
+    },
+  },
+  {
+    id: "awoiaf-modern",
+    data: {
+      name: "AWOIAF Modern",
+      // AWOIAF's layout made modern, for science fiction: cool steel greys
+      // with amber accents, Jost (a Futura-like font) in spaced capitals for
+      // the title, corner brackets instead of ornaments.
+      fonts: [{ family: "Jost", file: "Jost-Variable.ttf", weight: "100 900", style: "normal", url: jostUrl }],
+      vars: {
+        "--sidebar-bg": "#f2f4f6",
+        "--accent": "#3a6b85",
+        "--tooltip-bg": "#1f262d",
+        "--page-text": "#1d2125",
+        "--heading-color": "#14181c",
+        "--link": "#1a7fb0",
+        "--link-new": "#d6344a",
+        "--infobox-bg": "#f5f7f9",
+        "--infobox-header-bg": "#e4e9ee",
+        "--infobox-border": "#aeb8c2",
+        "--heading-rule": "#aeb8c2",
+        "--table-header-bg": "#e4e9ee",
+        "--quote-border": "#aeb8c2",
+        "--navbox-bg": "#f5f7f9",
+        "--navbox-border": "#aeb8c2",
+        "--navbox-title-bg": "#e4e9ee",
+        "--toc-active": "#b8741a",
+        "--ornament": "#d08a1e",
+        "--box-inner-line": "rgb(40 60 80 / 0.2)",
+        "--title-align": "center",
+        "--title-deco": "accent",
+        "--title-case": "caps",
+        "--heading-deco": "accent",
+        "--infobox-frame": "bracket",
+        "--infobox-shadow": "0 1px 2px rgb(16 24 32 / 0.08), 0 6px 18px rgb(16 24 32 / 0.11)",
+        "--infobox-title-style": "accent",
+        "--infobox-heading-style": "lined",
+        "--infobox-heading-case": "caps",
+        "--infobox-label": "#5a636c",
+        "--infobox-label-weight": "600",
+        "--infobox-row-space": "0.5em",
+        "--toc-frame": "bracket",
+        "--toc-shadow": "0 1px 3px rgb(0 0 0 / 0.12)",
+        "--quote-style": "framed",
+        "--navbox-frame": "bracket",
+        "--font-title": JOST,
+        "--font-heading": JOST,
+        "--font-infobox-title": JOST,
+        "--font-infobox-header": JOST,
+        "--font-navbox-title": JOST,
+        "--page-font-size": "16px",
+        "--page-line-height": "1.55",
+        "--title-size": "34px",
+        "--heading-size": "1.55em",
+        "--infobox-font-size": "90%",
+        "--infobox-width": "25.5em",
+      },
+    },
+  },
+  {
+    id: "folio",
+    data: {
+      name: "Folio",
+      // A printed book: warm paper, EB Garamond throughout, small capitals,
+      // oxblood rules above the boxes instead of frames.
+      fonts: [
+        { family: "EB Garamond", file: "EBGaramond-Variable.ttf", weight: "400 800", style: "normal", url: garamondUrl },
+        { family: "EB Garamond", file: "EBGaramond-Italic-Variable.ttf", weight: "400 800", style: "italic", url: garamondItalicUrl },
+      ],
+      vars: {
+        "--bg": "#fcfbf7",
+        "--sidebar-bg": "#f3efe6",
+        "--text": "#1e1b16",
+        "--accent": "#8e2323",
+        "--tooltip-bg": "#2b2622",
+        "--page-text": "#22201b",
+        "--heading-color": "#1a1814",
+        "--link": "#1f4e79",
+        "--link-new": "#b3261e",
+        "--infobox-bg": "#f7f3ea",
+        "--infobox-header-bg": "#ece5d5",
+        "--infobox-border": "#cbbfa6",
+        "--heading-rule": "#cbbfa6",
+        "--quote-mark": "#c49a8a",
+        "--toc-active": "#8e2323",
+        "--ornament": "#8e2323",
+        "--title-align": "center",
+        "--title-deco": "double",
+        "--title-case": "small-caps",
+        "--heading-case": "small-caps",
+        "--infobox-frame": "rule",
+        "--infobox-title-style": "plain",
+        "--infobox-heading-style": "lined",
+        "--infobox-heading-case": "small-caps",
+        "--infobox-label-weight": "600",
+        "--infobox-row-space": "0.4em",
+        "--toc-frame": "rule",
+        "--navbox-frame": "rule",
+        "--font-body": GARAMOND,
+        "--font-heading": GARAMOND,
+        "--page-font-size": "18px",
+        "--page-line-height": "1.55",
+        "--title-size": "42px",
+        "--heading-size": "1.6em",
+        "--infobox-font-size": "92%",
+        "--infobox-title-size": "140%",
+        "--infobox-width": "25em",
+      },
+    },
+  },
+  {
+    id: "slate",
+    data: {
+      name: "Slate",
+      // Clean and app-like: Inter everywhere, rounded cards with crisp
+      // shadows, indigo bars beside headings and quotes.
+      fonts: [{ family: "Inter", file: "Inter-Variable.ttf", weight: "100 900", style: "normal", url: interUrl }],
+      vars: {
+        "--sidebar-bg": "#f4f5f7",
+        "--text": "#1f2328",
+        "--accent": "#5b5bd6",
+        "--tooltip-bg": "#24262b",
+        "--page-text": "#24292f",
+        "--heading-color": "#111418",
+        "--link": "#4a4fd0",
+        "--link-new": "#d1242f",
+        "--infobox-bg": "#f6f7f9",
+        "--infobox-header-bg": "#e6e7fb",
+        "--infobox-border": "#d5d8de",
+        "--heading-rule": "#e1e4e8",
+        "--table-header-bg": "#eef0f3",
+        "--quote-border": "#d5d8de",
+        "--toc-active": "#5b5bd6",
+        "--navbox-title-bg": "#eef0f3",
+        "--heading-deco": "bar",
+        "--infobox-shadow": "0 1px 2px rgb(16 24 32 / 0.08), 0 6px 18px rgb(16 24 32 / 0.11)",
+        "--infobox-label-weight": "600",
+        "--infobox-row-space": "0.35em",
+        "--quote-style": "bar",
+        "--box-radius": "12px",
+        "--font-body": INTER,
+        "--font-heading": INTER,
+        "--font-ui": INTER,
+        "--page-font-size": "15px",
+        "--page-line-height": "1.65",
+        "--title-size": "32px",
+        "--title-weight": "700",
+        "--heading-size": "1.4em",
+        "--heading-weight": "600",
+        "--infobox-title-size": "120%",
+      },
+    },
+  },
+  {
+    id: "midnight",
+    data: {
+      name: "Midnight",
+      // Dark, for reading at night: deep blue-grey, soft light text, blue
+      // accents, rounded boxes.
+      vars: {
+        "--bg": "#14171c",
+        "--sidebar-bg": "#1a1e24",
+        "--text": "#d4d9df",
+        "--accent": "#5b8def",
+        "--danger": "#e5534b",
+        "--ok": "#57ab5a",
+        "--warn": "#d29922",
+        "--warn-bg": "#2d2414",
+        "--shadow": "0 10px 30px rgb(0 0 0 / 0.5)",
+        "--backdrop": "rgb(0 0 0 / 0.55)",
+        "--tooltip-bg": "#2c333d",
+        "--page-bg": "#181c22",
+        "--page-text": "#d0d6dd",
+        "--heading-color": "#eef1f4",
+        "--link": "#82aaff",
+        "--link-new": "#ff7b72",
+        "--infobox-bg": "#1f242c",
+        "--infobox-header-bg": "#2a3442",
+        "--infobox-border": "#3a4452",
+        "--heading-rule": "#353e4b",
+        "--quote-border": "#3a4452",
+        "--toc-active": "#e3b341",
+        "--spoiler-bg": "#3d4552",
+        "--infobox-shadow": "0 2px 12px rgb(0 0 0 / 0.45)",
+        "--quote-style": "bar",
+        "--box-radius": "10px",
+        "--page-font-size": "16px",
+        "--page-line-height": "1.65",
       },
     },
   },

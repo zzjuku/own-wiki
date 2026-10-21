@@ -97,7 +97,7 @@
   --navbox-title-text: var(--infobox-header-text);
   --navbox-border-width: 1px;
   --navbox-border-style: solid;
-  --navbox-radius: 0px;
+  --navbox-radius: var(--box-radius);
 
   /* Look (M8): shapes and details. Keywords are read by style queries in
    * styles/look.css; shadows are box-shadow values. */
@@ -115,6 +115,10 @@
   --navbox-frame: plain;
   --navbox-shadow: 0 0 #0000;
   --quote-style: open;
+  --title-case: normal;
+  --heading-case: normal;
+  --infobox-heading-case: normal;
+  --box-radius: 0px;
 
   /* Tooltips (M8) */
   --tooltip-bg: #2e2f31;
@@ -148,7 +152,9 @@
   --page-font-size: 15px;
   --page-line-height: 1.6;
   --title-size: var(--text-title);
+  --title-weight: 400;
   --heading-size: 1.55em;
+  --heading-weight: 400;
   --infobox-title-size: 125%;
   --editor-font-size: 15px;
 

@@ -2,7 +2,13 @@
  * Shapes and details chosen in the theme editor's Look and Boxes sections.
  * Each setting is a variable holding a keyword (theme.css); the rules below
  * read it with style queries, so a theme stays a list of variables. The
- * defaults (left, none, line, plain, bar, open) change nothing. */
+ * defaults (left, none, line, plain, bar, open, normal) change nothing.
+ *
+ * Ornaments drawn with ::before/::after always exist but stay hidden
+ * (display: var(--show-…, none)); the style query only sets that --show-…
+ * variable on the element. WebKit doesn't redraw a pseudo-element when a
+ * style query around it stops matching, so switching e.g. from ornate to
+ * double left the corners behind, at the wrong place (2026-10-21). */
 
 /* Shadows: always set, "0 0 #0000" (none) by default. Double and ornate
  * frames add a second, inner line through --frame-inset. */
@@ -18,6 +24,28 @@
 .markdown details.embed-box {
   --frame-bg: var(--navbox-bg);
   box-shadow: var(--frame-inset, 0 0 #0000), var(--navbox-shadow);
+}
+
+/* ---- Corner rounding: one size (--box-radius, 0 by default) for every
+ * box on the page, with any frame. Ornate and bracket frames stay square:
+ * their corner drawings don't follow a curve. The infobox clips its title
+ * bar and pictures to the rounded corners. ---- */
+.markdown .infobox {
+  border-radius: var(--box-radius);
+  overflow: hidden;
+}
+.markdown .toc,
+.toc-left,
+.markdown .wiki-image,
+.markdown .gallery-frame,
+.catlinks {
+  border-radius: var(--box-radius);
+}
+.markdown .wiki-image img {
+  border-radius: max(0px, calc(var(--box-radius) - 3px));
+}
+.markdown pre {
+  border-radius: max(var(--radius), var(--box-radius));
 }
 
 /* ---- Double frame: an inner line a few pixels inside the border ---- */
@@ -46,37 +74,57 @@
  * bracket and two small rings. One pseudo-element per side draws its top and
  * bottom corner; the right side is the left one mirrored. ---- */
 @container style(--infobox-frame: ornate) {
+  /* The ornaments stick out of the box. */
   .markdown .infobox {
     position: relative;
+    overflow: visible;
+    --show-infobox-ornament: block;
   }
-  .markdown .infobox::before,
-  .markdown .infobox::after {
-    content: "";
-    position: absolute;
-    top: -5px;
-    bottom: -5px;
-    left: -3px;
-    width: 22px;
-    pointer-events: none;
-    background:
-      linear-gradient(var(--ornament), var(--ornament)) left 0 top 0 / 22px 2px no-repeat,
-      linear-gradient(var(--infobox-border), var(--infobox-border)) left 0 top 0 / 2px 20px no-repeat,
-      linear-gradient(var(--box-inner-line), var(--box-inner-line)) left 5px top 6px / 14px 1px no-repeat,
-      linear-gradient(var(--box-inner-line), var(--box-inner-line)) left 5px top 6px / 1px 11px no-repeat,
-      radial-gradient(circle at 11px 12px, transparent 2.25px, var(--infobox-border) 2.25px 3.25px, transparent 3.25px),
-      radial-gradient(circle at 17px 12px, transparent 2.25px, var(--ornament) 2.25px 3.25px, transparent 3.25px),
-      linear-gradient(var(--ornament), var(--ornament)) left 0 bottom 0 / 22px 2px no-repeat,
-      linear-gradient(var(--infobox-border), var(--infobox-border)) left 0 bottom 0 / 2px 20px no-repeat,
-      linear-gradient(var(--box-inner-line), var(--box-inner-line)) left 5px bottom 6px / 14px 1px no-repeat,
-      linear-gradient(var(--box-inner-line), var(--box-inner-line)) left 5px bottom 6px / 1px 11px no-repeat,
-      radial-gradient(circle at 11px calc(100% - 12px), transparent 2.25px, var(--infobox-border) 2.25px 3.25px, transparent 3.25px),
-      radial-gradient(circle at 17px calc(100% - 12px), transparent 2.25px, var(--ornament) 2.25px 3.25px, transparent 3.25px);
+}
+@container style(--infobox-frame: ornate) or style(--infobox-frame: bracket) {
+  .markdown .infobox {
+    border-radius: 0;
   }
-  .markdown .infobox::after {
-    left: auto;
-    right: -3px;
-    transform: scaleX(-1);
+}
+@container style(--toc-frame: ornate) or style(--toc-frame: bracket) {
+  .markdown .toc,
+  .toc-left {
+    border-radius: 0;
   }
+}
+@container style(--navbox-frame: ornate) or style(--navbox-frame: bracket) {
+  .markdown details.embed-box {
+    --navbox-radius: 0px;
+  }
+}
+.markdown .infobox::before,
+.markdown .infobox::after {
+  content: "";
+  display: var(--show-infobox-ornament, none);
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  left: -3px;
+  width: 22px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--ornament), var(--ornament)) left 0 top 0 / 22px 2px no-repeat,
+    linear-gradient(var(--infobox-border), var(--infobox-border)) left 0 top 0 / 2px 20px no-repeat,
+    linear-gradient(var(--box-inner-line), var(--box-inner-line)) left 5px top 6px / 14px 1px no-repeat,
+    linear-gradient(var(--box-inner-line), var(--box-inner-line)) left 5px top 6px / 1px 11px no-repeat,
+    radial-gradient(circle at 11px 12px, transparent 2.25px, var(--infobox-border) 2.25px 3.25px, transparent 3.25px),
+    radial-gradient(circle at 17px 12px, transparent 2.25px, var(--ornament) 2.25px 3.25px, transparent 3.25px),
+    linear-gradient(var(--ornament), var(--ornament)) left 0 bottom 0 / 22px 2px no-repeat,
+    linear-gradient(var(--infobox-border), var(--infobox-border)) left 0 bottom 0 / 2px 20px no-repeat,
+    linear-gradient(var(--box-inner-line), var(--box-inner-line)) left 5px bottom 6px / 14px 1px no-repeat,
+    linear-gradient(var(--box-inner-line), var(--box-inner-line)) left 5px bottom 6px / 1px 11px no-repeat,
+    radial-gradient(circle at 11px calc(100% - 12px), transparent 2.25px, var(--infobox-border) 2.25px 3.25px, transparent 3.25px),
+    radial-gradient(circle at 17px calc(100% - 12px), transparent 2.25px, var(--ornament) 2.25px 3.25px, transparent 3.25px);
+}
+.markdown .infobox::after {
+  left: auto;
+  right: -3px;
+  transform: scaleX(-1);
 }
 
 @container style(--toc-frame: ornate) {
@@ -84,53 +132,126 @@
   .markdown .toc {
     position: relative;
   }
-  .markdown .toc::before,
-  .markdown .toc::after,
-  .toc-left::before,
-  .toc-left::after {
-    content: "";
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 14px;
-    height: 14px;
-    pointer-events: none;
-    background:
-      linear-gradient(var(--ornament), var(--ornament)) 0 0 / 14px 2px no-repeat,
-      linear-gradient(var(--toc-border), var(--toc-border)) 0 0 / 2px 14px no-repeat,
-      linear-gradient(var(--box-inner-line), var(--box-inner-line)) 4px 4px / 8px 1px no-repeat,
-      linear-gradient(var(--box-inner-line), var(--box-inner-line)) 4px 4px / 1px 8px no-repeat,
-      radial-gradient(circle at 10px 10px, transparent 1.5px, var(--ornament) 1.5px 2.25px, transparent 2.25px);
+  .markdown .toc,
+  .toc-left {
+    --show-toc-ornament: block;
   }
-  .markdown .toc::after,
-  .toc-left::after {
-    left: auto;
-    right: 2px;
-    transform: scaleX(-1);
-  }
+}
+.markdown .toc::before,
+.markdown .toc::after,
+.toc-left::before,
+.toc-left::after {
+  content: "";
+  display: var(--show-toc-ornament, none);
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--ornament), var(--ornament)) 0 0 / 14px 2px no-repeat,
+    linear-gradient(var(--toc-border), var(--toc-border)) 0 0 / 2px 14px no-repeat,
+    linear-gradient(var(--box-inner-line), var(--box-inner-line)) 4px 4px / 8px 1px no-repeat,
+    linear-gradient(var(--box-inner-line), var(--box-inner-line)) 4px 4px / 1px 8px no-repeat,
+    radial-gradient(circle at 10px 10px, transparent 1.5px, var(--ornament) 1.5px 2.25px, transparent 2.25px);
+}
+.markdown .toc::after,
+.toc-left::after {
+  left: auto;
+  right: 2px;
+  transform: scaleX(-1);
 }
 @container style(--navbox-frame: ornate) {
   .markdown details.embed-box {
     position: relative;
+    --show-navbox-ornament: block;
   }
-  .markdown details.embed-box > .embed-box-title::before,
-  .markdown details.embed-box > .embed-box-title::after {
-    content: "";
-    position: absolute;
-    top: -1px;
-    left: -1px;
-    width: 14px;
-    height: 14px;
-    pointer-events: none;
-    background:
-      linear-gradient(var(--ornament), var(--ornament)) 0 0 / 14px 2px no-repeat,
-      linear-gradient(var(--ornament), var(--ornament)) 0 0 / 2px 14px no-repeat,
-      radial-gradient(circle at 8px 8px, transparent 1.5px, var(--ornament) 1.5px 2.25px, transparent 2.25px);
+}
+.markdown details.embed-box > .embed-box-title::before,
+.markdown details.embed-box > .embed-box-title::after {
+  content: "";
+  display: var(--show-navbox-ornament, none);
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--ornament), var(--ornament)) 0 0 / 14px 2px no-repeat,
+    linear-gradient(var(--ornament), var(--ornament)) 0 0 / 2px 14px no-repeat,
+    radial-gradient(circle at 8px 8px, transparent 1.5px, var(--ornament) 1.5px 2.25px, transparent 2.25px);
+}
+.markdown details.embed-box > .embed-box-title::after {
+  left: auto;
+  right: -1px;
+  transform: scaleX(-1);
+}
+
+/* ---- Corner brackets: a thin frame with short, bold corner marks in the
+ * ornament colour, drawn over the frame line (background layers reaching
+ * into the border, so no pseudo-elements are needed) ---- */
+.markdown .infobox,
+.markdown .toc,
+.toc-left,
+.markdown details.embed-box {
+  --bracket-marks:
+    linear-gradient(var(--ornament) 0 0) left top / var(--bracket-size) 2px no-repeat border-box,
+    linear-gradient(var(--ornament) 0 0) left top / 2px var(--bracket-size) no-repeat border-box,
+    linear-gradient(var(--ornament) 0 0) right top / var(--bracket-size) 2px no-repeat border-box,
+    linear-gradient(var(--ornament) 0 0) right top / 2px var(--bracket-size) no-repeat border-box,
+    linear-gradient(var(--ornament) 0 0) left bottom / var(--bracket-size) 2px no-repeat border-box,
+    linear-gradient(var(--ornament) 0 0) left bottom / 2px var(--bracket-size) no-repeat border-box,
+    linear-gradient(var(--ornament) 0 0) right bottom / var(--bracket-size) 2px no-repeat border-box,
+    linear-gradient(var(--ornament) 0 0) right bottom / 2px var(--bracket-size) no-repeat border-box;
+  --bracket-size: 14px;
+}
+.markdown details.embed-box {
+  --bracket-size: 10px;
+}
+@container style(--infobox-frame: bracket) {
+  .markdown .infobox {
+    background: var(--bracket-marks), var(--infobox-bg);
+    padding: 5px;
   }
-  .markdown details.embed-box > .embed-box-title::after {
-    left: auto;
-    right: -1px;
-    transform: scaleX(-1);
+}
+@container style(--toc-frame: bracket) {
+  .markdown .toc,
+  .toc-left {
+    background: var(--bracket-marks), var(--toc-bg);
+  }
+}
+@container style(--navbox-frame: bracket) {
+  .markdown details.embed-box,
+  .markdown details.embed-box:hover {
+    background: var(--bracket-marks), var(--navbox-bg);
+  }
+  .markdown details.embed-box {
+    padding: 2px;
+  }
+}
+
+/* ---- Rules: no side lines, a strong line in the ornament colour on top
+ * and a thin one at the bottom (editorial) ---- */
+@container style(--infobox-frame: rule) {
+  .markdown .infobox {
+    border-width: 3px 0 1px;
+    border-top-color: var(--ornament);
+    padding: 4px 0 3px;
+  }
+}
+@container style(--toc-frame: rule) {
+  .markdown .toc,
+  .toc-left {
+    border-width: 2px 0 1px;
+    border-top-color: var(--ornament);
+  }
+}
+@container style(--navbox-frame: rule) {
+  .markdown details.embed-box {
+    border-width: 2px 0 1px;
+    border-top-color: var(--ornament);
   }
 }
 
@@ -146,16 +267,20 @@
   }
 }
 @container style(--infobox-title-style: accent) {
-  .markdown .infobox th.infobox-title::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    bottom: -2px;
-    width: 3em;
-    height: 2px;
-    background: var(--ornament);
-    transform: translateX(-50%);
+  .markdown .infobox th.infobox-title {
+    --show-title-accent: block;
   }
+}
+.markdown .infobox th.infobox-title::after {
+  content: "";
+  display: var(--show-title-accent, none);
+  position: absolute;
+  left: 50%;
+  bottom: -2px;
+  width: 3em;
+  height: 2px;
+  background: var(--ornament);
+  transform: translateX(-50%);
 }
 
 /* ---- Infobox section headings: larger, thin lines above and below ---- */
@@ -173,11 +298,59 @@
   }
 }
 
+@container style(--infobox-heading-case: caps) {
+  .markdown .infobox th.infobox-heading {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 92%;
+  }
+}
+@container style(--infobox-heading-case: small-caps) {
+  .markdown .infobox th.infobox-heading {
+    font-variant-caps: small-caps;
+    letter-spacing: 0.04em;
+  }
+}
+
 /* ---- Section headings ---- */
-@container style(--heading-deco: none) {
+.markdown h1,
+.markdown h2 {
+  font-weight: var(--heading-weight);
+}
+@container style(--heading-deco: none) or style(--heading-deco: bar) {
   .markdown h1,
   .markdown h2 {
     border-bottom: none;
+  }
+}
+@container style(--heading-deco: bar) {
+  .markdown h1,
+  .markdown h2 {
+    border-left: 4px solid var(--ornament);
+    padding: 0.05em 0 0.05em 0.45em;
+  }
+}
+@container style(--heading-deco: double) {
+  .markdown h1,
+  .markdown h2 {
+    border-bottom: 3px double var(--heading-rule);
+  }
+}
+/* Capitals or small capitals: section headings and the Contents panel's title */
+@container style(--heading-case: caps) {
+  .markdown h1,
+  .markdown h2,
+  .toc-left-title {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+}
+@container style(--heading-case: small-caps) {
+  .markdown h1,
+  .markdown h2,
+  .toc-left-title {
+    font-variant-caps: small-caps;
+    letter-spacing: 0.04em;
   }
 }
 @container style(--heading-deco: accent) {
@@ -188,32 +361,36 @@
     position: relative;
     display: flow-root;
     overflow: visible;
+    --show-heading-accent: block;
   }
-  .markdown h1::after,
-  .markdown h2::after {
-    content: "";
-    position: absolute;
-    left: 0.5em;
-    bottom: -2px;
-    width: 2em;
-    height: 2px;
-    background: var(--ornament);
-  }
+}
+.markdown h1::after,
+.markdown h2::after {
+  content: "";
+  display: var(--show-heading-accent, none);
+  position: absolute;
+  left: 0.5em;
+  bottom: -2px;
+  width: 2em;
+  height: 2px;
+  background: var(--ornament);
 }
 
 @container style(--heading-deco: accent) {
   .toc-left-title {
     position: relative;
+    --show-heading-accent: block;
   }
-  .toc-left-title::after {
-    content: "";
-    position: absolute;
-    left: 4px;
-    bottom: -2px;
-    width: 1.8em;
-    height: 2px;
-    background: var(--ornament);
-  }
+}
+.toc-left-title::after {
+  content: "";
+  display: var(--show-heading-accent, none);
+  position: absolute;
+  left: 4px;
+  bottom: -2px;
+  width: 1.8em;
+  height: 2px;
+  background: var(--ornament);
 }
 
 /* ---- Page title: its own font and size (pages and category pages, not app
@@ -221,6 +398,19 @@
 .page > .page-head h1 {
   font-family: var(--font-title);
   font-size: var(--title-size);
+  font-weight: var(--title-weight);
+}
+@container style(--title-case: caps) {
+  .page > .page-head h1 {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+}
+@container style(--title-case: small-caps) {
+  .page > .page-head h1 {
+    font-variant-caps: small-caps;
+    letter-spacing: 0.04em;
+  }
 }
 @container style(--title-align: center) {
   .page > .page-head {
@@ -243,7 +433,7 @@
     margin-left: 0;
   }
 }
-@container style(--title-deco: line) or style(--title-deco: accent) {
+@container style(--title-deco: line) or style(--title-deco: accent) or style(--title-deco: double) {
   .page > .page-head {
     border-bottom: none;
   }
@@ -255,31 +445,39 @@
     border-bottom: 1px solid var(--heading-rule);
   }
 }
-@container style(--title-align: center) and (style(--title-deco: line) or style(--title-deco: accent)) {
+@container style(--title-align: center) and (style(--title-deco: line) or style(--title-deco: accent) or style(--title-deco: double)) {
   .page > .page-head > .page-titles > h1 {
     align-self: center;
     width: min(100%, 75%);
   }
 }
+@container style(--title-deco: double) {
+  .page > .page-head > .page-titles > h1 {
+    border-bottom: 3px double var(--heading-rule);
+  }
+}
 @container style(--title-deco: accent) {
   .page > .page-head > .page-titles > h1 {
     overflow: visible;
-  }
-  .page > .page-head > .page-titles > h1::after {
-    content: "";
-    position: absolute;
-    left: 0.4em;
-    bottom: -2px;
-    width: 3.3em;
-    height: 3px;
-    background: var(--ornament);
+    --show-title-deco-accent: block;
   }
 }
 @container style(--title-align: center) and style(--title-deco: accent) {
-  .page > .page-head > .page-titles > h1::after {
-    left: 50%;
-    transform: translateX(-50%);
+  .page > .page-head > .page-titles > h1 {
+    --title-accent-left: 50%;
+    --title-accent-shift: -50%;
   }
+}
+.page > .page-head > .page-titles > h1::after {
+  content: "";
+  display: var(--show-title-deco-accent, none);
+  position: absolute;
+  left: var(--title-accent-left, 0.4em);
+  bottom: -2px;
+  width: 3.3em;
+  height: 3px;
+  background: var(--ornament);
+  transform: translateX(var(--title-accent-shift, 0));
 }
 
 /* ---- Quote boxes: open (quotation marks only) or framed ---- */
@@ -291,14 +489,34 @@
     border-top: 1px solid var(--infobox-border);
     border-bottom: 1px solid var(--infobox-border);
     box-shadow: inset 0 0 0 1px var(--box-inner-line);
+    border-radius: var(--box-radius);
+    --show-quote-accent: block;
   }
-  .markdown .quote-box::before {
-    content: "";
-    position: absolute;
-    top: -1px;
-    left: 1em;
-    width: 3.5em;
-    height: 2px;
-    background: var(--ornament);
+}
+.markdown .quote-box::before {
+  content: "";
+  display: var(--show-quote-accent, none);
+  position: absolute;
+  top: -1px;
+  left: 1em;
+  width: 3.5em;
+  height: 2px;
+  background: var(--ornament);
+}
+@container style(--quote-style: bar) {
+  .markdown .quote-box {
+    margin-left: 1.2em;
+    text-align: left;
+    padding: 0.15em 0 0.15em 1.1em;
+    border-left: 3px solid var(--ornament);
+  }
+  .markdown .quote-box .quote-text {
+    padding: 0;
+    font-style: italic;
+    --show-quote-marks: none;
+  }
+  .markdown .quote-box .quote-by {
+    margin: 0.35em 0 0;
+    text-align: left;
   }
 }
