@@ -123,6 +123,11 @@ describe("infoboxHtml", () => {
     expect(convertValue({ date: { year: 5 } }, "date")).toEqual({ year: 5 });
   });
 
+  it("shows words around a Page link value; the link stays a link", () => {
+    const html = infoboxHtml({ fields: [f("Father", "links", ["Lord [[Page B]] (supposedly)", "Page A"])] }, ctx);
+    expect(html).toMatch(/Lord <a class="wikilink"[^>]*data-page="Page B.md"[^>]*>Page B<\/a> \(supposedly\)<br><strong class="selflink">Page A<\/strong>/);
+  });
+
   it("shows ages after birth and death dates", () => {
     const born = (v: unknown, extra: Partial<Field> = {}) => f("Born", "dateplace", v, { options: { age: "birth" }, ...extra });
     const died = (v: unknown, extra: Partial<Field> = {}) => f("Died", "date", v, { options: { age: "death" }, ...extra });

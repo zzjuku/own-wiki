@@ -5,6 +5,7 @@ import { readableOn } from "./themes/color";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Field, FieldKind, Frame, Infobox, Relations, Template } from "./api";
 import { renderInline, renderPage, slugify, spoilerHtml, type LinkContext } from "./markdown";
+import { hasWords } from "./linkEntry";
 import { reverseEntries, twoWayExtras, type RelationEntry } from "./relations";
 import { norm } from "./wikilinks";
 
@@ -482,7 +483,9 @@ function valueHtml(f: Field, ctx: BoxContext, age = ""): string {
     case "link":
     case "links": {
       const own = (typeof v === "string" ? [v] : isStringArray(v) ? v : []).filter((x) => x.trim());
-      return [own.map((n) => linkHtml(n, ctx)).join("<br>"), entriesHtml(extra, f, ctx)].filter(Boolean).join("<br>");
+      // Entries with words around the link ("Lord [[Page A]]") show them, the link stays a link.
+      const ownHtml = own.map((n) => (hasWords(n) ? renderInline(n, ctx.links) : linkHtml(n, ctx)));
+      return [ownHtml.join("<br>"), entriesHtml(extra, f, ctx)].filter(Boolean).join("<br>");
     }
     case "date":
       return escapeHtml(formatDate(v)) + (age && ` ${age}`);

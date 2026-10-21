@@ -21,7 +21,7 @@ import {
   type ImageValue,
 } from "./infobox";
 import { frameFor, useWiki } from "./wiki";
-import { DateInput, DateTextInput, ImageFrameContext, ImageInput, PageLinksInput, PageNameInput, useListRows } from "./FieldInputs";
+import { DateInput, DateTextInput, ImageFrameContext, ImageInput, LinkEntryInput, PageLinksInput, useListRows } from "./FieldInputs";
 import { MiniEditor } from "./MiniEditor";
 import { FieldDef } from "./TemplatesView";
 import { Icon } from "./editorTheme";
@@ -434,7 +434,7 @@ function ValueInput({ rel, field: f, onChange }: { rel: RelationProps; field: Fi
     case "link":
       return (
         <>
-          <PageNameInput label={f.label} value={typeof v === "string" ? v : ""} fromPage={pageId} onChange={onChange} />
+          <LinkEntryInput label={f.label} value={typeof v === "string" ? v : ""} fromPage={pageId} onChange={onChange} />
           <TwoWayExtras {...rel} field={f} />
         </>
       );

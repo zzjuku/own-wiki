@@ -204,3 +204,34 @@ test("ages: the Age setting on date fields and the project's present day", async
     .toEqual({ age: "death" });
   expect(await page.evaluate(() => (window as any).__mock.projects.get("Project A").settings.presentDay)).toEqual({ year: 300, era: "AC" });
 });
+
+test("words before and after a page link show only in this infobox", async ({ page }) => {
+  const tpl = {
+    id: "template-w",
+    name: "Template W",
+    fields: [
+      { key: "f-fa", label: "Father", type: "links" as const },
+      { key: "f-ch", label: "Children", type: "linkedfrom" as const, options: { from: ["Father"] } },
+    ],
+  };
+  const pageA: MockPage = { id: "Page A.md", title: "Page A", infobox: { template: tpl.id, fields: [{ ...tpl.fields[0], value: ["Page B"] }, { ...tpl.fields[1] }] } };
+  const pageB: MockPage = { id: "Page B.md", title: "Page B", infobox: { template: tpl.id, fields: tpl.fields.map((f) => ({ ...f })) } };
+  await openProject(page, oneProject([pageA, pageB], { templates: [tpl], mainPage: "Page A" }));
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("tab", { name: "Infobox" }).click();
+  await page.getByRole("button", { name: "Words around Father 1" }).click();
+  await page.getByLabel("Father 1: words before").fill("Lord ");
+  await page.getByLabel("Father 1: words before").pressSequentially("Commander");
+  await page.getByLabel("Father 1: words after").fill("(supposedly)");
+  await expect.poll(() => fieldValue(page, "Page A.md", "Father")).toEqual(["Lord Commander [[Page B]] (supposedly)"]);
+  await page.screenshot({ path: "test-results/qol-link-words-form.png", clip: { x: 250, y: 280, width: 600, height: 160 } });
+  const preview = page.locator(".split-preview .infobox");
+  await expect(preview).toContainText("Lord Commander Page B (supposedly)");
+  await expect(preview.locator("a.wikilink", { hasText: "Page B" })).not.toHaveClass(/\bnew\b/);
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  await page.locator(".read-view .infobox a.wikilink", { hasText: "Page B" }).click();
+  // Page B lists Page A as a child, without the words.
+  await expect(page.getByRole("heading", { name: "Page B", level: 1 })).toBeVisible();
+  const children = page.locator(".read-view .infobox tr").filter({ hasText: "Children" });
+  await expect(children.locator("td")).toHaveText("Page A");
+});

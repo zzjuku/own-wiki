@@ -114,7 +114,7 @@ export function createBackend(fixture: Fixture) {
     (ib?.fields ?? []).flatMap((f) => {
       const spoiler = !!f.spoiler;
       if (["link", "links", "linkedfrom"].includes(f.type))
-        return strings(f.value).map((v) => v.split("#")[0].trim()).filter(Boolean)
+        return strings(f.value).map((v) => (/\[\[([^\]|#]*)/.exec(v)?.[1] ?? v.split("#")[0]).trim()).filter(Boolean)
           .map((target) => ({ field: f.label, target, twoWay: f.type !== "linkedfrom" && !!f.options?.twoWay, spoiler }));
       if (!["text", "longtext", "list"].includes(f.type)) return [];
       return strings(f.value).flatMap((text) => {
@@ -306,7 +306,7 @@ export function createBackend(fixture: Fixture) {
       const src = page(p, source);
       const tgt = page(p, target);
       const names = [src.title, ...src.aliases].map(lc);
-      const isSource = (v: string) => names.includes(lc(v.split("#")[0].trim()));
+      const isSource = (v: string) => names.includes(lc((/\[\[([^\]|#]*)/.exec(v)?.[1] ?? v.split("#")[0]).trim()));
       const ib: Infobox = tgt.infobox ?? { fields: [] };
       const f = ib.fields.find((x) => x.type !== "heading" && x.type !== "divider" && lc(x.label.trim()) === lc(field.trim()));
       if (!f) {

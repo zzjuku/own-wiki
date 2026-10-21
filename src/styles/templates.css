@@ -594,3 +594,50 @@ button.add-entry {
   flex-direction: column;
   gap: 4px;
 }
+
+/* Page link entries with words around the link ("Lord [[Page A]]") */
+.link-entry {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.link-entry-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+button.link-words-toggle {
+  padding: 3px 5px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+button.link-words-toggle.active {
+  color: var(--accent);
+}
+.link-words {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+}
+.link-words input {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  padding: 3px 6px;
+}
+.link-words-page {
+  color: var(--link);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+.ib-list-item:has(.link-entry) {
+  align-items: flex-start;
+}
+.ib-list-item:has(.link-entry) > button.remove {
+  margin-top: 3px;
+}

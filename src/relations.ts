@@ -7,6 +7,7 @@
 import type { Field, Infobox, IncomingField, Relations, Template } from "./api";
 import type { LinkTarget } from "./names";
 import { compareNames } from "./tree";
+import { entryPage } from "./linkEntry";
 import { norm } from "./wikilinks";
 
 export const NO_RELATIONS: Relations = { incoming: [], values: {} };
@@ -27,8 +28,8 @@ export interface RelationEntry {
 
 const isLinkKind = (k: string) => k === "link" || k === "links";
 
-/** A Page link value's page part ("Page" of "Page#Section"). */
-const pagePart = (s: string) => s.split("#")[0].trim();
+/** A Page link value's page ("Page" of "Page#Section" or "Lord [[Page]]"). */
+const pagePart = entryPage;
 
 function stringList(v: unknown): string[] {
   if (typeof v === "string") return [v];

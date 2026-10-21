@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, errorText, type Field, type Infobox, type Page, type PageInfo, type Relations, type RelationEdit } from "./api";
 import { useDialogs } from "./dialogs";
 import { PageNameInput } from "./FieldInputs";
+import { entryPage } from "./linkEntry";
 import { MultiPagePicker } from "./MultiPagePicker";
 import { isLayout, kindLabel } from "./infobox";
 import { useReportError } from "./notify";
@@ -232,7 +233,7 @@ function slotsFor(ib: Infobox | null, from: string[], isThisPage: (name: string)
     const f = ib?.fields.find((x) => !isLayout(x.type) && norm(x.label) === norm(name));
     if (!f) return { label: name, status: "missing", current: [] };
     if (f.type !== "link" && f.type !== "links") return { label: f.label, status: "wrongType", kind: f.type, current: [] };
-    const current = (typeof f.value === "string" ? [f.value] : stringList(f.value)).map((v) => v.split("#")[0].trim()).filter(Boolean);
+    const current = (typeof f.value === "string" ? [f.value] : stringList(f.value)).map(entryPage).filter(Boolean);
     if (current.some(isThisPage)) return { label: f.label, status: "here", kind: f.type, current };
     return { label: f.label, status: current.length ? "taken" : "empty", kind: f.type, current };
   });

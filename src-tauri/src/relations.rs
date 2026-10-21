@@ -300,6 +300,19 @@ mod tests {
         assert_eq!(infobox(lib, &p, "Page B.md").fields[0].value, None);
         assert!(incoming_fields(&idx, "Page A.md").unwrap().is_empty());
 
+        // Words around a link stay out of the way: the entry is found by its link.
+        fs::write(
+            lib.join(&p).join("pages/Page B.md"),
+            child("Page B", "t-a", "  - label: Father\n    type: links\n    value: ['Lord [[Page A]]', Page Z]\n"),
+        )
+        .unwrap();
+        idx.refresh(&[]).unwrap();
+        assert_eq!(incoming_fields(&idx, "Page A.md").unwrap().len(), 1);
+        set_relation(lib, &p, &mut idx, "Page B.md", "Father", "Page A.md", Edit::Add).unwrap();
+        assert_eq!(infobox(lib, &p, "Page B.md").fields[0].value, Some(serde_json::json!(["Lord [[Page A]]", "Page Z"])));
+        set_relation(lib, &p, &mut idx, "Page B.md", "Father", "Page A.md", Edit::Remove).unwrap();
+        assert_eq!(infobox(lib, &p, "Page B.md").fields[0].value, Some(serde_json::json!(["Page Z"])));
+
         // A page without the field (and without an infobox) gets it as its own field.
         set_relation(lib, &p, &mut idx, "Page C.md", "Father", "Page A.md", Edit::Add).unwrap();
         let c = read(lib, &p, "Page C.md");

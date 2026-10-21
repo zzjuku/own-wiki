@@ -208,7 +208,13 @@ fn option_bool(f: &Field, name: &str) -> bool {
 }
 
 /// The page part of a link field value ("Page" of "Page#Section").
+///
+/// A value can also hold words around the link (`Lord [[Page A]]`, set in the
+/// Infobox tab): then the page is the one in its first `[[link]]`.
 pub(crate) fn link_value_page(s: &str) -> &str {
+    if s.contains("[[") {
+        return parse_links(s).into_iter().find(|l| !l.page.is_empty()).map(|l| &s[l.page_start..l.page_end]).unwrap_or("");
+    }
     s.split('#').next().unwrap_or("").trim()
 }
 
@@ -313,6 +319,9 @@ fn rewrite_text(s: &mut String, old: &str, new: &str) -> usize {
 }
 
 fn rewrite_link_value(s: &mut String, old: &str, new: &str) -> usize {
+    if s.contains("[[") {
+        return rewrite_text(s, old, new);
+    }
     let page = link_value_page(s);
     if page.is_empty() || norm(page) != norm(old) {
         return 0;
@@ -666,6 +675,20 @@ mod tests {
         assert_eq!(ib.fields[2].value, Some(json!("[[New|o]] [[Alias of Old]]")));
         assert_eq!(ib.fields[3].value, Some(json!({"file": "a.png", "caption": "[[New]]"})));
         assert_eq!(ib.hidden[0].value, Some(json!("New")));
+    }
+
+    #[test]
+    fn link_values_with_words_around_the_link() {
+        let mut ib = Infobox {
+            fields: vec![field(None, "Father", LINKS, Some(json!(["Lord [[Page A]] (supposedly)", "Page B"])))],
+            ..Default::default()
+        };
+        let got: Vec<String> = field_links(&ib).into_iter().map(|l| l.target).collect();
+        assert_eq!(got, ["Page A", "Page B"]);
+        assert_eq!(rewrite_infobox_links(&mut ib, "page a", "Page C"), 1);
+        assert_eq!(ib.fields[0].value, Some(json!(["Lord [[Page C]] (supposedly)", "Page B"])));
+        assert_eq!(link_value_page("Words only"), "Words only");
+        assert_eq!(link_value_page("Lord [[Page A#Early life]]"), "Page A");
     }
 
     #[test]

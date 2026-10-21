@@ -9,6 +9,7 @@ import { AdjustPicture, styleObject } from "./AdjustPicture";
 import { cleanValue, dateEntries, imageUrl, isRange, pictureStyle, type Crop, type DateEntry, type DatePoint, type DateRange, type ImageValue, type Qualifier } from "./infobox";
 import { MiniEditor } from "./MiniEditor";
 import { MultiPagePicker } from "./MultiPagePicker";
+import { entryPage, hasWords, joinLinkEntry, parseLinkEntry } from "./linkEntry";
 import { displayGroup } from "./tree";
 import { DEFAULT_FRAME, useWiki } from "./wiki";
 
@@ -122,6 +123,89 @@ export function PageNameInput({
   );
 }
 
+/** One Page link entry: the page, and optionally words before and after the
+ * link ("Lord [[Page A]]") that show only in this infobox. */
+export function LinkEntryInput({
+  value,
+  onChange,
+  label,
+  autoFocus,
+  fromPage,
+  onEnter,
+}: {
+  value: string;
+  onChange: (entry: string) => void;
+  label: string;
+  autoFocus?: boolean;
+  fromPage?: string;
+  onEnter?: () => void;
+}) {
+  const parsed = parseLinkEntry(value);
+  // The words are kept as typed (spaces included) and saved trimmed.
+  const [words, setWords] = useState<{ before: string; after: string } | null>(() =>
+    hasWords(value) ? { before: parsed.before, after: parsed.after } : null,
+  );
+  const [page, setPage] = useState(parsed.page);
+  const emit = (p: string, w: { before: string; after: string } | null) =>
+    onChange(p.trim() ? joinLinkEntry({ page: p, before: w?.before ?? "", after: w?.after ?? "" }) : "");
+  return (
+    <div className="link-entry">
+      <div className="link-entry-main">
+        <PageNameInput
+          label={label}
+          value={page}
+          autoFocus={autoFocus}
+          fromPage={fromPage}
+          onEnter={onEnter}
+          onChange={(p) => {
+            setPage(p);
+            emit(p, words);
+          }}
+        />
+        <button
+          type="button"
+          className={`plain link-words-toggle ${words ? "active" : ""}`}
+          title={words ? "Remove the words around the link" : "Add words before or after the link (shown only in this infobox)"}
+          aria-label={`Words around ${label}`}
+          aria-pressed={!!words}
+          onClick={() => {
+            const next = words ? null : { before: "", after: "" };
+            setWords(next);
+            emit(page, next);
+          }}
+        >
+          Aa
+        </button>
+      </div>
+      {words && (
+        <div className="link-words">
+          <input
+            aria-label={`${label}: words before`}
+            placeholder="Before (e.g. Lord)"
+            value={words.before}
+            onChange={(e) => {
+              const next = { ...words, before: e.target.value };
+              setWords(next);
+              emit(page, next);
+            }}
+          />
+          <span className="link-words-page">{page.trim() || "…"}</span>
+          <input
+            aria-label={`${label}: words after`}
+            placeholder="After"
+            value={words.after}
+            onChange={(e) => {
+              const next = { ...words, after: e.target.value };
+              setWords(next);
+              emit(page, next);
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Rows of a list input (List and Page link fields) with stable keys, so a
  * row inserted in the middle gets its own, focused input. An empty row stays
  * while it's being typed. */
@@ -159,12 +243,12 @@ export function PageLinksInput({ value, onChange, label, fromPage }: { value: st
   const wiki = useWiki();
   const list = useListRows(value, onChange);
   const [picking, setPicking] = useState(false);
-  const here = new Set(list.rows.map((r) => wiki.names.resolve(r.item.split("#")[0])?.page.id).filter(Boolean));
+  const here = new Set(list.rows.map((r) => wiki.names.resolve(entryPage(r.item))?.page.id).filter(Boolean));
   return (
     <div className="ib-list">
       {list.rows.map((r, i) => (
         <div key={r.id} className="ib-list-item">
-          <PageNameInput
+          <LinkEntryInput
             label={`${label} ${i + 1}`}
             value={r.item}
             autoFocus={r.focus}
