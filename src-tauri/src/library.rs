@@ -186,7 +186,7 @@ mod tests {
         let drive = tmp.path().join("Drive");
         write(&drive.join("Other.txt"), "other");
         let target = move_target(&lib, &drive).unwrap();
-        assert_eq!(target, drive.canonicalize().unwrap().join("Own WIKI"));
+        assert_eq!(target, dunce::canonicalize(&drive).unwrap().join("Own WIKI"));
         let count = copy_library(&lib, &target).unwrap();
         assert_eq!(count.files, 4);
         // Only the projects and themes go along.
@@ -201,7 +201,7 @@ mod tests {
         // An empty folder is used as it is.
         let empty = tmp.path().join("Empty");
         fs::create_dir(&empty).unwrap();
-        assert_eq!(move_target(&lib, &empty).unwrap(), empty.canonicalize().unwrap());
+        assert_eq!(move_target(&lib, &empty).unwrap(), dunce::canonicalize(&empty).unwrap());
     }
 
     #[test]
@@ -217,6 +217,6 @@ mod tests {
         assert!(move_target(&lib, &tmp.path().join("Missing")).is_err());
         // A folder next to the projects (e.g. Documents/Wiki) is fine.
         let inside = lib.join("Photos");
-        assert_eq!(move_target(&lib, &inside).unwrap(), inside.canonicalize().unwrap().join("Own WIKI"));
+        assert_eq!(move_target(&lib, &inside).unwrap(), dunce::canonicalize(&inside).unwrap().join("Own WIKI"));
     }
 }
