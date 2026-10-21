@@ -2,6 +2,7 @@
 // fast with thousands of pages. Drag and drop uses pointer events (not HTML5
 // drag and drop, which the Windows webview intercepts for file drops).
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { IS_MAC } from "./QuickOpen";
 import { parentOf, ROOT, type Row } from "./tree";
 
 export const ROW_HEIGHT = 28;
@@ -19,6 +20,9 @@ export interface MenuItem {
 interface Props {
   rows: Row[];
   selected: string | null;
+  /** Pages picked with ⌘/Ctrl-click or Shift-click (several at once). */
+  picked: ReadonlySet<string>;
+  onPick: (ids: Set<string>) => void;
   /** Group highlighted as the place new pages and groups go (null = none). */
   selectedGroup: string | null;
   /** Row to scroll into view; a new object each time it's asked for. */
@@ -161,8 +165,30 @@ export function Sidebar(props: Props) {
     setMenu({ x, y, items: props.menuFor(row) });
   }
 
-  function activate(row: Row) {
+  // Where a Shift-click range starts: the last page clicked.
+  const anchor = useRef<string | null>(null);
+
+  function activate(row: Row, e: React.MouseEvent) {
     if (suppressClick.current) return;
+    const multi = (IS_MAC ? e.metaKey : e.ctrlKey) || e.shiftKey;
+    if (row.kind === "page" && multi) {
+      // ⌘/Ctrl-click: add or take away one page (the open one counts as picked);
+      // Shift-click: every page between the last one clicked and this one.
+      const base = new Set(props.picked.size ? props.picked : selected ? [selected] : []);
+      const from = anchor.current ?? selected;
+      if (e.shiftKey && from) {
+        const pages = rows.filter((r) => r.kind === "page").map((r) => r.id);
+        const [a, b] = [pages.indexOf(from), pages.indexOf(row.id)].sort((x, y) => x - y);
+        if (a >= 0) pages.slice(a, b + 1).forEach((id) => base.add(id));
+        else base.add(row.id);
+      } else if (base.has(row.id)) base.delete(row.id);
+      else base.add(row.id);
+      anchor.current = row.id;
+      props.onPick(base);
+      return;
+    }
+    anchor.current = row.kind === "page" ? row.id : anchor.current;
+    if (props.picked.size) props.onPick(new Set());
     if (row.kind === "group") {
       props.onSelectGroup(row.id);
       props.onToggle(row.id, !row.expanded);
@@ -186,8 +212,9 @@ export function Sidebar(props: Props) {
         {rows.length === 0 && <div className="tree-empty">{props.empty}</div>}
         <div className="tree-inner" style={{ height: rows.length * ROW_HEIGHT }}>
           {rows.slice(first, last).map((row, i) => {
+            const isPicked = row.kind === "page" && props.picked.has(row.id);
             const isSelected =
-              row.kind === "page" ? row.id === selected : row.id === props.selectedGroup;
+              row.kind === "page" ? row.id === selected || isPicked : row.id === props.selectedGroup;
             const isTarget = row.kind === "group" && drag?.target === row.id;
             const isDragged = drag?.row.id === row.id;
             return (
@@ -197,6 +224,7 @@ export function Sidebar(props: Props) {
                   "tree-row",
                   `is-${row.kind}`,
                   isSelected && "selected",
+                  isPicked && "picked",
                   isTarget && "drop-target",
                   isDragged && "drag-source",
                 ]
@@ -218,7 +246,7 @@ export function Sidebar(props: Props) {
                   className="tree-main"
                   title={row.label}
                   onPointerDown={(e) => startPointer(e, row)}
-                  onClick={() => activate(row)}
+                  onClick={(e) => activate(row, e)}
                 >
                   {row.kind === "group" ? (
                     <span className={`chevron ${row.expanded ? "open" : ""}`} aria-hidden>

@@ -8,6 +8,7 @@ import { FIELD_IMAGE_EXTENSIONS, hasExtension } from "./images";
 import { AdjustPicture, styleObject } from "./AdjustPicture";
 import { cleanValue, dateEntries, imageUrl, isRange, pictureStyle, type Crop, type DateEntry, type DatePoint, type DateRange, type ImageValue, type Qualifier } from "./infobox";
 import { MiniEditor } from "./MiniEditor";
+import { MultiPagePicker } from "./MultiPagePicker";
 import { displayGroup } from "./tree";
 import { DEFAULT_FRAME, useWiki } from "./wiki";
 
@@ -143,6 +144,11 @@ export function useListRows(value: string[], onChange: (v: unknown) => void) {
     set: (i: number, item: string) => update(rows.map((r, j) => (j === i ? { ...r, item } : r))),
     remove: (i: number) => update(rows.length > 1 ? rows.filter((_, j) => j !== i) : [{ item: "", id: rows[0].id }]),
     add: () => insert(rows.length - 1),
+    /** Adds several entries at the end (an empty last row is filled first). */
+    append: (items: string[]) => {
+      const kept = rows.filter((r, i) => r.item.trim() || i < rows.length - 1);
+      update([...kept, ...items.map((item) => ({ item, id: nextId.current++ }))]);
+    },
     /** Enter in row `i`: the next row starts (not after an empty one). */
     enter: (i: number) => void (rows[i].item.trim() && insert(i)),
   };
@@ -150,7 +156,10 @@ export function useListRows(value: string[], onChange: (v: unknown) => void) {
 
 /** Several page names (Page links fields). */
 export function PageLinksInput({ value, onChange, label, fromPage }: { value: string[]; onChange: (v: unknown) => void; label: string; fromPage?: string }) {
+  const wiki = useWiki();
   const list = useListRows(value, onChange);
+  const [picking, setPicking] = useState(false);
+  const here = new Set(list.rows.map((r) => wiki.names.resolve(r.item.split("#")[0])?.page.id).filter(Boolean));
   return (
     <div className="ib-list">
       {list.rows.map((r, i) => (
@@ -168,9 +177,23 @@ export function PageLinksInput({ value, onChange, label, fromPage }: { value: st
           </button>
         </div>
       ))}
-      <button type="button" className="plain add-entry" onClick={() => list.add()}>
-        + Add page
-      </button>
+      <div className="row add-entries">
+        <button type="button" className="plain add-entry" onClick={() => list.add()}>
+          + Add page
+        </button>
+        <button type="button" className="plain add-entry" onClick={() => setPicking(true)}>
+          + Add several…
+        </button>
+      </div>
+      {picking && (
+        <MultiPagePicker
+          title={`Add pages to ${label}`}
+          confirmLabel={(n) => (n === 1 ? "Add 1 page" : `Add ${n} pages`)}
+          unavailable={(p) => (p.id === fromPage ? "this page" : here.has(p.id) ? "already here" : null)}
+          onPick={(pages) => list.append(pages.map((p) => p.title))}
+          close={() => setPicking(false)}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,79 @@
+/* Several pages at once: picked rows in the sidebar and their action bar,
+ * and the tick-box picker of Add several… (src/MultiPagePicker.tsx). */
+.tree-row.picked {
+  background: var(--selection);
+}
+.pick-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: var(--text-sm);
+}
+.pick-bar button {
+  padding: 3px 8px;
+  font-size: var(--text-sm);
+}
+.pick-count {
+  flex: 1 0 100%;
+  font-weight: 600;
+  padding: 0 2px 2px;
+}
+.pick-bar .pick-clear {
+  margin-left: auto;
+}
+.row.add-entries {
+  gap: 14px;
+}
+.multi-picker {
+  display: flex;
+  flex-direction: column;
+  max-height: min(640px, 86vh);
+}
+.multi-picker-search {
+  font: inherit;
+  font-size: var(--text-base);
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+}
+.multi-picker-picked {
+  margin-top: 8px;
+}
+.multi-picker-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-y: auto;
+  min-height: 120px;
+  flex: 1;
+}
+.multi-picker-list .check {
+  margin: 0;
+  padding: 3px 0;
+}
+.multi-picker-list .check.disabled {
+  color: var(--muted);
+}
+.multi-picker-title {
+  font-weight: 500;
+}
+.several-plan {
+  margin-top: 12px !important;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.several-plan li.skipped .relation-name {
+  color: var(--muted);
+}
+.relation-taken {
+  margin-top: 12px;
+}

@@ -148,6 +148,9 @@ export function ProjectView({ project, onBack }: Props) {
   const [history, setHistory] = useState<History>({ back: [], forward: [] });
   // Bumped when the open page's file changed behind its back (rename rewrote its links).
   const [pageVersion, setPageVersion] = useState(0);
+  // Pages picked in the sidebar with ⌘/Ctrl-click or Shift-click, to move,
+  // categorise or delete together.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   // Where to scroll and what to say when a page was opened through a link.
   const [arrival, setArrival] = useState<{ section: string | null; via: string | null; key: number }>({
     section: null,
@@ -630,6 +633,125 @@ export function ProjectView({ project, onBack }: Props) {
     }
   }
 
+  // ---- several pages picked in the sidebar ----
+
+  /** The picked pages that still exist, in sidebar order. */
+  function pickedIds(): string[] {
+    return rows.filter((r) => r.kind === "page" && picked.has(r.id)).map((r) => r.id).concat(
+      [...picked].filter((id) => index.pages.has(id) && !rows.some((r) => r.id === id)),
+    );
+  }
+
+  /** Moves pages into `target`; `done` remembers the ones already moved (a retry after the long-path warning skips them). */
+  async function movePages(ids: string[], target: string, allowLong: boolean, done: Set<string>) {
+    await flushAll();
+    const moved: [string, string][] = [];
+    try {
+      for (const id of ids) {
+        if (done.has(id) || parentOf(id) === target) continue;
+        const info = await api.movePage(project.id, id, target, allowLong);
+        done.add(id);
+        moved.push([id, info.id]);
+      }
+    } finally {
+      await reload(() => {
+        for (const [from, to] of moved) {
+          if (selected === from) setSelected(to);
+          remapHistory(from, to);
+        }
+        setPicked(new Set(moved.map(([, to]) => to)));
+        reveal(target);
+      });
+    }
+  }
+
+  function movePicked() {
+    const ids = pickedIds();
+    const done = new Set<string>();
+    dialogs.pick({
+      title: `Move ${plural(ids.length, "page")} to…`,
+      options: [
+        { id: ROOT, label: "Top level", fullLabel: "Top level", depth: 0 },
+        ...allGroupsInOrder(index).map((g) => ({ id: g.id, label: g.name, fullLabel: displayGroup(g.id), depth: g.depth + 1 })),
+      ],
+      confirmLabel: "Move",
+      submit: (target, allowLong) => movePages(ids, target, allowLong, done),
+    });
+  }
+
+  /** Several pages dragged onto a group: move them all (asks only about long paths). */
+  async function dropPicked(target: string) {
+    const ids = pickedIds();
+    const done = new Set<string>();
+    try {
+      await movePages(ids, target, false, done);
+    } catch (e) {
+      if (!isLongPath(e)) return report(e);
+      dialogs.confirm({ title: "Long file path", message: errorText(e), confirmLabel: "Move anyway", submit: () => movePages(ids, target, true, done) });
+    }
+  }
+
+  function categorisePicked() {
+    const ids = pickedIds();
+    dialogs.prompt({
+      title: `Add a category to ${plural(ids.length, "page")}`,
+      label: "Category",
+      confirmLabel: "Add",
+      submit: async (name) => {
+        const clean = name.trim().replace(/^category\s*:\s*/i, "");
+        if (!clean) throw "Type a category name.";
+        await flushAll();
+        for (const id of ids) {
+          const page = await api.readPage(project.id, id);
+          if (!page.categories.some((c) => c.toLowerCase() === clean.toLowerCase())) {
+            await api.setPageCategories(project.id, id, [...page.categories, clean]);
+          }
+        }
+        reloadCategories();
+        if (selected && ids.includes(selected)) setPageVersion((v) => v + 1);
+      },
+    });
+  }
+
+  function deletePicked() {
+    const ids = pickedIds();
+    dialogs.confirm({
+      title: "Delete pages",
+      message: (
+        <>
+          Move <strong>{plural(ids.length, "page")}</strong> to the Trash? Links to them will turn red.
+          {ids.some((id) => id === mainPage?.id) && <> One of them is the project's main page.</>}
+        </>
+      ),
+      confirmLabel: "Move to Trash",
+      danger: true,
+      submit: async () => {
+        await flushAll();
+        try {
+          for (const id of ids) await api.deletePage(project.id, id);
+        } finally {
+          if (selected && ids.includes(selected)) {
+            setSelected(null);
+            setEditing(false);
+          }
+          setHistory((h) => ({ back: h.back.filter((x) => !ids.includes(x)), forward: h.forward.filter((x) => !ids.includes(x)) }));
+          setPicked(new Set());
+          await reload();
+        }
+      },
+    });
+  }
+
+  // Escape lets go of the picked pages.
+  useEffect(() => {
+    if (!picked.size) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !document.querySelector(".backdrop")) setPicked(new Set());
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [picked]);
+
   function moveTo(kind: Kind, id: string) {
     const label = kind === "page" ? index.pages.get(id)?.title : index.groups.get(id)?.name;
     const current = parentOf(id);
@@ -774,6 +896,8 @@ export function ProjectView({ project, onBack }: Props) {
         <Sidebar
           rows={rows}
           selected={panel || category ? null : selected}
+          picked={picked}
+          onPick={setPicked}
           selectedGroup={selectedGroup}
           onSelectGroup={setSelectedGroup}
           onSelectTop={() => setSelectedGroup(ROOT)}
@@ -782,9 +906,22 @@ export function ProjectView({ project, onBack }: Props) {
           onToggle={toggle}
           menuFor={menuFor}
           canDrop={(row, target) => canDrop(row.kind, row.id, target)}
-          onDrop={(row, target) => void dropMove(row.kind, row.id, target)}
+          onDrop={(row, target) => void (picked.has(row.id) && picked.size > 1 ? dropPicked(target) : dropMove(row.kind, row.id, target))}
           empty={tree && <p className="empty small">No pages yet.</p>}
         />
+        {picked.size > 0 && (
+          <div className="pick-bar" role="toolbar" aria-label="Picked pages">
+            <span className="pick-count">{plural(picked.size, "page")}</span>
+            <button onClick={movePicked}>Move to…</button>
+            <button onClick={categorisePicked}>Category…</button>
+            <button className="danger-text" onClick={deletePicked}>
+              Delete…
+            </button>
+            <button className="plain pick-clear" title="Let go (Esc)" aria-label="Let go of the picked pages" onClick={() => setPicked(new Set())}>
+              ×
+            </button>
+          </div>
+        )}
       </aside>
 
       <main className="content">

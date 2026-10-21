@@ -13,6 +13,7 @@ import "./styles/infobox.css";
 import "./styles/templates.css";
 import "./styles/relations.css";
 import "./styles/layoutPrefs.css";
+import "./styles/picking.css";
 import "./styles/images.css";
 import "./styles/categories.css";
 import "./styles/spoilers.css";

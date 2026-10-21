@@ -4,9 +4,10 @@
 // that lives on another page writes that page (src-tauri/src/relations.rs):
 // "Alex is John's: Father / Mother" writes Alex into John's Father field.
 import { useEffect, useMemo, useState } from "react";
-import { api, errorText, type Field, type Infobox, type Page, type Relations, type RelationEdit } from "./api";
+import { api, errorText, type Field, type Infobox, type Page, type PageInfo, type Relations, type RelationEdit } from "./api";
 import { useDialogs } from "./dialogs";
 import { PageNameInput } from "./FieldInputs";
+import { MultiPagePicker } from "./MultiPagePicker";
 import { isLayout, kindLabel } from "./infobox";
 import { useReportError } from "./notify";
 import { fromProblems, reverseEntries, twoWayExtras, type RelationEntry } from "./relations";
@@ -105,6 +106,9 @@ function EntryName({ entry }: { entry: RelationEntry }) {
 export function ReverseFieldInput({ field, onChange, ...rel }: RelationProps & { field: Field; onChange: (v: unknown) => void }) {
   const wiki = useWiki();
   const [adding, setAdding] = useState(false);
+  // Add several…: first the pages, then one choice for all of them.
+  const [picking, setPicking] = useState(false);
+  const [several, setSeveral] = useState<PageInfo[] | null>(null);
   const removeFromOthers = useRemoveFromOthers(rel);
   const entries = reverseEntries(field, rel.relations, (n) => wiki.names.resolve(n));
   const from = field.options?.from ?? [];
@@ -150,9 +154,25 @@ export function ReverseFieldInput({ field, onChange, ...rel }: RelationProps & {
           {from.length ? `No page points here yet.` : "Choose which fields point here in the field settings (⚙)."}
         </span>
       )}
-      <button type="button" className="plain add-entry" disabled={!from.length} onClick={() => setAdding(true)}>
-        + Add…
-      </button>
+      <div className="row add-entries">
+        <button type="button" className="plain add-entry" disabled={!from.length} onClick={() => setAdding(true)}>
+          + Add…
+        </button>
+        <button type="button" className="plain add-entry" disabled={!from.length} onClick={() => setPicking(true)}>
+          + Add several…
+        </button>
+      </div>
+      {picking && (
+        <MultiPagePicker
+          title={`Add pages to ${field.label}`}
+          confirmLabel={(n) => (n === 1 ? "Next: 1 page" : `Next: ${n} pages`)}
+          note={<>Tick the pages. Next you choose which of their fields {rel.pageTitle} goes into.</>}
+          unavailable={(p) => (p.id === rel.pageId ? "this page" : entries.some((e) => e.id === p.id) ? "already listed" : null)}
+          onPick={setSeveral}
+          close={() => setPicking(false)}
+        />
+      )}
+      {several && <AddSeveralDialog {...rel} field={field} pages={several} close={() => setSeveral(null)} />}
       {adding && (
         <AddRelationDialog
           {...rel}
@@ -397,6 +417,125 @@ function AddRelationDialog({
             Cancel
           </button>
           {actions}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** What happens to a page's field when several pages are added at once. */
+type TakenMode = "add" | "replace" | "skip";
+
+/**
+ * Add several…, second step: one field choice ("Alex is their: Father") for
+ * all ticked pages, what that means for each of them, and pages whose field
+ * already holds someone else: add next to them, replace, or skip.
+ */
+function AddSeveralDialog({ pageId, pageTitle, field, pages, close, onRelationsChanged }: RelationProps & { field: Field; pages: PageInfo[]; close: () => void }) {
+  const wiki = useWiki();
+  const from = field.options?.from ?? [];
+  const [loaded, setLoaded] = useState<Map<string, Page | null> | null>(null);
+  const [choice, setChoice] = useState(from[0] ?? "");
+  const [taken, setTaken] = useState<TakenMode>("add");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    Promise.all(pages.map((p) => api.readPage(wiki.project, p.id).catch(() => null))).then(
+      (list) => live && setLoaded(new Map(pages.map((p, i) => [p.id, list[i]]))),
+    );
+    return () => {
+      live = false;
+    };
+  }, [pages, wiki.project]);
+
+  const thisPage = (n: string) => wiki.names.resolve(n)?.page.id === pageId;
+  // Each page's state of the chosen field, and what Add will do there.
+  const plan = pages.map((p) => {
+    const page = loaded?.get(p.id);
+    if (loaded && (!page || page.infoboxError)) return { p, edit: null, note: "its infobox can't be read: skipped" };
+    const slot = page ? slotsFor(page.infobox, [choice], thisPage)[0] : null;
+    if (!slot) return { p, edit: null, note: "…" };
+    switch (slot.status) {
+      case "empty":
+        return { p, edit: "add" as const, note: "empty now" };
+      case "missing":
+        return { p, edit: "add" as const, note: "added as a new field" };
+      case "here":
+        return { p, edit: null, note: `already ${pageTitle}: skipped` };
+      case "wrongType":
+        return { p, edit: null, note: `a ${kindLabel(slot.kind ?? "")} field: skipped` };
+      case "taken":
+        if (taken === "skip") return { p, edit: null, note: `already ${slot.current.join(", ")}: skipped` };
+        if (taken === "add" && slot.kind === "link") return { p, edit: null, note: `already ${slot.current.join(", ")} (one page only): skipped` };
+        return { p, edit: taken, note: taken === "add" ? `${pageTitle} added next to ${slot.current.join(", ")}` : `replaces ${slot.current.join(", ")}` };
+    }
+  });
+  const anyTaken = !!loaded && pages.some((p) => {
+    const page = loaded.get(p.id);
+    return page && slotsFor(page.infobox, [choice], thisPage)[0]?.status === "taken";
+  });
+  const todo = plan.filter((x) => x.edit);
+
+  async function run() {
+    setBusy(true);
+    const bad: string[] = [];
+    for (const x of todo) {
+      try {
+        await api.setRelation(wiki.project, x.p.id, choice, pageId, x.edit as RelationEdit);
+      } catch {
+        bad.push(x.p.title);
+      }
+    }
+    onRelationsChanged();
+    setBusy(false);
+    if (bad.length) setFailed(bad);
+    else close();
+  }
+
+  return (
+    <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+      <div className="dialog wide relation-dialog" role="dialog" aria-label={`Add several to ${field.label}`} onKeyDown={(e) => e.key === "Escape" && close()}>
+        <h2>Add {pages.length === 1 ? "1 page" : `${pages.length} pages`} to {field.label}</h2>
+        <fieldset className="relation-slots">
+          <legend>{pageTitle} is their:</legend>
+          {from.map((name) => (
+            <label key={name} className="check">
+              <input type="radio" name="several-slot" checked={choice === name} onChange={() => setChoice(name)} />
+              <span>{name}</span>
+            </label>
+          ))}
+        </fieldset>
+        {anyTaken && (
+          <label className="field relation-taken">
+            <span>Where {choice} already holds another page</span>
+            <select value={taken} onChange={(e) => setTaken(e.target.value as TakenMode)}>
+              <option value="add">Add {pageTitle} next to it</option>
+              <option value="replace">Replace it with {pageTitle}</option>
+              <option value="skip">Leave that page alone</option>
+            </select>
+          </label>
+        )}
+        <ul className="relation-list several-plan" aria-label="What happens on each page">
+          {plan.map((x) => (
+            <li key={x.p.id} className={x.edit ? "" : "skipped"}>
+              <span className="relation-name">{x.p.title}</span>
+              <span className="relation-source">{x.note}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="dialog-note relation-writes">Writes {pageTitle} into each page's {choice}. Nothing is stored on {pageTitle}'s page.</p>
+        {failed.length > 0 && <p className="dialog-error">These pages couldn't be changed: {failed.join(", ")}.</p>}
+        <div className="dialog-actions">
+          <button type="button" onClick={close}>
+            {failed.length ? "Close" : "Cancel"}
+          </button>
+          {!failed.length && (
+            <button type="button" className="primary" disabled={busy || !loaded || !todo.length} onClick={() => void run()}>
+              {todo.length === 1 ? "Add to 1 page" : `Add to ${todo.length} pages`}
+            </button>
+          )}
         </div>
       </div>
     </div>
