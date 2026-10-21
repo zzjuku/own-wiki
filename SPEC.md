@@ -2,7 +2,7 @@
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes. Detailed scopes and decisions of finished milestones are in `docs/history.md`.
 
-Status: M1–M10 done (M10 on 2026-10-21); next: define M11 Graph view; roadmap M11–M17 drafted.
+Status: M1–M10 done (M10 on 2026-10-21); next: build M11 Graph view (defined 2026-10-21); roadmap M11–M17 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -60,7 +60,7 @@ A blank, local desktop program for building personal wikis for fictional stories
 - Spoilers stay hidden everywhere their text appears: page text, infobox fields, hover previews, embeds and search results.
 - "Reveal all spoilers" exists both per page and as a global switch for everywhere (2026-10-19). Per page: lasts until the page is left. Global switch: stays on until switched off, remembered per computer (browser local storage, never synced).
 - Every infobox field on a page can be hidden as a whole with a **Spoiler** toggle, whatever its type (2026-10-20). Images and galleries in page text can be spoilers (blurred until clicked).
-- Never hidden: page titles, aliases, category names, the sidebar, and the fact that one page links to another. A value hidden as a spoiler stays hidden wherever it shows up again (reverse fields in M9, search in M10, timelines, trees…).
+- Never hidden: page titles, aliases, category names, the sidebar, and the fact that one page links to another. A value hidden as a spoiler stays hidden wherever it shows up again (reverse fields in M9, search in M10, field names on graph lines in M11, timelines, trees…).
 
 ### 7. Working mode
 - Juku doesn't need to understand or maintain the code. Claude builds, tests, and documents. Explanations stay short and user-facing.
@@ -82,7 +82,7 @@ Inspiration: Wikipedia, A Wiki of Ice and Fire (AWOIAF), Chronicler.
 - **Quote boxes:** AWOIAF-style quote box (quote + attribution), inserted by hand in the text. "Quotes by" / "Quotes about" are ordinary sections the user writes (e.g. in a template's starter text); no automatic collection.
 - **Separator lines in text:** thin horizontal line (`---`), with a toolbar button.
 - **Health reports:** auto-generated reports (broken links, orphan pages, unlinked mentions, missing images, duplicate titles, sync conflicts, hidden template values…) with tools to fix them.
-- **Graph view:** Obsidian-style interactive network of linked pages. Must handle thousands of pages: local graph (neighbours of the current page) plus a filterable global graph.
+- **Graph view:** Obsidian-style interactive network of linked pages. Must handle thousands of pages: local graph (neighbours of the current page) plus a filterable global graph. Local graph as a panel beside the page; own colour rules; red links, categories and groups can be shown as nodes; every link is drawn, field names on lines follow the eye switch (Juku, 2026-10-21; scope in M11).
 - **Themes:** user-created, selectable, editable themes. A theme is either app-wide or belongs to one project (stored in and synced with that project); a project can use its own theme instead of the app-wide one. UI styling uses CSS variables from the start so themes are cheap to add. A theme sets colours, fonts (body text and headings separately), text size, line spacing and page width (2026-10-19). Fonts a theme uses are copied into the project/theme so Mac and Windows look the same. Custom CSS on top: not for now, can be added later (Juku, 2026-10-20). The app itself is always light on Mac and Windows, regardless of the system's dark mode (2026-10-19); other looks come only from themes. Themes set one look for all pages, infoboxes included; a page can still give its own infobox a different **colour** (not style).
 - **Interactive maps:** zoomable, pannable; pins linked to pages with hover preview; drawable regions; nested maps (a pin opens another map); distance measuring.
   - Map source (changed 2026-10-18) is either a painted image (Photoshop) exported as a large PNG (ideally 8,000+ px on the long side), which the app tiles for smooth deep zoom, or an **SVG**, which stays sharp at any zoom without tiling (very detailed SVGs can zoom slowly; PNG stays the safe choice for big painted maps). Pins, regions, labels and distance lines are vector overlays drawn by the app and stay sharp at any zoom.
@@ -125,6 +125,37 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 ### How every milestone is written
 - **Done when** always includes: new features have automated UI tests (Playwright smoke tests in `tests/ui/`) and pass with the Rust and unit tests; screenshots check how new or changed screens look; speed targets only if the milestone touches loading, the index, search or big lists; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
 - A milestone may name a **checkpoint** partway for Juku. A session that ends partway adds a short **Progress** note (done / left / open questions) to the milestone here.
+
+### M11 — Graph view (defined 2026-10-21)
+An Obsidian-style map of how pages link, for the whole project and around the current page.
+
+**What the graph shows**
+- Nodes = pages; lines = links between them: text links and infobox link fields (relations included). Embeds don't count (M7 rule). Several links between the same two pages make one line. Reverse fields (M9) are the same link seen from the other side, so no extra line.
+- Node size grows with the number of links. Page names show once zoomed in far enough, and always for the hovered page and its neighbours.
+- **Extra nodes**, each with its own on/off switch (Juku): **red links** (linked but missing pages, greyed; click creates the page like a red link), **categories** (a node per category, lined to its member pages and to its parent categories), **groups** (a node per group, lined to the pages directly inside and to its parent group). Off by default.
+- **Spoilers** (Juku): every line is drawn, also for links in spoiler text or spoiler fields (keeps rule 6: the fact that a page links to another is never hidden). Hovering a page labels its lines with the infobox field names (*Father*, *Spouse*…); names of spoiler fields and links inside `||…||` only show while the global eye switch is on. Text links have no label.
+- Arrows showing link direction: on/off switch, off by default.
+
+**Global graph**
+- Own **Graph** screen: button in the sidebar header and Cmd+Alt+G (Ctrl+Alt+G).
+- Zoom, pan, drag a node to move it. Hover highlights the page and its neighbours (rest fades) and shows the usual hover card; click opens the page; Back returns to the graph where it was.
+- **Search box** highlights matching titles and aliases (word starts, as in M10) and zooms to the first match.
+- **Filters:** group (incl. subgroups), category, template, hide orphans (pages without links), text links on/off, infobox links on/off, plus the extra-node switches. Filters are remembered per project on each computer (not synced).
+- **Stable layout:** positions are remembered per project on each computer (app cache folder, not synced), so the graph doesn't reshuffle on every open. New pages appear next to their neighbours; **Re-arrange** lays everything out fresh.
+- Updates live on save, rename, move, delete and live reload (M10).
+
+**Local graph**
+- A **panel beside the page** (Juku), opened and closed with a button on the page (open/closed remembered per computer): the current page in the centre, its neighbours around it, **depth 1–3**. Same hover, click, labels and spoiler behaviour; the same switches for link types and extra nodes. Follows the page you're on. **Open in Graph** opens the full screen centred on this page.
+
+**Colour rules** (Juku)
+- Obsidian-style list on the Graph screen: each rule is **template**, **group** (incl. subgroups) or **category** = a chosen colour. First matching rule wins; drag to reorder; pages matching none use the theme's node colour. Saved in `project.json` (synced), so both computers show the same colours. Used by the global graph and the local panel.
+
+**Look**
+- New theme settings (theme contract: `src/theme.css`, `docs/theme-variables.md`, `src/themes/vars.ts`): graph background, node, highlighted node, faded node, line, highlighted line, label text, red-link node, category node, group node. The built-in themes (AWOIAF included) get values.
+
+**Checkpoint for Juku:** the Graph screen with every page and link, zoom/pan/drag, hover highlight and hover card, click to open, stable layout, speed targets met. After it: extra nodes, labels and spoilers, filters and search, colour rules, local panel, theme settings.
+
+- **Done when:** the points above work; new features have Playwright UI tests (Graph screen opens from button and shortcut, click opens a page and Back returns, hover highlights neighbours, each extra-node switch, spoiler field names hidden until the eye switch is on, filters and search, colour rules incl. order, local panel with depth, Open in Graph, graph updates after a save and a rename) and pass with the Rust and unit tests (graph data from the index: deduplicated lines, red-link/category/group nodes, spoiler flags on links, filter logic, rule matching); screenshots check the Graph screen, the local panel, the colour-rule editor and the graph in the built-in themes; with a generated 5,000-page / 25,000-link project the Graph screen first shows within about 2 s (under 1 s with remembered positions), zooms and pans smoothly, the local panel opens without noticeable delay and a save doesn't make the graph stutter; a 5,000-page project still reopens in under 1 s if the index changes; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
 
 ## Rules from finished milestones (M1–M10)
 Everything later work must keep working. Reasons and full detail: `docs/history.md` (search it).
@@ -258,3 +289,5 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - 2026-10-20 (planning): AWOIAF-style rework of the hover cards moved to a later version (listed under "Later / undecided"); the current M4/M6 hover cards stay as they are.
 - 2026-10-20 (planning): embed boxes get their own look per theme (frame/box appearance, background, colours), added to M12 Themes.
 - 2026-10-21 (planning): Graph view moved ahead of Health reports (Juku). Renumbered: Graph view M12 → M11, Health reports M11 → M12; M13–M17 unchanged. No dependency between the two; `docs/history.md` keeps the old numbers.
+- 2026-10-21 (planning, M11 defined): local graph as a panel beside the page with Open in Graph (Juku); node colours from own rules by template / group / category, first match wins, saved in `project.json` (Juku); red links, categories and groups can each be shown as nodes, off by default (Juku); every line drawn, field names on lines from spoiler fields or spoiler text only with the eye switch on (Juku). Claude's defaults: one line per page pair, labels on hover, arrows off by default, layout and filters remembered per computer (not synced), Cmd+Alt+G.
+- 2026-10-21 technical (planned for M11): WebGL drawing (sigma.js + graphology) with the force layout in a web worker, so thousands of nodes stay smooth; the build session confirms this with the speed test. Links inside `||…||` text need a spoiler flag in the link index (cache version bump).
