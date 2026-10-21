@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.15, 2026-10-20)
+# Own WIKI — Spec (v0.16, 2026-10-21)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes. Detailed scopes and decisions of finished milestones are in `docs/history.md`.
 
-Status: M1–M9 done (M9 on 2026-10-21); next: define M10 (Search & sync safety); roadmap M10–M17 drafted.
+Status: M1–M9 done (M9 on 2026-10-21); M10 Search & sync safety defined (scope below), next: build it; roadmap M11–M17 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -50,7 +50,7 @@ A blank, local desktop program for building personal wikis for fictional stories
   - recognize sync-conflict or duplicate copies and surface them instead of silently ignoring them
   - keep caches/indexes out of the synced data (`.cache/`)
   - write files safely (write a temp file, then rename) so a half-synced file can't corrupt a page
-- Limitation: don't edit the same page on both machines at the same time.
+- Limitation: don't edit the same page on both machines at the same time. The app warns when a project is still open on the other computer (M10).
 - Windows path limit (~260 characters): deeply nested groups plus long titles inside the Drive folder can exceed it. The app warns when a path gets close to the limit.
 
 ### 5. Users and privacy
@@ -91,7 +91,7 @@ Inspiration: Wikipedia, A Wiki of Ice and Fire (AWOIAF), Chronicler.
 - **Family trees:** generated automatically from infobox link fields, editable, and also creatable manually. Must support multiple spouses, unknown parents, intermarriage and incest (the "tree" is really a graph).
   - Editing a relation in the tree writes it back to the infobox fields of the pages involved (one source of truth).
   - Trees may contain people without a page (placeholders); a placeholder can later be turned into a page.
-- **Deep search:** full-text search across page text, infobox fields and aliases; finds every mention.
+- **Deep search:** full-text search across page text, infobox fields and aliases; finds every mention. Own Search screen, matches word starts, spoilers follow the eye switch (M10).
 - **Solar system map:** later version, details to be defined.
 - Additions proposed by Claude and approved by Juku (2026-10-17): red links (link to a missing page, click to create it), "What links here" (backlinks), hover previews for every link, aliases/redirects, automatic table of contents, footnotes/citations, a main page per project, tables, image galleries, quick-open by title (Cmd+O). Page history/undo of edits: later.
 
@@ -123,6 +123,43 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M16 Solar system map** (later version, scope to be defined).
 - **M17 Export:** zip, static HTML site.
 
+### M10 — Search & sync safety, plus easier field moving (defined 2026-10-21)
+Ends the one-computer rule: after M10 Juku can use the Mac and Windows with the library in Drive.
+
+**Search**
+- **Search screen**, opened with Cmd+Shift+F (Ctrl+Shift+F) or a search box at the top of the sidebar. Cmd+O stays title-only.
+- Searches: titles, aliases, page text (tables, footnotes, captions, quote boxes included), every infobox field value (all types, as shown), and category page text. Not searched: hidden template values; embedded content (it counts on its own page only, so results aren't doubled).
+- Matching: upper/lower case and accents ignored; each word matches **word starts** ("Targ" finds Targaryen and Targaryens; "aryen" finds nothing); several words in any order, all must be on the page; `"quotes"` for an exact phrase. Markdown syntax is ignored; a link matches by its shown text and its target (`[[John Snow|John]]` matches "John" and "John Snow").
+- Results update while typing: page title, group, where the match is ("Infobox: Born", "Section: Early life", "Category text"), a snippet with the words highlighted, number of matches. Title and alias matches first, then infobox, then text. Filters: group, category, template.
+- **Spoilers follow the global eye switch**: off, spoiler text (`||…||`, spoiler fields, spoiler captions) isn't searched at all, so a result never gives away that a page mentions something; on, it's searched and shown (marked as spoilers).
+- Opening a result shows the page in the read view with the find bar (below) filled in: all matches highlighted, scrolled to the first. Back returns to the results with the same query.
+- **Find on page** in the read view: Cmd+F (Ctrl+F) opens a find bar; highlights matches in text and infobox; Enter / Shift+Enter next/previous; Escape closes. Hidden spoilers aren't matched until revealed. In the editor Cmd+F stays the editor's own find.
+- The search index is kept in `.cache/` (rebuildable, never synced), updated on every save, rename, move and delete and by live reload.
+
+**Sync safety**
+- **No blind overwrites:** every save (text, infobox, category text, project settings, templates, themes) first checks that the file hasn't changed on disk since the app loaded it. Write-backs into other pages (relations, link rewrites on rename) read the file fresh right before writing.
+- **Live reload:** the app watches the open project and the library's `_themes/`: pages, groups, category files, `project.json` (templates, settings), themes, assets. Changes from outside (Drive, another program) update the sidebar, links, relations, search and the open page. The app's own writes are ignored. Large batches (Drive delivering hundreds of files) are handled in one go without freezing.
+- **The open page changes on disk:**
+  - No unsaved edits: it reloads in place (scroll position kept) with a short notice.
+  - Unsaved edits (Juku: ask, nothing lost): autosave pauses and a bar says "This page was changed on another computer": **Show differences** / **Use the other version** / **Keep mine**. The version not kept goes to the Trash.
+  - Deleted on disk: a bar says so; **Keep it** saves it again, **Close** leaves it. Moved or renamed on disk (same title in a new file): the app follows it.
+- **Conflict copies:** two page files with the same title (front matter, or the file name for files without one) are a conflict pair, however Drive named the copy (`[Conflict]`, `Copy of …`, ` (1)`). The same for category files with the same name; for `project.json` and `theme.json`, copies named like them in the same folder. The original is the file whose name matches its title, else the older one; the other is the copy.
+  - A copy is left out of the sidebar, links, search and relations until it's resolved (Juku), so nothing flips to the wrong version. A badge in the project shows "N conflicts".
+  - **Conflicts** screen: each pair side by side with the differences marked (text by line, infobox by field). **Keep this** / **Keep the other** / **Keep both** (the copy gets a new title; not for project.json and theme.json). The dropped file goes to the Trash. Health reports (M11) link here.
+  - Image files are not checked (a copied image is only a duplicate; M11 lists unused images).
+- **A file that can't be read** (half-synced, broken front matter) is never overwritten: the page shows a notice with the problem instead of an editor.
+- **Open on another computer** (Juku): while a project is open, the app keeps a small marker in the project folder (one file per computer, so the marker itself can't conflict; computer name and time, refreshed every few minutes). Opening the project while another computer's marker is fresh shows "Open on <computer> since 14:02" with **Open anyway** / Cancel. A stale marker (crash, no refresh) is ignored. The marker isn't a page, isn't exported (M17) and is removed on close.
+
+**Infobox editors** (page Infobox tab and template editor)
+- Dragging a field near the top or bottom edge of a long list scrolls it by itself.
+- **Move to section…** in a field's menu: pick a section heading (or "Top", before the first heading); the field goes to the end of that section.
+- A **section heading moves with its fields** (Juku), by dragging or Move to section; a single field still moves on its own.
+
+**Not in M10:** replace across pages (offered, Juku: not now); "Search for this name" in What links here (not chosen; M11 unlinked mentions); reordering pages inside a Page link field (not wanted for now).
+
+- **Checkpoint:** Search screen with filters, spoilers following the eye switch, opening at the match, find on page, and the infobox editor changes. Then: no-blind-overwrite check, live reload, edit clash bar, conflict copies and the Conflicts screen, open-on-another-computer warning, final review.
+- **Done when:** the points above work; new features have Playwright UI tests (search with filters and word starts, spoilers hidden while the eye switch is off, result opens at the match, find on page, open page reloads after an outside change, edit clash bar with each choice, Conflicts screen with each choice, open-on-another-computer warning, auto-scroll while dragging, Move to section, heading moves its fields) and pass with the Rust and unit tests (search index and matching, own writes ignored by the watcher, save refused when the file changed, conflict pair detection, resolving to the Trash, marker freshness); screenshots check the Search screen, the find bar, the edit clash bar, the Conflicts screen and the open-on-another-computer warning; search shows results within about 100 ms of typing on a 5,000-page project, building the search index for 5,000 pages takes a few seconds at most and doesn't block the app, a 5,000-page project still reopens in under 1 s, a file changed outside the app shows within about 2 s of landing on disk, 500 files arriving at once don't freeze the app; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; **Juku has checked it with real Drive sync once** (edit on Windows, see it on the Mac; one forced conflict); Juku has reviewed the installed app and approved it.
+
 ### How every milestone is written
 - **Done when** always includes: new features have automated UI tests (Playwright smoke tests in `tests/ui/`) and pass with the Rust and unit tests; screenshots check how new or changed screens look; speed targets only if the milestone touches loading, the index, search or big lists; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
 - A milestone may name a **checkpoint** partway for Juku. A session that ends partway adds a short **Progress** note (done / left / open questions) to the milestone here.
@@ -144,7 +181,7 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - Pages: `pages/…/Title.md`; groups are subfolders (nested). Page and group ids are `/`-separated paths inside `pages/`. A group's name is its folder name (characters invalid in file names become `-`). Two titles mapping to one file name in a folder: the second gets " (2)" etc. Renaming a page renames its file. Files without front matter stay without it when saved.
 - Page front matter keys: `title` (the real title), `aliases` (list), `categories` (list), `sort` ("Sort as"), `infobox` (`template`, `color`, `ownColor`, `fields`, `hidden`).
 - Category files: `categories/Name.md` (named like pages, " (2)" on clashes) with own text and `parents`; created when a category gets text or parents, or is created from a red link / New category. A category exists while a page, template default, subcategory or its own file uses it.
-- Link index: `.cache/link-index.json` (cache version 8; bump when its format changes), per-file modification time and size for incremental rebuilds. Holds titles, aliases, headings, outgoing links (text and infobox; infobox links know their field, whether two-way, spoiler, in text or typed in), embeds (kept apart from links), opening paragraphs (quote boxes, embed and `<pagelist>` lines left out, never cut inside a spoiler), hover-card image (not a spoiler image, not a picture beside the title), categories, parents and sort keys ("Sort as"), the infobox's fields (label, type), its Linked from settings, and sortable values (numbers; dates as year/month/day; not spoiler fields); also serves the page tree. Updated on every save, rename, move and delete; written at most every 10 s for small changes. Files changed outside the app are picked up at next project open (live reload: M8).
+- Link index: `.cache/link-index.json` (cache version 8; bump when its format changes), per-file modification time and size for incremental rebuilds. Holds titles, aliases, headings, outgoing links (text and infobox; infobox links know their field, whether two-way, spoiler, in text or typed in), embeds (kept apart from links), opening paragraphs (quote boxes, embed and `<pagelist>` lines left out, never cut inside a spoiler), hover-card image (not a spoiler image, not a picture beside the title), categories, parents and sort keys ("Sort as"), the infobox's fields (label, type), its Linked from settings, and sortable values (numbers; dates as year/month/day; not spoiler fields); also serves the page tree. Updated on every save, rename, move and delete; written at most every 10 s for small changes. Files changed outside the app are picked up at next project open (live reload: M10).
 - Image thumbnails: `.cache/thumbs/`, widths 320/640/1280/2560 px; at most 2 big images decoded at once; SVG and GIF shown as they are. Images reach the page only through the `wikiasset:` URL scheme, which reads only a project's `assets/`; SVG responses carry a policy that blocks scripts.
 
 **Names**
@@ -223,7 +260,7 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - M13: map location fields; SVG maps.
 - M14: eras and month numbers mapped to real calendars without a data migration; ages then also across eras (today only within one era name).
 - M15: family-tree edits write relations through the same write-back as M9 (`set_relation`).
-- Later / undecided: a frame option per theme for plain (seamless) embeds (asked in M8, not answered); hover card rework to look more like AWOIAF's (e.g. bigger picture, wider card; details to define), Obsidian-style inline live preview, page history/undo of edits, image file pages ("File:" pages with description), group overview pages (Open items). Not planned: categories driven by field values, automatic linking of plain words.
+- Later / undecided: a frame option per theme for plain (seamless) embeds (asked in M8, not answered); hover card rework to look more like AWOIAF's (e.g. bigger picture, wider card; details to define), Obsidian-style inline live preview, page history/undo of edits, replace across pages (offered for M10, not now), image file pages ("File:" pages with description), group overview pages (Open items). Not planned: categories driven by field values, automatic linking of plain words.
 
 ## Open items (from Juku)
 - **Group overview pages** (a page per group listing its contents, maybe with own text): wanted later; overlaps with category pages (M6, which can have own text), decide where it fits after M6.
@@ -240,3 +277,4 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - 2026-10-20 (planning): AWOIAF-style rework of the hover cards moved to a later version (listed under "Later / undecided"); the current M4/M6 hover cards stay as they are.
 - 2026-10-20 (planning): embed boxes get their own look per theme (frame/box appearance, background, colours), added to M12 Themes.
 - 2026-10-21 (planning, Juku): M10 gains easier field moving in the infobox editors (page and template): auto-scroll while dragging in a long box, and "Move to section…" to put a field under another heading in one step. Reordering the pages inside a Page link field not wanted for now.
+- 2026-10-21 (planning, Juku): **M10 defined** (scope above). Juku chose: an own Search screen (Cmd+Shift+F, sidebar box; Cmd+O stays title-only); spoilers follow the global eye switch (off: spoiler text not searched); words match at word starts; unsaved edits on a page changed on disk pause autosave and ask (show differences / use the other version / keep mine; nothing lost); conflict copies appear only on the Conflicts screen until resolved; a warning when the project is open on another computer; a section heading moves with its fields; find on page in the read view. Not chosen: replace across pages (Claude advised later), "Search for this name" in What links here. Claude, accepted with the scope: every save checks the file wasn't changed on disk since loading (today autosave overwrites blindly); conflict pairs found by duplicate titles rather than Drive's inconsistent copy names; unreadable files never overwritten; Juku tests once with real Drive sync before approval.
