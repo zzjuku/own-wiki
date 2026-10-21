@@ -26,6 +26,16 @@ interface Card {
 
 const LINK_SELECTOR = ".read-view .markdown a.wikilink, .split-preview .markdown a.wikilink";
 
+/** Something outside the page text that wants a card (the graph's nodes, M11). */
+export type CardTarget = { rect: DOMRect } & ({ pageId: string } | { missing: string } | { category: string });
+
+let showExternal: ((target: CardTarget | null) => void) | null = null;
+
+/** Shows the card for a page, a missing page or a category at `rect` (null: hides it). */
+export function showCardFor(target: CardTarget | null) {
+  showExternal?.(target);
+}
+
 export function HoverCards() {
   const wiki = useWiki();
   const [card, setCard] = useState<Card | null>(null);
@@ -94,6 +104,22 @@ export function HoverCards() {
       setCard(null);
     };
 
+    let latest: CardTarget | null = null;
+    showExternal = (t) => {
+      clearTimeout(showTimer.current);
+      clearTimeout(hideTimer.current);
+      current.current = null;
+      latest = t;
+      if (!t) return setCard(null);
+      const asked = t;
+      if ("missing" in t) return setCard({ rect: t.rect, preview: null, missingTitle: t.missing });
+      if ("category" in t) {
+        api.categoryPreview(project, t.category).then((category) => latest === asked && setCard({ rect: t.rect, preview: null, category }), () => {});
+        return;
+      }
+      api.linkPreview(project, t.pageId, null).then((preview) => latest === asked && setCard({ rect: t.rect, preview, pageId: t.pageId }), () => {});
+    };
+
     document.addEventListener("mouseover", over);
     document.addEventListener("mouseout", out);
     // Scrolling, typing or clicking elsewhere closes the card.
@@ -102,6 +128,7 @@ export function HoverCards() {
     const down = (e: MouseEvent) => !cardRef.current?.contains(e.target as Node) && reset();
     document.addEventListener("mousedown", down);
     return () => {
+      showExternal = null;
       clearTimeout(showTimer.current);
       clearTimeout(hideTimer.current);
       document.removeEventListener("mouseover", over);

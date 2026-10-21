@@ -120,6 +120,18 @@
   --infobox-heading-case: normal;
   --box-radius: 0px;
 
+  /* Graph view (M11) */
+  --graph-bg: var(--page-bg);
+  --graph-node: #848585;
+  --graph-node-active: var(--accent);
+  --graph-node-faded: #e9e9e9;
+  --graph-line: #d2d3d3;
+  --graph-line-active: var(--graph-node-active);
+  --graph-label: var(--page-text);
+  --graph-red-link: var(--link-new);
+  --graph-category: #b8862e;
+  --graph-group: #4f8a5b;
+
   /* Tooltips (M8) */
   --tooltip-bg: #2e2f31;
   --tooltip-text: #ffffff;

@@ -83,6 +83,20 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 | `--navbox-title-bg` / `--navbox-title-text` | Their title bar |
 | `--navbox-border-width` / `--navbox-border-style` / `--navbox-radius` | Their frame: width, style (solid, dashed, dotted, double, none), own corner rounding (follows `--box-radius`) |
 
+## Graph view (M11)
+| Variable | Used for |
+|---|---|
+| `--graph-bg` | Graph background (follows `--page-bg`) |
+| `--graph-node` | Pages no colour rule matches |
+| `--graph-node-active` | The page under the mouse, search matches (follows `--accent`) |
+| `--graph-node-faded` | Pages and lines that fade while another page is highlighted |
+| `--graph-line` / `--graph-line-active` | Lines between pages; lines of the highlighted page |
+| `--graph-label` | Page names and field names on lines (follows `--page-text`) |
+| `--graph-red-link` | Missing pages (follows `--link-new`) |
+| `--graph-category` / `--graph-group` | Category and group nodes |
+
+Pages, faded pages and lines are computed from the graph background and names when a theme changes those (or the page colours they follow).
+
 ## Tooltips (M8)
 | Variable | Used for |
 |---|---|

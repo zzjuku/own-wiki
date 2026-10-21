@@ -2,6 +2,7 @@
 // forward, the project name (click: add new pages at the top level), the
 // global spoiler switch and Project settings.
 import { Icon } from "./editorTheme";
+import { GRAPH_KEYS } from "./graph/GraphView";
 import { IS_MAC } from "./QuickOpen";
 import { ROOT } from "./tree";
 
@@ -15,6 +16,18 @@ export function SidebarIcon() {
     <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
       <rect x="2" y="3" width="12" height="10" rx="1.5" className="stroke" />
       <path d="M6 3v10" className="stroke" />
+    </svg>
+  );
+}
+
+/** Three linked dots (the Graph screen). */
+function GraphIcon() {
+  return (
+    <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <path d="M4.2 11.2 7.4 5M8.6 5l3.2 5.6M5 12.4h6" className="stroke" />
+      <circle cx="8" cy="3.6" r="1.8" className="stroke" />
+      <circle cx="3.6" cy="12.4" r="1.8" className="stroke" />
+      <circle cx="12.4" cy="12.4" r="1.8" className="stroke" />
     </svg>
   );
 }
@@ -33,6 +46,8 @@ export function SidebarHeader({
   setRevealAll,
   onSettings,
   onHideSidebar,
+  graphOpen,
+  onGraph,
 }: {
   projectName: string;
   mainPageTitle: string | null;
@@ -48,6 +63,8 @@ export function SidebarHeader({
   setRevealAll: (on: boolean) => void;
   onSettings: () => void;
   onHideSidebar: () => void;
+  graphOpen: boolean;
+  onGraph: () => void;
 }) {
   return (
     <>
@@ -82,6 +99,15 @@ export function SidebarHeader({
             onClick={() => onGo(1)}
           >
             <NavIcon name="forward" />
+          </button>
+          <button
+            className={`plain nav ${graphOpen ? "active" : ""}`}
+            title={`Graph of pages and links (${GRAPH_KEYS})`}
+            aria-label="Graph"
+            aria-pressed={graphOpen}
+            onClick={onGraph}
+          >
+            <GraphIcon />
           </button>
           <button className="plain nav" title={`Hide the sidebar (${HIDE_KEYS})`} aria-label="Hide the sidebar" onClick={onHideSidebar}>
             <SidebarIcon />

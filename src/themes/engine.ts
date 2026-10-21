@@ -53,6 +53,9 @@ const RULES: Rule[] = [
   ["--spoiler-hover-bg", ["--spoiler-bg", "--page-bg"], (s, bg) => mix(s, bg, 0.1)],
   ["--spoiler-revealed-bg", ["--spoiler-bg"], (s) => withAlpha(s, 0.08)],
   ["--spoiler-mark", ["--spoiler-bg", "--page-bg"], (s, bg) => mix(s, bg, 0.4)],
+  ["--graph-node", ["--graph-label", "--graph-bg"], (t, bg) => mix(t, bg, 0.45)],
+  ["--graph-node-faded", ["--graph-bg", "--graph-label"], (bg, t) => mix(bg, t, 0.1)],
+  ["--graph-line", ["--graph-bg", "--graph-label"], (bg, t) => mix(bg, t, 0.2)],
 ];
 
 const VAR_REF = /^var\((--[\w-]+)\)$/;

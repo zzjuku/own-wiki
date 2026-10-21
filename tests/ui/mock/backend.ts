@@ -5,6 +5,7 @@ import type {
   Backlink, CategoryInfo, Conflict, ConflictSide, Field, FilesChanged, IncomingField, Infobox, OpenMarker, PageInfo, ProjectSettings,
   Relations, Template,
 } from "../../../src/api";
+import type { GraphData, GraphLink } from "../../../src/graph/model";
 import type { ThemeData } from "../../../src/themes/engine";
 import { search } from "./search";
 
@@ -231,6 +232,46 @@ export function createBackend(fixture: Fixture) {
     }
     return out;
   }
+
+  /** The graph's lines, as src-tauri/src/graph.rs makes them. */
+  function graphData(p: Project): GraphData {
+    const pages = [...p.pages.values()];
+    const byName = new Map<string, number>();
+    pages.forEach((pg, i) => pg.aliases.forEach((a) => byName.has(lc(a)) || byName.set(lc(a), i)));
+    pages.forEach((pg, i) => byName.set(lc(pg.title), i));
+    const missing: string[] = [];
+    const lines = new Map<string, GraphLink>();
+    const nodeOf = (target: string) => {
+      const t = target.trim();
+      if (!t || /^(category|file):/i.test(t)) return null;
+      if (byName.has(lc(t))) return byName.get(lc(t))!;
+      let j = missing.findIndex((m) => lc(m) === lc(t));
+      if (j < 0) j = missing.push(t) - 1;
+      return pages.length + j;
+    };
+    pages.forEach((pg, from) => {
+      const add = (to: number | null, field?: { name: string; spoiler: boolean }) => {
+        if (to === null || to === from) return;
+        const [a, b] = [Math.min(from, to), Math.max(from, to)];
+        const l = lines.get(`${a}:${b}`) ?? { a, b, fields: [] };
+        lines.set(`${a}:${b}`, l);
+        if (from === a) l.ab = true;
+        else l.ba = true;
+        if (!field) return void (l.text = true);
+        const same = l.fields!.find((f) => lc(f.name) === lc(field.name));
+        if (same) same.spoiler = !!same.spoiler && field.spoiler;
+        else l.fields!.push(field);
+      };
+      for (const m of pg.body.matchAll(LINK)) add(nodeOf(m[1]));
+      for (const l of fieldLinks(pg.infobox)) add(nodeOf(l.target), { name: l.field, spoiler: l.spoiler });
+    });
+    return {
+      pages: pages.map((pg) => ({ id: pg.id, title: pg.title, aliases: pg.aliases, template: pg.infobox?.template ?? undefined, categories: pg.categories })),
+      missing,
+      links: [...lines.values()],
+    };
+  }
+  const graphLayouts = new Map<string, unknown>();
 
   const commands: Record<string, (a: any, options?: { headers?: Record<string, string> }) => unknown> = {
     get_settings: () => ({ libraryPath }),
@@ -510,6 +551,9 @@ export function createBackend(fixture: Fixture) {
       return search([...p.pages.values()], [...p.catTexts.values()], request, parent);
     },
     search_prepare: () => undefined,
+    graph_data: ({ project }) => graphData(proj(project)),
+    graph_layout: ({ project }) => graphLayouts.get(project) ?? null,
+    save_graph_layout: ({ project, layout }) => void graphLayouts.set(project, layout),
     list_categories: ({ project }) => [...categories(proj(project)).values()].map(catInfo),
     category_page: ({ project, name, includeSub }) => {
       const p = proj(project);
@@ -717,6 +761,7 @@ export function createBackend(fixture: Fixture) {
 
   return {
     projects,
+    graphLayouts,
     appThemes,
     trashed,
     marks,

@@ -1,5 +1,7 @@
 // Thin typed wrappers around the Rust commands in src-tauri/src/lib.rs.
 import { invoke } from "@tauri-apps/api/core";
+import type { SavedLayout } from "./graph/controller";
+import type { GraphData } from "./graph/model";
 import type { ThemeData, ThemeFont } from "./themes/engine";
 
 export interface Settings {
@@ -428,6 +430,12 @@ export const api = {
   searchPrepare: (project: string) => invoke<void>("search_prepare", { project }),
 
   // Link index
+  /** Every page and line for the graph view (M11). */
+  graphData: (project: string) => invoke<GraphData>("graph_data", { project }),
+  /** Where the graph's nodes were left on this computer. */
+  graphLayout: (project: string) => invoke<SavedLayout | null>("graph_layout", { project }),
+  saveGraphLayout: (project: string, layout: SavedLayout) => invoke<void>("save_graph_layout", { project, layout }),
+
   pageSections: (project: string, id: string) => invoke<Heading[]>("page_sections", { project, id }),
   linkPreview: (project: string, id: string, section: string | null) =>
     invoke<Preview>("link_preview", { project, id, section }),

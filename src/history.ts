@@ -1,5 +1,5 @@
 // Back and forward in a project: the places visited since it was opened.
-// A place is a page id, "category:Name" or "search:query" (the Search screen).
+// A place is a page id, "category:Name", "search:query" (the Search screen) or "graph:" (the Graph screen).
 import { IS_MAC } from "./QuickOpen";
 
 /** History entries for category pages ("category:Name"; page ids end in ".md"). */
@@ -9,6 +9,8 @@ export const keyCategory = (key: string) => (key.startsWith(CAT_KEY) ? key.slice
 /** History entries for the Search screen ("search:query"). */
 export const SEARCH_KEY = "search:";
 export const keySearch = (key: string) => (key.startsWith(SEARCH_KEY) ? key.slice(SEARCH_KEY.length) : null);
+/** The history entry of the Graph screen. */
+export const GRAPH_KEY = "graph:";
 
 /** Pages visited in this project since it was opened (back/forward). */
 export interface History {

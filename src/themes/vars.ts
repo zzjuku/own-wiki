@@ -73,6 +73,16 @@ export const MAIN_SETTINGS: { title: string; settings: Setting[] }[] = [
     ],
   },
   {
+    title: "Graph",
+    settings: [
+      { name: "--graph-bg", label: "Graph background", type: color },
+      { name: "--graph-node", label: "Pages", hint: "Pages no colour rule matches", type: color },
+      { name: "--graph-node-active", label: "Highlighted page", hint: "The page under the mouse, search matches", type: color },
+      { name: "--graph-line", label: "Lines", type: color },
+      { name: "--graph-label", label: "Names", type: color },
+    ],
+  },
+  {
     title: "Look",
     settings: [
       { name: "--title-align", label: "Page title", type: select(["left", "Left"], ["center", "Centred, own row"]) },
@@ -239,6 +249,21 @@ export const ALL_COLORS: { title: string; vars: [string, string][] }[] = [
     vars: [
       ["--ornament", "Ornaments"],
       ["--box-inner-line", "Inner frame line"],
+    ],
+  },
+  {
+    title: "Graph",
+    vars: [
+      ["--graph-bg", "Background"],
+      ["--graph-node", "Pages"],
+      ["--graph-node-active", "Highlighted page"],
+      ["--graph-node-faded", "Faded pages (while another is highlighted)"],
+      ["--graph-line", "Lines"],
+      ["--graph-line-active", "Lines of the highlighted page"],
+      ["--graph-label", "Names"],
+      ["--graph-red-link", "Missing pages (red links)"],
+      ["--graph-category", "Category nodes"],
+      ["--graph-group", "Group nodes"],
     ],
   },
   {

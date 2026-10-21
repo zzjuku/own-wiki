@@ -9,18 +9,20 @@ import { ImageViewer } from "./ImageViewer";
 import { NameIndex } from "./names";
 import { useReportError } from "./notify";
 import { PageView, type Arrival } from "./PageView";
-import { catKey, HISTORY_LIMIT, historyKey, keyCategory, keySearch, SEARCH_KEY, type History } from "./history";
+import { catKey, GRAPH_KEY, HISTORY_LIMIT, historyKey, keyCategory, keySearch, SEARCH_KEY, type History } from "./history";
+import { GraphView, isGraphKey } from "./graph/GraphView";
 import { usePageActions } from "./pageActions";
 import { ConflictsView } from "./ConflictsView";
 import { useProjectSync } from "./projectSync";
 import { norm } from "./wikilinks";
-import { isSearchKey, NO_SEARCH, SEARCH_KEYS, SearchView, type SearchState } from "./SearchView";
-import { IS_MAC, isQuickOpenKey, QuickOpen, QUICK_OPEN_KEYS } from "./QuickOpen";
+import { isSearchKey, NO_SEARCH, SearchView, type SearchState } from "./SearchView";
+import { IS_MAC, isQuickOpenKey, QuickOpen } from "./QuickOpen";
 import { DEFAULT_FRAME, WikiContext, type CreateOptions, type FollowTarget, type Wiki } from "./wiki";
 import { useGlobalReveal } from "./spoilers";
 import { loadPageEdge, useSidebarHidden } from "./layoutPrefs";
 import { Sidebar, type MenuItem } from "./Sidebar";
 import { SidebarHeader, SidebarIcon } from "./SidebarHeader";
+import { SidebarScreens, type Panel } from "./SidebarScreens";
 import { TemplatesView, useTemplates } from "./TemplatesView";
 import { ProjectSettingsDialog } from "./ProjectSettings";
 import { RelationsView } from "./RelationsView";
@@ -43,7 +45,6 @@ interface Props {
   onBack: () => void;
 }
 
-type Panel = "categories" | "templates" | "themes" | "relations" | "search" | "conflicts";
 
 // Which groups are open is remembered on this computer only (not synced).
 const expandedKey = (project: string) => `ownwiki.expanded.${project}`;
@@ -238,6 +239,11 @@ export function ProjectView({ project, onBack }: Props) {
         void openSearchRef.current();
         return;
       }
+      if (isGraphKey(e) && !document.querySelector(".backdrop")) {
+        e.preventDefault();
+        void openGraphRef.current();
+        return;
+      }
       if (!isQuickOpenKey(e)) return;
       e.preventDefault();
       setQuickOpen(true);
@@ -286,6 +292,7 @@ export function ProjectView({ project, onBack }: Props) {
   function place(): string | null {
     if (category) return catKey(category);
     if (panel === "search") return SEARCH_KEY + search.query;
+    if (panel === "graph") return GRAPH_KEY;
     return selected && !panel ? selected : null;
   }
 
@@ -337,12 +344,21 @@ export function ProjectView({ project, onBack }: Props) {
   const openSearchRef = useRef(openSearch);
   openSearchRef.current = openSearch;
 
+  /** The Graph screen (Cmd+Alt+G, the sidebar's graph button). */
+  async function openGraph({ record = true }: { record?: boolean } = {}) {
+    if (panel === "graph") return;
+    if (record) remember(GRAPH_KEY);
+    await openPanel("graph");
+  }
+  const openGraphRef = useRef(openGraph);
+  openGraphRef.current = openGraph;
+
   /** Back (-1) or forward (1) through visited pages, skipping deleted ones. */
   async function go(step: -1 | 1) {
     const from = step < 0 ? [...history.back] : [...history.forward];
     const skipped: string[] = [];
     let target: string | undefined;
-    const gone = (t: string) => keyCategory(t) === null && keySearch(t) === null && !index.pages.has(t);
+    const gone = (t: string) => keyCategory(t) === null && keySearch(t) === null && t !== GRAPH_KEY && !index.pages.has(t);
     while ((target = step < 0 ? from.pop() : from.shift()) !== undefined && gone(target)) skipped.push(target);
     if (target === undefined) return;
     const now = place();
@@ -356,6 +372,7 @@ export function ProjectView({ project, onBack }: Props) {
     const query = keySearch(target);
     if (cat !== null) await openCategory(cat, { record: false });
     else if (query !== null) await openSearch(query, { record: false });
+    else if (target === GRAPH_KEY) await openGraph({ record: false });
     else await openPage(target, false, { record: false });
   }
 
@@ -602,6 +619,8 @@ export function ProjectView({ project, onBack }: Props) {
           revealAll={revealAll}
           setRevealAll={setRevealAll}
           onSettings={() => setSettingsOpen(true)}
+          graphOpen={panel === "graph"}
+          onGraph={() => void openGraph()}
           onHideSidebar={() => setSidebarHidden(true)}
         />
         <div className="row">
@@ -623,62 +642,23 @@ export function ProjectView({ project, onBack }: Props) {
         <p className="target-hint" title="Click a group, or the project name for the top level">
           Adding to: <strong>{targetGroup ? displayGroup(targetGroup) : "top level"}</strong>
         </p>
-        <div className={`sidebar-search ${panel === "search" ? "selected" : ""}`}>
-          <input
-            type="search"
-            value={search.query}
-            placeholder="Search…"
-            aria-label="Search the project"
-            title={`Search page text, infoboxes and more (${SEARCH_KEYS})`}
-            spellCheck={false}
-            onFocus={() => panel !== "search" && search.query && void openSearch()}
-            onChange={(e) => {
-              const query = e.target.value;
-              setSearch((s) => ({ ...s, query }));
-              if (panel === "search") return;
-              remember(SEARCH_KEY + query);
-              void openPanel("search");
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === "ArrowDown") {
-                e.preventDefault();
-                void openSearch();
-              }
-            }}
-          />
-          <kbd>{SEARCH_KEYS}</kbd>
-        </div>
-        <button className="find" onClick={() => setQuickOpen(true)}>
-          <span>Find page…</span>
-          <kbd>{QUICK_OPEN_KEYS}</kbd>
-        </button>
-        <button className={`plain templates-button ${panel === "templates" ? "selected" : ""}`} onClick={() => void openPanel("templates")}>
-          Templates
-          {templates.templates.length > 0 && <span className="count">{templates.templates.length}</span>}
-        </button>
-        <button
-          className={`plain templates-button ${panel === "categories" || category ? "selected" : ""}`}
-          onClick={() => void openPanel("categories")}
-        >
-          Categories
-          {categories.list.length > 0 && <span className="count">{categories.list.length}</span>}
-        </button>
-        <button className={`plain templates-button ${panel === "relations" ? "selected" : ""}`} onClick={() => void openPanel("relations")}>
-          Relations
-        </button>
-        <button className={`plain templates-button ${panel === "themes" ? "selected" : ""}`} onClick={() => void openPanel("themes")}>
-          Themes
-        </button>
-        {(tree?.conflicts ?? 0) > 0 && (
-          <button
-            className={`plain templates-button conflicts-button ${panel === "conflicts" ? "selected" : ""}`}
-            title="Files Google Drive kept twice: choose which version to keep"
-            onClick={() => void openPanel("conflicts")}
-          >
-            Conflicts
-            <span className="count warn">{tree?.conflicts}</span>
-          </button>
-        )}
+        <SidebarScreens
+          panel={panel}
+          categoryOpen={category !== null}
+          query={search.query}
+          onQuery={(query) => {
+            setSearch((s) => ({ ...s, query }));
+            if (panel === "search") return;
+            remember(SEARCH_KEY + query);
+            void openPanel("search");
+          }}
+          onSearch={() => void openSearch()}
+          onFind={() => setQuickOpen(true)}
+          onPanel={(which) => void openPanel(which)}
+          templates={templates.templates.length}
+          categories={categories.list.length}
+          conflicts={tree?.conflicts ?? 0}
+        />
         <Sidebar
           rows={rows}
           selected={panel || category ? null : selected}
@@ -754,6 +734,8 @@ export function ProjectView({ project, onBack }: Props) {
                 : openPage(hit.id, false, { find: search.query }))
             }
           />
+        ) : panel === "graph" ? (
+          <GraphView revealAll={revealAll} dataKey={tree} onOpenPage={(id) => void openPage(id)} />
         ) : panel === "conflicts" ? (
           <ConflictsView onResolved={conflictResolved} />
         ) : panel === "relations" ? (
