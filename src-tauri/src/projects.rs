@@ -29,7 +29,7 @@ pub fn set_cache_root(dir: PathBuf) {
 pub fn cache_dir(project_dir: &Path) -> PathBuf {
     match LOCAL_CACHE.get() {
         Some(root) => {
-            let key = project_dir.canonicalize().unwrap_or_else(|_| project_dir.to_path_buf());
+            let key = dunce::canonicalize(&project_dir).unwrap_or_else(|_| project_dir.to_path_buf());
             let name = project_dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             root.join(format!("{name}-{}", &crate::fsutil::version_of(key.to_string_lossy().as_bytes())[..8]))
         }

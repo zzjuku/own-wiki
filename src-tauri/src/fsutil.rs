@@ -98,7 +98,7 @@ const OWN_WINDOW: Duration = Duration::from_secs(5);
 /// The same file always gets the same key (folder resolved, so symlinks and
 /// the watcher's paths agree).
 pub fn own_key(path: &Path) -> PathBuf {
-    match (path.parent().and_then(|p| p.canonicalize().ok()), path.file_name()) {
+    match (path.parent().and_then(|p| dunce::canonicalize(p).ok()), path.file_name()) {
         (Some(dir), Some(name)) => dir.join(name),
         _ => path.to_path_buf(),
     }

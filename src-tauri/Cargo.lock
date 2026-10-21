@@ -2624,6 +2624,7 @@ dependencies = [
 name = "own-wiki"
 version = "0.1.0"
 dependencies = [
+ "dunce",
  "image",
  "notify",
  "serde",

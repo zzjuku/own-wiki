@@ -96,7 +96,7 @@ impl AppState {
     pub(crate) fn refresh_open_index(&self, dir: &std::path::Path) -> AppResult<()> {
         let mut guard = self.index.lock().unwrap();
         match guard.as_mut() {
-            Some(idx) if idx.dir.canonicalize().ok().as_deref() == Some(dir) || idx.dir == dir => {
+            Some(idx) if dunce::canonicalize(&idx.dir).ok().as_deref() == Some(dir) || idx.dir == dir => {
                 idx.refresh(&[])?;
                 // An edit of this computer overwritten by the other's version comes back as a copy.
                 if edits::check(&idx.dir, None) > 0 {

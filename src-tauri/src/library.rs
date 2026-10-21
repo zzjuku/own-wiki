@@ -50,8 +50,8 @@ pub fn move_target(library: &Path, chosen: &Path) -> AppResult<PathBuf> {
     if !chosen.is_dir() {
         return Err(AppError::NotFound(format!("Folder not found: {}", chosen.display())));
     }
-    let library = library.canonicalize()?;
-    let chosen = chosen.canonicalize()?;
+    let library = dunce::canonicalize(&library)?;
+    let chosen = dunce::canonicalize(&chosen)?;
     if chosen == library {
         return Err(AppError::Invalid("That is the library folder itself. Choose another folder.".into()));
     }

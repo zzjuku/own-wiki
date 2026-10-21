@@ -106,7 +106,7 @@ struct Record {
 }
 
 fn records_dir(store: &Path, project_dir: &Path) -> PathBuf {
-    let key = project_dir.canonicalize().unwrap_or_else(|_| project_dir.to_path_buf());
+    let key = dunce::canonicalize(&project_dir).unwrap_or_else(|_| project_dir.to_path_buf());
     store.join(version_of(key.to_string_lossy().as_bytes()))
 }
 
