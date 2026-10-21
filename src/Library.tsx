@@ -1,16 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, errorText, type ProjectInfo } from "./api";
+import { open } from "@tauri-apps/plugin-dialog";
+import { api, errorText, type ProjectInfo, type Settings } from "./api";
 import { useDialogs } from "./dialogs";
+import { useReportError } from "./notify";
+import { IS_MAC } from "./QuickOpen";
 import { ThemesView } from "./themes/ThemesView";
 
 interface Props {
   libraryPath: string;
   onOpen: (p: ProjectInfo) => void;
   onChooseLibrary: () => void;
+  /** The library was copied to a new place and is used from there now. */
+  onLibraryMoved: (s: Settings) => void;
 }
 
-export function Library({ libraryPath, onOpen, onChooseLibrary }: Props) {
+export function Library({ libraryPath, onOpen, onChooseLibrary, onLibraryMoved }: Props) {
   const dialogs = useDialogs();
+  const report = useReportError();
   const [projects, setProjects] = useState<ProjectInfo[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -66,6 +72,54 @@ export function Library({ libraryPath, onOpen, onChooseLibrary }: Props) {
       submit: async () => {
         await api.deleteProject(p.id);
         await reload();
+      },
+    });
+  }
+
+  /** Settings → Move library…: copy everything to a chosen folder and use it from there. */
+  async function moveLibrary() {
+    setShowSettings(false);
+    let dest: string | null;
+    let plan: Awaited<ReturnType<typeof api.moveLibrary>>;
+    try {
+      const picked = await open({ directory: true, multiple: false, title: "Move the library to…" });
+      dest = typeof picked === "string" ? picked : null;
+      if (!dest) return;
+      plan = await api.moveLibrary(dest, true);
+    } catch (e) {
+      return report(e);
+    }
+    const files = IS_MAC ? "Finder" : "File Explorer";
+    const names = plan.folders.map((f) => `“${f}”`).join(", ");
+    dialogs.confirm({
+      title: "Move library",
+      message: (
+        <>
+          Copy the library's folders ({names || "none yet"}) to
+          <code className="path">{plan.target}</code>
+          and use them from there? Nothing else in the current library folder is touched. The originals stay there as a backup:
+          once you've checked the copy, you can delete those folders (only those) in {files}.
+        </>
+      ),
+      confirmLabel: "Move library",
+      submit: async () => {
+        const r = await api.moveLibrary(dest!, false);
+        onLibraryMoved(r.settings);
+        // After this dialog has closed (one dialog shows at a time).
+        setTimeout(() =>
+          dialogs.alert({
+            title: "Library moved",
+            message: (
+              <>
+                {r.files === 1 ? "1 file was" : `${r.files.toLocaleString("en")} files were`} copied. The library is now at
+                <code className="path">{r.target}</code>
+                The originals are still in
+                <code className="path">{r.old}</code>
+                as a backup. Don't edit them any more.
+              </>
+            ),
+          }),
+        );
       },
     });
   }
@@ -141,8 +195,14 @@ export function Library({ libraryPath, onOpen, onChooseLibrary }: Props) {
             <div className="field">
               <span>Library folder (this computer only)</span>
               <code className="path">{libraryPath}</code>
+              <p className="hint">
+                <strong>Move library…</strong> copies all projects and themes to a new place (for example into Google Drive) and
+                uses them from there; the old folder stays as a backup. <strong>Change folder…</strong> only switches to another
+                library folder.
+              </p>
             </div>
             <div className="dialog-actions">
+              <button onClick={() => void moveLibrary()}>Move library…</button>
               <button
                 onClick={() => {
                   setShowSettings(false);

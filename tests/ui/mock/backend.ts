@@ -197,6 +197,12 @@ export function createBackend(fixture: Fixture) {
   const commands: Record<string, (a: any, options?: { headers?: Record<string, string> }) => unknown> = {
     get_settings: () => ({ libraryPath }),
     set_library_path: ({ path }) => ((libraryPath = path), { libraryPath }),
+    move_library: ({ dest, dryRun }) => {
+      const old = libraryPath ?? "";
+      const target = `${dest}/Own WIKI`;
+      if (!dryRun) libraryPath = target;
+      return { settings: { libraryPath }, target, old, folders: [...projects.keys(), "_themes"], files: dryRun ? 0 : 3 };
+    },
     list_projects: () => [...projects.values()].map((p) => ({ id: p.id, name: p.name })),
     create_project: ({ name }) => {
       if (projects.has(name)) throw new CommandError("exists", `A project named "${name}" already exists.`);

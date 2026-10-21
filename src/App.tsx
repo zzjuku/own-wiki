@@ -63,7 +63,7 @@ function Main() {
   } else if (project) {
     screen = <ProjectView project={project} onBack={() => setProject(null)} />;
   } else {
-    screen = <Library libraryPath={settings.libraryPath} onOpen={setProject} onChooseLibrary={chooseLibrary} />;
+    screen = <Library libraryPath={settings.libraryPath} onOpen={setProject} onChooseLibrary={chooseLibrary} onLibraryMoved={setSettings} />;
   }
   return <ThemeProvider libraryPath={settings.libraryPath}>{screen}</ThemeProvider>;
 }

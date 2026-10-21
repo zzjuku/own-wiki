@@ -6,6 +6,7 @@ mod fsutil;
 mod groups;
 mod index;
 mod infobox;
+mod library;
 mod pages;
 mod projects;
 mod relations;
@@ -119,6 +120,45 @@ fn set_library_path(state: State<AppState>, path: String) -> AppResult<Settings>
     settings::save(&state.config_dir, &next)?;
     *current = next.clone();
     Ok(next)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryMove {
+    settings: Settings,
+    /// Where the library is (or, with `dry_run`, would be) after the move.
+    target: String,
+    /// Where the library was (its folders are left there as a backup).
+    old: String,
+    /// The folders copied (projects and `_themes`).
+    folders: Vec<String>,
+    files: u64,
+}
+
+/// Copies the library into `dest` (or a new folder in it, see library.rs),
+/// checks the copy and uses it from now on. The old folder stays.
+/// `dry_run`: only say where it would go (or why it can't).
+#[tauri::command(async)]
+fn move_library(state: State<'_, AppState>, dest: String, dry_run: bool) -> AppResult<LibraryMove> {
+    let old = state.library()?;
+    let target = library::move_target(&old, std::path::Path::new(&dest))?;
+    let show = |p: &std::path::Path| p.to_string_lossy().into_owned();
+    let folders = library::wiki_folders(&old)?
+        .iter()
+        .map(|f| f.file_name().unwrap_or_default().to_string_lossy().into_owned())
+        .collect();
+    if dry_run {
+        let settings = state.settings.lock().unwrap().clone();
+        return Ok(LibraryMove { settings, target: show(&target), old: show(&old), folders, files: 0 });
+    }
+    state.forget_index();
+    let count = library::copy_library(&old, &target)?;
+    let mut current = state.settings.lock().unwrap();
+    let mut next = current.clone();
+    next.library_path = Some(target.to_string_lossy().into_owned());
+    settings::save(&state.config_dir, &next)?;
+    *current = next.clone();
+    Ok(LibraryMove { settings: next, target: show(&target), old: show(&old), folders, files: count.files })
 }
 
 #[tauri::command]
@@ -704,6 +744,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_settings,
             set_library_path,
+            move_library,
             list_projects,
             create_project,
             rename_project,

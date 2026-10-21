@@ -304,6 +304,11 @@ export interface CategoryPreview {
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   setLibraryPath: (path: string) => invoke<Settings>("set_library_path", { path }),
+  /** Copies the library's projects and themes into `dest` (or a new "Own WIKI" folder in it) and
+   * uses the copy; the originals stay.
+   * `dryRun`: only says where it would go (or why it can't). */
+  moveLibrary: (dest: string, dryRun: boolean) =>
+    invoke<{ settings: Settings; target: string; old: string; folders: string[]; files: number }>("move_library", { dest, dryRun }),
 
   listProjects: () => invoke<ProjectInfo[]>("list_projects"),
   createProject: (name: string) => invoke<ProjectInfo>("create_project", { name }),

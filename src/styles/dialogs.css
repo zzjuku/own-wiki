@@ -41,6 +41,8 @@
   padding: 7px 10px;
 }
 .path {
+  display: block;
+  margin: 6px 0;
   font-size: var(--text-sm);
   color: var(--text);
   background: var(--bg-soft);
