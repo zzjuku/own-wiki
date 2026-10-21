@@ -593,6 +593,16 @@ export function FieldDef({
             <span>Allow ranges (start and end date)</span>
           </label>
         )}
+        {(f.type === "date" || f.type === "dateplace") && (
+          <label className="field-option">
+            <span>Age</span>
+            <select aria-label="Age" value={options.age === "birth" || options.age === "death" ? options.age : ""} onChange={(e) => setOptions({ ...options, age: e.target.value || undefined })}>
+              <option value="">No age</option>
+              <option value="birth">Birth date: “(age 9)” to the present day</option>
+              <option value="death">Death date: “(aged 69)”</option>
+            </select>
+          </label>
+        )}
         {(f.type === "dateplace" || f.type === "datetext") && (
           <label className="check">
             <input type="checkbox" checked={!!options.multiple} onChange={(e) => setOptions({ ...options, multiple: e.target.checked })} />

@@ -114,12 +114,35 @@ describe("infoboxHtml", () => {
       ],
     };
     const html = infoboxHtml(ib, ctx);
-    expect(html).toMatch(/283 AC, <a class="wikilink"[^>]*>Page B<\/a>/);
+    // The place goes on its own line under the date.
+    expect(html).toMatch(/283 AC<br><a class="wikilink"[^>]*>Page B<\/a>/);
     expect(html).toContain('283 – 298 AC <span class="infobox-date-note">King</span><br>300 AC <span class="infobox-date-note">Lord</span>');
     expect(valueProblem(ib.fields[1])).toBeNull();
     expect(valueProblem(f("X", "datetext", "text"))).not.toBeNull();
     expect(convertValue({ year: 5 }, "dateplace")).toEqual({ date: { year: 5 } });
     expect(convertValue({ date: { year: 5 } }, "date")).toEqual({ year: 5 });
+  });
+
+  it("shows ages after birth and death dates", () => {
+    const born = (v: unknown, extra: Partial<Field> = {}) => f("Born", "dateplace", v, { options: { age: "birth" }, ...extra });
+    const died = (v: unknown, extra: Partial<Field> = {}) => f("Died", "date", v, { options: { age: "death" }, ...extra });
+    const today = { year: 300, month: 5, era: "AC" };
+    // Alive: age to the present day (not yet had this year's birthday: one less).
+    let html = infoboxHtml({ fields: [born({ date: { year: 283, month: 6, era: "AC" }, text: "Place" }), died(undefined)] }, { ...ctx, presentDay: today });
+    expect(html).toContain('283 AC <span class="infobox-age">(age 16)</span><br>Place');
+    // Without a present day: no age.
+    expect(infoboxHtml({ fields: [born({ date: { year: 283 } })] }, ctx)).not.toContain("infobox-age");
+    // Dead: aged at the death date; the birth date shows no age.
+    html = infoboxHtml({ fields: [born({ date: { year: 231, qualifier: "c" } }), died({ year: 300 })] }, { ...ctx, presentDay: today });
+    expect(html).toContain('300 <span class="infobox-age">(aged c. 69)</span>');
+    expect(html.match(/infobox-age/g)?.length).toBe(1);
+    // A death field with only a place still means no age "now".
+    html = infoboxHtml({ fields: [born({ date: { year: 283 } }), f("Died", "dateplace", { text: "Place" }, { options: { age: "death" } })] }, { ...ctx, presentDay: today });
+    expect(html).not.toContain("infobox-age");
+    // Different eras can't be compared yet; a hidden birth date hides the age at death too.
+    expect(infoboxHtml({ fields: [born({ date: { year: 5, era: "BC" } })] }, { ...ctx, presentDay: today })).not.toContain("infobox-age");
+    html = infoboxHtml({ fields: [born({ date: { year: 231 } }, { spoiler: true }), died({ year: 300 })] }, ctx);
+    expect(html).toMatch(/<span class="spoiler"[^>]*><span class="infobox-age">\(aged 69\)/);
   });
 
   it("merges linked-from and two-way entries", () => {

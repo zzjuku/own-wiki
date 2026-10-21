@@ -39,6 +39,9 @@ struct ProjectFile {
     /// The project's own theme ("builtin:<id>" or "project:<folder>"); none = the app theme.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     theme: Option<String>,
+    /// The story's "today", which ages are counted to (a date: year, month, day, era).
+    #[serde(rename = "presentDay", default, skip_serializing_if = "Option::is_none")]
+    present_day: Option<serde_json::Value>,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -123,17 +126,21 @@ pub struct ProjectSettings {
     /// See [`ProjectFile::theme`].
     #[serde(default)]
     pub theme: Option<String>,
+    /// See [`ProjectFile::present_day`].
+    #[serde(default)]
+    pub present_day: Option<serde_json::Value>,
 }
 
 pub fn settings(dir: &Path) -> AppResult<ProjectSettings> {
     let file = read_project_file(dir)?;
-    Ok(ProjectSettings { hide_category_box: file.hide_category_box, theme: file.theme })
+    Ok(ProjectSettings { hide_category_box: file.hide_category_box, theme: file.theme, present_day: file.present_day })
 }
 
 pub fn set_settings(dir: &Path, s: &ProjectSettings) -> AppResult<()> {
     let mut file = read_project_file(dir)?;
     file.hide_category_box = s.hide_category_box;
     file.theme = s.theme.clone().filter(|t| !t.trim().is_empty());
+    file.present_day = s.present_day.clone().filter(|d| !crate::infobox::is_empty_value(d));
     write_project_file(dir, &file)
 }
 
@@ -223,6 +230,7 @@ pub fn create_project(library: &Path, name: &str) -> AppResult<ProjectInfo> {
             infobox_image: None,
             hide_category_box: false,
             theme: None,
+            present_day: None,
             extra: Default::default(),
         },
     )?;
@@ -285,13 +293,16 @@ mod tests {
         create_project(lib.path(), "Project A").unwrap();
         let dir = lib.path().join("Project A");
         assert!(!settings(&dir).unwrap().hide_category_box);
-        set_settings(&dir, &ProjectSettings { hide_category_box: true, theme: Some("project:Theme A".into()) }).unwrap();
+        let today = serde_json::json!({ "year": 300, "era": "AC" });
+        set_settings(&dir, &ProjectSettings { hide_category_box: true, theme: Some("project:Theme A".into()), present_day: Some(today.clone()) }).unwrap();
         assert!(settings(&dir).unwrap().hide_category_box);
+        assert_eq!(settings(&dir).unwrap().present_day, Some(today));
         assert_eq!(settings(&dir).unwrap().theme.as_deref(), Some("project:Theme A"));
         let json = fs::read_to_string(dir.join(PROJECT_FILE)).unwrap();
         assert!(json.contains("\"hideCategoryBox\": true") && json.contains("\"theme\": \"project:Theme A\""));
-        set_settings(&dir, &ProjectSettings { hide_category_box: false, theme: None }).unwrap();
+        set_settings(&dir, &ProjectSettings { hide_category_box: false, theme: None, present_day: None }).unwrap();
         assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("theme"));
+        assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("presentDay"));
         // The app's themes folder name is not available for projects.
         assert!(matches!(create_project(lib.path(), "_Themes"), Err(AppError::Invalid(_))));
         assert!(matches!(rename_project(lib.path(), "Project A", "_themes"), Err(AppError::Invalid(_))));

@@ -150,7 +150,7 @@ export function PageView(props: Props) {
   const rendered = useMemo(() => renderWithEmbeds(body, { tocBox: false, links }, embedEnv), [body, links, embedEnv]);
   const shownTitle = props.title ?? page?.title ?? "";
   const boxHtml = useMemo(
-    () => infoboxHtml(infobox, { project, title: shownTitle, links, relations, frame: frameFor(wiki, infobox?.template) }),
+    () => infoboxHtml(infobox, { project, title: shownTitle, links, relations, presentDay: wiki.settings.presentDay, frame: frameFor(wiki, infobox?.template) }),
     [infobox, project, shownTitle, links, relations, wiki],
   );
   const readRef = useRef<HTMLDivElement>(null);

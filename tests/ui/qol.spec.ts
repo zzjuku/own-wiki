@@ -161,8 +161,46 @@ test("Date, place and Date, text fields: date with text after it, several entrie
     ]);
   expect(await fieldValue(page, "Page D.md", "Born")).toEqual({ date: { year: 283, era: "AC" }, text: "[[Page B]]" });
   const preview = page.locator(".split-preview .infobox");
-  await expect(preview).toContainText("283 AC, Page B");
+  await expect(preview).toContainText(/283 AC\s*Page B/);
   await expect(preview.locator(".infobox-date-note")).toHaveText(["King", "Lord"]);
   await preview.screenshot({ path: "test-results/qol-date-text.png" });
   await formRow(page, "Reign").screenshot({ path: "test-results/qol-date-text-form.png" });
+});
+
+test("ages: the Age setting on date fields and the project's present day", async ({ page }) => {
+  const person = {
+    id: "template-a-ages",
+    name: "Template A",
+    fields: [
+      { key: "f-b", label: "Born", type: "dateplace" as const, options: { age: "birth" } },
+      { key: "f-d", label: "Died", type: "dateplace" as const },
+    ],
+  };
+  const pageA: MockPage = {
+    id: "Page A.md",
+    title: "Page A",
+    infobox: { template: person.id, fields: [{ ...person.fields[0], value: { date: { year: 283, era: "AC" }, text: "Place A" } }, { ...person.fields[1] }] },
+  };
+  await openProject(page, oneProject([pageA], { templates: [person], mainPage: "Page A" }));
+  const box = page.locator(".read-view .infobox");
+  await expect(box).toContainText("283 AC");
+  await expect(box.locator(".infobox-age")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Project settings" }).click();
+  const dialog = page.getByRole("dialog", { name: "Project settings" });
+  await dialog.getByLabel("Present day: year").fill("300");
+  await dialog.getByLabel("Present day: era").fill("AC");
+  await dialog.screenshot({ path: "test-results/qol-present-day.png" });
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await expect(box.locator(".infobox-age")).toHaveText("(age 17)");
+  await box.screenshot({ path: "test-results/qol-age.png" });
+
+  // The setting in the template.
+  await page.getByRole("button", { name: "Templates" }).click();
+  const died = page.locator(".field-defs > li").filter({ has: page.locator('input[aria-label="Field label"][value="Died"]') });
+  await died.getByLabel("Age").selectOption("death");
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__mock.projects.get("Project A").templates[0].fields[1].options))
+    .toEqual({ age: "death" });
+  expect(await page.evaluate(() => (window as any).__mock.projects.get("Project A").settings.presentDay)).toEqual({ year: 300, era: "AC" });
 });

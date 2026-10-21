@@ -358,3 +358,21 @@
 .library-themes {
   min-height: 0;
 }
+/* Project settings: present day */
+.settings-field.present-day {
+  align-items: flex-start;
+}
+.settings-field.present-day > span {
+  padding-top: 6px;
+  white-space: nowrap;
+}
+.present-day .date-point .date-day,
+.present-day .date-point .date-month {
+  width: 4.2em;
+}
+.present-day .date-point .date-year {
+  width: 5.5em;
+}
+.present-day .date-point .date-era {
+  width: 6em;
+}

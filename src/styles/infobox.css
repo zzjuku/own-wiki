@@ -379,3 +379,9 @@ body.reordering * {
   font-size: 82%;
   margin-left: 0.15em;
 }
+
+/* Ages after birth and death dates */
+.infobox-age {
+  font-size: 82%;
+  white-space: nowrap;
+}

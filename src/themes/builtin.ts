@@ -77,7 +77,7 @@ export const BUILTIN_THEMES: { id: string; data: ThemeData }[] = [
         "--infobox-heading-style": "lined",
         "--infobox-label": "#54595d",
         "--infobox-label-weight": "600",
-        "--infobox-row-space": "0.42em",
+        "--infobox-row-space": "0.55em",
         "--toc-frame": "ornate",
         "--toc-shadow": "2px 2px 0 rgb(96 76 48 / 0.06), 0 4px 11px rgb(35 27 18 / 0.09)",
         "--quote-style": "framed",

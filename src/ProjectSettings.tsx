@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, type ProjectSettings, type ThemeInfo } from "./api";
 import { BUILTIN_PREFIX, BUILTIN_THEMES } from "./themes/builtin";
+import { DateInput } from "./FieldInputs";
 
 export function ProjectSettingsDialog({
   project,
@@ -62,6 +63,19 @@ export function ProjectSettingsDialog({
         <p className="hint">
           A project can use its own theme instead of the app theme. Make and edit themes under <strong>Themes</strong> in the
           sidebar.
+        </p>
+        <div className="settings-field present-day">
+          <span>Present day</span>
+          <DateInput
+            label="Present day"
+            value={settings.presentDay ?? undefined}
+            ranges={false}
+            onChange={(v) => change({ ...settings, presentDay: (v as Record<string, unknown> | undefined) ?? null })}
+          />
+        </div>
+        <p className="hint">
+          The story's "today": a birth date set as such in its field settings shows the age, e.g. "(age 9)", while no death date is
+          filled in. Leave it empty for no ages.
         </p>
         <div className="dialog-actions">
           <button type="button" className="primary" autoFocus onClick={() => close()}>

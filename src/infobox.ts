@@ -243,6 +243,58 @@ function pointText(p: DatePoint, withEra: boolean): string {
   return `${q}${day}${year}${era}`;
 }
 
+// ---- ages ----
+
+/** A date field's role for ages: a birth date or a death date. */
+export function ageRole(f: Field): "birth" | "death" | null {
+  const r = f.options?.age;
+  return (f.type === "date" || f.type === "dateplace") && (r === "birth" || r === "death") ? r : null;
+}
+
+/** The date a Date or Date, place field holds (a range: its start). */
+function fieldDate(f: Field): DatePoint | null {
+  const v = f.type === "dateplace" ? dateEntries(f.value)[0]?.date : f.value;
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const p = (isRange(v) ? v.start : v) as DatePoint | undefined;
+  return p && typeof p.year === "number" ? p : null;
+}
+
+/** Whole years from `a` to `b`; null if unknown (no year, different eras, `b` before `a`).
+ * Eras are only compared by name until calendars exist (M14). */
+export function yearsBetween(a: DatePoint, b: DatePoint): { years: number; approx: boolean } | null {
+  if (typeof a.year !== "number" || typeof b.year !== "number") return null;
+  const era = (p: DatePoint) => (p.era ?? "").trim().toLowerCase();
+  if (era(a) && era(b) && era(a) !== era(b)) return null;
+  let years = b.year - a.year;
+  if (a.month && b.month && (b.month < a.month || (b.month === a.month && a.day && b.day && b.day < a.day))) years--;
+  return years < 0 ? null : { years, approx: !!(a.qualifier || b.qualifier) };
+}
+
+/**
+ * Ages shown after dates: "(age 9)" after the birth date while no death date
+ * is filled in (counted to the project's present day), "(aged 69)" after the
+ * death date. An age that comes from a birth date hidden as a spoiler is
+ * hidden too.
+ */
+export function agesFor(ib: Infobox, presentDay: unknown): Map<Field, string> {
+  const out = new Map<Field, string>();
+  const birth = ib.fields.find((f) => ageRole(f) === "birth" && fieldDate(f));
+  if (!birth) return out;
+  // A death field with anything in it (even a place only) means no age "now".
+  const death = ib.fields.find((f) => ageRole(f) === "death" && fieldHasValue(f));
+  const show = (y: { years: number; approx: boolean } | null, word: string) =>
+    y ? `<span class="infobox-age">(${word} ${y.approx ? "c. " : ""}${y.years})</span>` : "";
+  if (death) {
+    const end = fieldDate(death);
+    const html = end ? show(yearsBetween(fieldDate(birth)!, end), "aged") : "";
+    if (html) out.set(death, birth.spoiler && !death.spoiler ? spoilerHtml(html) : html);
+  } else if (presentDay && typeof presentDay === "object") {
+    const html = show(yearsBetween(fieldDate(birth)!, presentDay as DatePoint), "age");
+    if (html) out.set(birth, html);
+  }
+  return out;
+}
+
 /** "c. 250 AC", "283 – 298 AC", "283 AC – present". */
 export function formatDate(v: unknown): string {
   if (!v || typeof v !== "object") return "";
@@ -338,6 +390,8 @@ export interface BoxContext {
   showEmpty?: boolean;
   /** The frame every image sits in (filled and cropped). */
   frame?: Frame;
+  /** The project's present day, for ages after birth dates. */
+  presentDay?: unknown;
 }
 
 /** An Image field's value. `crop`: how the picture sits in the frame.
@@ -406,8 +460,8 @@ function entriesHtml(entries: RelationEntry[], f: Field, ctx: BoxContext): strin
   return entries.map((e) => (e.spoiler && !f.spoiler ? spoilerHtml(linkHtml(e.name, ctx)) : linkHtml(e.name, ctx))).join("<br>");
 }
 
-/** The value cell's HTML, or "" when there's nothing to show. */
-function valueHtml(f: Field, ctx: BoxContext): string {
+/** The value cell's HTML, or "" when there's nothing to show. `age`: shown after the date. */
+function valueHtml(f: Field, ctx: BoxContext, age = ""): string {
   const v = f.value;
   if (f.type === "linkedfrom" && !valueProblem(f)) return entriesHtml(reverseEntries(f, ctx.relations, ctx.links.resolve), f, ctx);
   const extra = f.type === "link" || f.type === "links" ? twoWayExtras(f, ctx.relations, ctx.links.resolve) : [];
@@ -431,14 +485,15 @@ function valueHtml(f: Field, ctx: BoxContext): string {
       return [own.map((n) => linkHtml(n, ctx)).join("<br>"), entriesHtml(extra, f, ctx)].filter(Boolean).join("<br>");
     }
     case "date":
-      return escapeHtml(formatDate(v));
+      return escapeHtml(formatDate(v)) + (age && ` ${age}`);
     case "dateplace":
     case "datetext":
       return dateEntries(v)
-        .map((e) => {
-          const date = escapeHtml(formatDate(e.date));
+        .map((e, i) => {
+          const date = escapeHtml(formatDate(e.date)) + (age && i === 0 ? ` ${age}` : "");
           const text = e.text?.trim() ? renderInline(e.text, ctx.links) : "";
-          if (f.type === "dateplace") return [date, text].filter(Boolean).join(", ");
+          // The place goes on its own line under the date.
+          if (f.type === "dateplace") return [date, text].filter(Boolean).join("<br>");
           return [date, text && `<span class="infobox-date-note">${text}</span>`].filter(Boolean).join(" ");
         })
         .filter(Boolean)
@@ -458,6 +513,7 @@ export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): st
   if (!ib) return "";
   const rows: { html: string; heading?: boolean; divider?: boolean }[] = [];
   const title = titleArea(ib, ctx);
+  const ages = agesFor(ib, ctx.presentDay);
   for (const f of ib.fields) {
     if (titlePlace(f) && !alsoInBox(f)) continue;
     if (f.type === "heading") {
@@ -494,7 +550,7 @@ export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): st
       }
       continue;
     }
-    let value = valueHtml(f, ctx);
+    let value = valueHtml(f, ctx, ages.get(f));
     if (!value && ctx.placeholders) value = PLACEHOLDER;
     if (!value) continue;
     if (f.spoiler && value !== PLACEHOLDER) value = spoilerHtml(value, f.type === "longtext");

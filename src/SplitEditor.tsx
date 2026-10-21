@@ -465,7 +465,7 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
   const embedEnv = useEmbedEnv(text, currentCategory !== undefined ? `category:${currentCategory}` : pageId);
   const textHtml = useMemo(() => renderWithEmbeds(text, { lineAnchors: true, links }, embedEnv).html, [text, links, embedEnv]);
   const boxHtml = useMemo(
-    () => infoboxHtml(infobox, { project: wiki.project, title, links, relations, showEmpty: true, frame: frameFor(wiki, infobox?.template) }),
+    () => infoboxHtml(infobox, { project: wiki.project, title, links, relations, presentDay: wiki.settings.presentDay, showEmpty: true, frame: frameFor(wiki, infobox?.template) }),
     [infobox, wiki, title, links, relations],
   );
   const html = boxHtml + textHtml;

@@ -136,6 +136,8 @@ export interface FieldOptions {
   inBox?: boolean;
   /** Date, place / Date, text: several entries (a list). */
   multiple?: boolean;
+  /** Date / Date, place: "birth" or "death", for ages ("age 9", "aged 69"). */
+  age?: string;
   ranges?: boolean;
   [extra: string]: unknown;
 }
@@ -146,6 +148,8 @@ export interface ProjectSettings {
   hideCategoryBox: boolean;
   /** The project's own theme ("builtin:<id>" or "project:<folder>"); null = the app theme. */
   theme?: string | null;
+  /** The story's "today", which ages are counted to ({year, month, day, era}). */
+  presentDay?: Record<string, unknown> | null;
 }
 
 export interface ThemeInfo {

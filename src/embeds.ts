@@ -33,6 +33,8 @@ export interface EmbedEnv {
   /** The page (or "category:Name") the embeds are shown in. */
   hostId: string;
   frame: (templateId: string | null | undefined) => Frame;
+  /** The project's present day (ages in embedded infoboxes). */
+  presentDay?: unknown;
 }
 
 function escapeHtml(s: string) {
@@ -87,7 +89,7 @@ function embedHtml(call: EmbedCall, links: LinkContext, env: EmbedEnv | null, st
 
   const inner = [...stack, id];
   const box = (ib: Infobox | null) =>
-    infoboxHtml(ib, { project: env!.project, title: src.title, links, relations: src.relations, frame: env!.frame(ib?.template) });
+    infoboxHtml(ib, { project: env!.project, title: src.title, links, relations: src.relations, presentDay: env!.presentDay, frame: env!.frame(ib?.template) });
   let content: string;
   if (call.infobox) {
     content = box(src.infobox) || warning(`${title} has no infobox to show.`);
@@ -146,7 +148,7 @@ export function useEmbedEnv(text: string, hostId: string): EmbedEnv | null {
     };
   }, [ids, wiki.project, wiki.names]);
   return useMemo(
-    () => (ids ? { project: wiki.project, sources: sources ?? new Map(), hostId, frame: (t) => frameFor(wiki, t) } : null),
+    () => (ids ? { project: wiki.project, sources: sources ?? new Map(), hostId, frame: (t) => frameFor(wiki, t), presentDay: wiki.settings.presentDay } : null),
     [ids, sources, wiki, hostId],
   );
 }
