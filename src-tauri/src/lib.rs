@@ -10,6 +10,8 @@ mod pages;
 mod projects;
 mod relations;
 mod relink;
+mod search;
+mod searchtext;
 mod settings;
 mod templating;
 mod textimages;
@@ -40,6 +42,8 @@ struct AppState {
     installed_fonts: Mutex<Option<std::collections::BTreeMap<String, Vec<fonts::InstalledFace>>>>,
     /// Link index of the open project (one at a time).
     index: Mutex<Option<ProjectIndex>>,
+    /// Search index of the open project (built on first use, see search.rs).
+    search: Mutex<Option<search::SearchIndex>>,
 }
 
 impl AppState {
@@ -74,6 +78,27 @@ impl AppState {
         if let Some(mut idx) = self.index.lock().unwrap().take() {
             idx.save_cache(true);
         }
+        if let Some(mut s) = self.search.lock().unwrap().take() {
+            s.save_cache(true);
+        }
+    }
+
+    /// Runs `f` with the project's search index, brought up to date with the
+    /// files the link index knows. The link index is only held while its
+    /// file list is copied, so reading many files doesn't hold up other commands.
+    fn with_search<R>(&self, project: &str, f: impl FnOnce(&search::SearchIndex, &[search::Source]) -> R) -> AppResult<R> {
+        let (dir, sources) = self.with_index(project, false, |_, idx| Ok((idx.dir.clone(), search::sources(idx))))?;
+        let mut guard = self.search.lock().unwrap();
+        if guard.as_ref().is_none_or(|s| s.dir != dir) {
+            if let Some(mut old) = guard.take() {
+                old.save_cache(true);
+            }
+            *guard = Some(search::SearchIndex::open(&dir));
+        }
+        let s = guard.as_mut().unwrap();
+        s.sync(&sources);
+        s.save_cache(false);
+        Ok(f(s, &sources))
     }
 }
 
@@ -448,6 +473,19 @@ fn delete_group(state: State<'_, AppState>, project: String, id: String) -> AppR
     })
 }
 
+// ---- search (M10) ----
+
+/// Reads every file into the search index ahead of the first search.
+#[tauri::command(async)]
+fn search_prepare(state: State<'_, AppState>, project: String) -> AppResult<()> {
+    state.with_search(&project, |_, _| ())
+}
+
+#[tauri::command(async)]
+fn search(state: State<'_, AppState>, project: String, request: search::Request) -> AppResult<search::Results> {
+    state.with_search(&project, |s, sources| s.search(sources, &request))
+}
+
 // ---- categories ----
 
 #[tauri::command(async)]
@@ -659,6 +697,7 @@ pub fn run() {
                 settings: Mutex::new(settings),
                 installed_fonts: Mutex::new(None),
                 index: Mutex::new(None),
+                search: Mutex::new(None),
             });
             Ok(())
         })
@@ -712,6 +751,8 @@ pub fn run() {
             change_category,
             category_backlinks,
             category_preview,
+            search_prepare,
+            search,
             list_themes,
             read_theme,
             create_theme,

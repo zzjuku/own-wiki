@@ -10,6 +10,7 @@ import { Backlinks } from "./Backlinks";
 import { fileMembers } from "./categories";
 import { CategoryChips } from "./CategoryChips";
 import { useDialogs } from "./dialogs";
+import { FindBar, useFindBar } from "./FindBar";
 import { renderWithEmbeds, useEmbedEnv } from "./embeds";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
@@ -48,9 +49,11 @@ interface Props {
   setEditing: (v: boolean) => void;
   onRenamed: (name: string) => void;
   onDeleted: () => void;
+  /** Opened from a search result: the find bar starts with this query. */
+  find?: { query: string; key: number } | null;
 }
 
-export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted }: Props) {
+export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted, find }: Props) {
   const wiki = useWiki();
   const dialogs = useDialogs();
   const report = useReportError();
@@ -123,6 +126,14 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted }
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
+
+  const finder = useFindBar(editing);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const loaded = data !== null;
+  const { show } = finder;
+  useEffect(() => {
+    if (find && loaded) show(find.query);
+  }, [find, loaded, show]);
 
   const links = useLinkContext(undefined, data?.name ?? name);
   const onContentClick = useContentClick();
@@ -225,6 +236,10 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted }
 
       {backlinksOpen && <Backlinks category={shown} title={`Category: ${shown}`} close={() => setBacklinksOpen(false)} />}
 
+      {finder.find && (
+        <FindBar key={finder.find.query} root={bodyRef} scroller={readRef} initial={finder.find.query} focusKey={finder.find.key} onClose={finder.close} />
+      )}
+
       {editing ? (
         <SplitEditor
           pageId={`category:${shown}`}
@@ -247,7 +262,7 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted }
         <div className="read-view" ref={readRef} onClickCapture={revealOne}>
           <div className="read-column">
             <PageWidthHandle />
-            <div className="markdown category-body" onClick={onContentClick}>
+            <div ref={bodyRef} className="markdown category-body" onClick={onContentClick}>
               {!data.exists && (
                 <p className="notice">
                   This category doesn't exist yet. Add it to a page, or write its text with <strong>Edit</strong>.

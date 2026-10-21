@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, errorText, isLongPath, type CategoryInfo, type Frame, type ProjectInfo, type ProjectSettings, type Tree } from "./api";
+import { api, type CategoryInfo, type Frame, type ProjectInfo, type ProjectSettings, type Tree } from "./api";
 import { CategoryIndex } from "./categories";
 import { CategoriesList, CategoryView } from "./CategoryView";
 import { flushAll } from "./autosave";
-import { useDialogs, type PickOption } from "./dialogs";
+import { useDialogs } from "./dialogs";
 import { HoverCards } from "./HoverCard";
 import { ImageViewer } from "./ImageViewer";
 import { NameIndex } from "./names";
 import { useReportError } from "./notify";
-import { PageView } from "./PageView";
+import { PageView, type Arrival } from "./PageView";
+import { catKey, HISTORY_LIMIT, historyKey, keyCategory, keySearch, SEARCH_KEY, type History } from "./history";
+import { usePageActions } from "./pageActions";
+import { isSearchKey, NO_SEARCH, SEARCH_KEYS, SearchView, type SearchState } from "./SearchView";
 import { IS_MAC, isQuickOpenKey, QuickOpen, QUICK_OPEN_KEYS } from "./QuickOpen";
 import { DEFAULT_FRAME, WikiContext, type CreateOptions, type FollowTarget, type Wiki } from "./wiki";
 import { useGlobalReveal } from "./spoilers";
@@ -23,11 +26,8 @@ import { ThemesView } from "./themes/ThemesView";
 import {
   allGroupsInOrder,
   buildIndex,
-  canMoveGroupInto,
-  countInside,
   displayGroup,
   groupChain,
-  isWithin,
   parentOf,
   remapId,
   ROOT,
@@ -40,7 +40,7 @@ interface Props {
   onBack: () => void;
 }
 
-type Kind = Row["kind"];
+type Panel = "categories" | "templates" | "themes" | "relations" | "search";
 
 // Which groups are open is remembered on this computer only (not synced).
 const expandedKey = (project: string) => `ownwiki.expanded.${project}`;
@@ -62,35 +62,8 @@ function saveExpanded(project: string, ids: Set<string>) {
   }
 }
 
-const where = (group: string) => (group ? `in ${displayGroup(group)}` : "at the top level");
-
 function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
-}
-
-/** History entries for category pages ("category:Name"; page ids end in ".md"). */
-const CAT_KEY = "category:";
-const catKey = (name: string) => CAT_KEY + name;
-const keyCategory = (key: string) => (key.startsWith(CAT_KEY) ? key.slice(CAT_KEY.length) : null);
-
-/** Pages visited in this project since it was opened (back/forward). */
-interface History {
-  back: string[];
-  forward: string[];
-}
-
-const HISTORY_LIMIT = 200;
-
-/** Cmd+[ / Cmd+] on the Mac, Alt+Left / Alt+Right on Windows: -1 back, 1 forward, 0 neither. */
-function historyKey(e: KeyboardEvent): number {
-  if (IS_MAC) {
-    if (!e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return 0;
-    if (e.key === "[" || e.code === "BracketLeft") return -1;
-    if (e.key === "]" || e.code === "BracketRight") return 1;
-    return 0;
-  }
-  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return 0;
-  return e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
 }
 
 export function ProjectView({ project, onBack }: Props) {
@@ -108,8 +81,13 @@ export function ProjectView({ project, onBack }: Props) {
   const categories = useMemo(() => new CategoryIndex(categoryList), [categoryList]);
   // A category page, or the list of all categories, shown instead of a page.
   const [category, setCategory] = useState<string | null>(null);
-  // A screen shown instead of a page: the categories list, Templates or Themes.
-  const [panel, setPanel] = useState<"categories" | "templates" | "themes" | "relations" | null>(null);
+  const [categoryFind, setCategoryFind] = useState<{ query: string; key: number } | null>(null);
+  // A screen shown instead of a page: the categories list, Templates, Themes, Relations or Search.
+  const [panel, setPanel] = useState<Panel | null>(null);
+  // The Search screen's query and filters (kept while other things are open).
+  const [search, setSearch] = useState<SearchState>(NO_SEARCH);
+  // Bumped to put the focus into the Search screen's box.
+  const [searchFocus, setSearchFocus] = useState(0);
   const [imageFrame, setImageFrameState] = useState<Frame>(DEFAULT_FRAME);
   const [settings, setSettings] = useState<ProjectSettings>({ hideCategoryBox: false });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -152,12 +130,8 @@ export function ProjectView({ project, onBack }: Props) {
   // Pages picked in the sidebar with ⌘/Ctrl-click or Shift-click, to move,
   // categorise or delete together.
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  // Where to scroll and what to say when a page was opened through a link.
-  const [arrival, setArrival] = useState<{ section: string | null; via: string | null; key: number }>({
-    section: null,
-    via: null,
-    key: 0,
-  });
+  // Where to scroll and what to say when a page was opened through a link (or a search result).
+  const [arrival, setArrival] = useState<Arrival>({ section: null, via: null, key: 0 });
 
   const index = useMemo(() => buildIndex(tree ?? { groups: [], pages: [] }), [tree]);
   const rows = useMemo(() => visibleRows(index, expanded), [index, expanded]);
@@ -195,9 +169,16 @@ export function ProjectView({ project, onBack }: Props) {
   }, [project.id, report]);
 
   useEffect(() => void reload(), [reload]);
+  // Read every page into the search index in the background, so the first search is quick.
+  useEffect(() => void api.searchPrepare(project.id).catch(() => {}), [project.id]);
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (isSearchKey(e) && !document.querySelector(".backdrop")) {
+        e.preventDefault();
+        void openSearchRef.current();
+        return;
+      }
       if (!isQuickOpenKey(e)) return;
       e.preventDefault();
       setQuickOpen(true);
@@ -223,7 +204,12 @@ export function ProjectView({ project, onBack }: Props) {
   async function openPage(
     id: string,
     edit = false,
-    { section = null, via = null, record = true }: { section?: string | null; via?: string | null; record?: boolean } = {},
+    {
+      section = null,
+      via = null,
+      find = null,
+      record = true,
+    }: { section?: string | null; via?: string | null; find?: string | null; record?: boolean } = {},
   ) {
     if (id !== selected || panel || category) await flushAll();
     setPanel(null);
@@ -234,12 +220,13 @@ export function ProjectView({ project, onBack }: Props) {
     setSelectedGroup(null);
     setEditing(edit);
     setRevealRow({ id });
-    setArrival({ section, via, key: Date.now() });
+    setArrival({ section, via, find, key: Date.now() });
   }
 
   /** Where the user is now, as a history entry. */
   function place(): string | null {
     if (category) return catKey(category);
+    if (panel === "search") return SEARCH_KEY + search.query;
     return selected && !panel ? selected : null;
   }
 
@@ -249,13 +236,14 @@ export function ProjectView({ project, onBack }: Props) {
     if (from && from !== next) setHistory((h) => ({ back: [...h.back, from].slice(-HISTORY_LIMIT), forward: [] }));
   }
 
-  /** Opens a category page. */
-  async function openCategory(name: string, { record = true }: { record?: boolean } = {}) {
+  /** Opens a category page (`find`: from a search result, the find bar's query). */
+  async function openCategory(name: string, { record = true, find = null }: { record?: boolean; find?: string | null } = {}) {
     await flushAll();
     if (record) remember(catKey(name));
     setPanel(null);
     setEditing(false);
     setCategory(name);
+    setCategoryFind(find === null ? null : { query: find, key: Date.now() });
   }
 
   async function createCategory(name: string) {
@@ -268,8 +256,8 @@ export function ProjectView({ project, onBack }: Props) {
     }
   }
 
-  /** Shows the categories list, Templates or Themes instead of a page. */
-  async function openPanel(which: "categories" | "templates" | "themes" | "relations") {
+  /** Shows the categories list, Templates, Themes, Relations or Search instead of a page. */
+  async function openPanel(which: Panel) {
     await flushAll();
     if (which === "categories") remember("");
     setCategory(null);
@@ -277,12 +265,25 @@ export function ProjectView({ project, onBack }: Props) {
     setPanel(which);
   }
 
+  /** The Search screen (Cmd+Shift+F, the sidebar's search box), with `query` if given. */
+  async function openSearch(query?: string, { record = true }: { record?: boolean } = {}) {
+    const q = query ?? search.query;
+    if (query !== undefined) setSearch((s) => ({ ...s, query }));
+    if (panel !== "search") {
+      if (record) remember(SEARCH_KEY + q);
+      await openPanel("search");
+    }
+    setSearchFocus((n) => n + 1);
+  }
+  const openSearchRef = useRef(openSearch);
+  openSearchRef.current = openSearch;
+
   /** Back (-1) or forward (1) through visited pages, skipping deleted ones. */
   async function go(step: -1 | 1) {
     const from = step < 0 ? [...history.back] : [...history.forward];
     const skipped: string[] = [];
     let target: string | undefined;
-    const gone = (t: string) => keyCategory(t) === null && !index.pages.has(t);
+    const gone = (t: string) => keyCategory(t) === null && keySearch(t) === null && !index.pages.has(t);
     while ((target = step < 0 ? from.pop() : from.shift()) !== undefined && gone(target)) skipped.push(target);
     if (target === undefined) return;
     const now = place();
@@ -293,7 +294,9 @@ export function ProjectView({ project, onBack }: Props) {
         : { back: [...h.back, ...here], forward: from },
     );
     const cat = keyCategory(target);
+    const query = keySearch(target);
     if (cat !== null) await openCategory(cat, { record: false });
+    else if (query !== null) await openSearch(query, { record: false });
     else await openPage(target, false, { record: false });
   }
 
@@ -445,343 +448,28 @@ export function ProjectView({ project, onBack }: Props) {
     void openPage(pageId, false, { section, via });
   }
 
-  function newGroup(parent: string) {
-    dialogs.prompt({
-      title: parent ? `New group in ${displayGroup(parent)}` : "New group",
-      label: "Group name",
-      confirmLabel: "Create",
-      submit: async (name, allowLong) => {
-        const g = await api.createGroup(project.id, parent, name, allowLong);
-        await reload();
-        reveal(parent);
-        // Open and select the new group, so it's visible and new pages go into it.
-        toggle(g.id, true);
-        setSelectedGroup(g.id);
-        setRevealRow({ id: g.id });
-      },
-    });
-  }
-
-  async function renamePage(id: string) {
-    const page = index.pages.get(id);
-    if (!page) return;
-    let count = { links: 0, pages: 0 };
-    try {
-      await flushAll();
-      count = await api.linkCount(project.id, page.title);
-    } catch (e) {
-      return report(e);
-    }
-    dialogs.prompt({
-      title: "Rename page",
-      label: "Page title",
-      initial: page.title,
-      note: count.links ? (
-        <>
-          {plural(count.links, "link")} in {plural(count.pages, "page")} will be updated to the new title.
-        </>
-      ) : (
-        <>No links point to this page yet.</>
-      ),
-      checkbox: { label: "Keep old title as alias", initial: false },
-      confirmLabel: "Rename",
-      submit: async (title, allowLong, { checked }) => {
-        await flushAll();
-        const result = await api.renamePage(project.id, id, title, allowLong, checked);
-        await reload(() => {
-          if (selected === id) setSelected(result.page.id);
-          remapHistory(id, result.page.id);
-          setPageVersion((v) => v + 1);
-        });
-        if (result.failed.length)
-          report(`The page was renamed, but links in these pages couldn't be updated: ${result.failed.join(", ")}.`);
-      },
-    });
-  }
-
-  function setAsMainPage(id: string) {
-    const page = index.pages.get(id);
-    if (!page) return;
-    api.setMainPage(project.id, page.title).then(() => reload(), report);
-  }
-
-  function renameGroup(id: string) {
-    const g = index.groups.get(id);
-    if (!g) return;
-    dialogs.prompt({
-      title: "Rename group",
-      label: "Group name",
-      initial: g.name,
-      confirmLabel: "Rename",
-      submit: async (name, allowLong) => {
-        await flushAll();
-        const info = await api.renameGroup(project.id, id, name, allowLong);
-        await reload(() => remapGroup(id, info.id));
-      },
-    });
-  }
-
-  async function deletePage(id: string) {
-    const page = index.pages.get(id);
-    if (!page) return;
-    let linking = 0;
-    try {
-      await flushAll();
-      linking = (await api.backlinks(project.id, id, false)).length;
-    } catch (e) {
-      return report(e);
-    }
-    const isMain = mainPage?.id === id;
-    dialogs.confirm({
-      title: "Delete page",
-      message: (
-        <>
-          Move <strong>{page.title}</strong> to the Trash?
-          {isMain && <> It is the project's main page.</>}
-          {linking > 0 && (
-            <>
-              {" "}
-              {plural(linking, "page")} {linking === 1 ? "links" : "link"} to it; those links will turn red.
-            </>
-          )}
-        </>
-      ),
-      confirmLabel: "Move to Trash",
-      danger: true,
-      submit: async () => {
-        await flushAll();
-        await api.deletePage(project.id, id);
-        if (selected === id) {
-          setSelected(null);
-          setEditing(false);
-        }
-        setHistory((h) => ({ back: h.back.filter((x) => x !== id), forward: h.forward.filter((x) => x !== id) }));
-        await reload();
-      },
-    });
-  }
-
-  function deleteGroup(id: string) {
-    const g = index.groups.get(id);
-    if (!g) return;
-    const { pages, groups } = countInside(index, id);
-    const contents = [pages && plural(pages, "page"), groups && plural(groups, "subgroup")]
-      .filter(Boolean)
-      .join(" and ");
-    dialogs.confirm({
-      title: "Delete group",
-      message: contents ? (
-        <>
-          Move <strong>{g.name}</strong> and everything in it (<strong>{contents}</strong>) to the
-          Trash?
-        </>
-      ) : (
-        <>
-          Move the empty group <strong>{g.name}</strong> to the Trash?
-        </>
-      ),
-      confirmLabel: "Move to Trash",
-      danger: true,
-      submit: async () => {
-        await flushAll();
-        await api.deleteGroup(project.id, id);
-        if (selected && isWithin(selected, id)) {
-          setSelected(null);
-          setEditing(false);
-        }
-        setSelectedGroup((g) => (g !== null && isWithin(g, id) ? null : g));
-        setExpanded((prev) => new Set([...prev].filter((x) => !isWithin(x, id))));
-        await reload();
-      },
-    });
-  }
-
-  function canDrop(kind: Kind, id: string, target: string): boolean {
-    if (parentOf(id) === target) return false; // already there
-    return kind === "page" || canMoveGroupInto(id, target);
-  }
-
-  async function doMove(kind: Kind, id: string, target: string, allowLong: boolean) {
-    await flushAll();
-    if (kind === "page") {
-      const info = await api.movePage(project.id, id, target, allowLong);
-      await reload(() => {
-        if (selected === id) setSelected(info.id);
-        remapHistory(id, info.id);
-        reveal(target);
-      });
-    } else {
-      const info = await api.moveGroup(project.id, id, target, allowLong);
-      await reload(() => {
-        remapGroup(id, info.id);
-        reveal(target);
-      });
-    }
-  }
-
-  /** Drag and drop: move straight away; ask only if the path gets too long. */
-  async function dropMove(kind: Kind, id: string, target: string) {
-    try {
-      await doMove(kind, id, target, false);
-    } catch (e) {
-      if (!isLongPath(e)) return report(e);
-      dialogs.confirm({
-        title: "Long file path",
-        message: errorText(e),
-        confirmLabel: "Move anyway",
-        submit: () => doMove(kind, id, target, true),
-      });
-    }
-  }
-
-  // ---- several pages picked in the sidebar ----
-
-  /** The picked pages that still exist, in sidebar order. */
-  function pickedIds(): string[] {
-    return rows.filter((r) => r.kind === "page" && picked.has(r.id)).map((r) => r.id).concat(
-      [...picked].filter((id) => index.pages.has(id) && !rows.some((r) => r.id === id)),
-    );
-  }
-
-  /** Moves pages into `target`; `done` remembers the ones already moved (a retry after the long-path warning skips them). */
-  async function movePages(ids: string[], target: string, allowLong: boolean, done: Set<string>) {
-    await flushAll();
-    const moved: [string, string][] = [];
-    try {
-      for (const id of ids) {
-        if (done.has(id) || parentOf(id) === target) continue;
-        const info = await api.movePage(project.id, id, target, allowLong);
-        done.add(id);
-        moved.push([id, info.id]);
-      }
-    } finally {
-      await reload(() => {
-        for (const [from, to] of moved) {
-          if (selected === from) setSelected(to);
-          remapHistory(from, to);
-        }
-        setPicked(new Set(moved.map(([, to]) => to)));
-        reveal(target);
-      });
-    }
-  }
-
-  function movePicked() {
-    const ids = pickedIds();
-    const done = new Set<string>();
-    dialogs.pick({
-      title: `Move ${plural(ids.length, "page")} to…`,
-      options: [
-        { id: ROOT, label: "Top level", fullLabel: "Top level", depth: 0 },
-        ...allGroupsInOrder(index).map((g) => ({ id: g.id, label: g.name, fullLabel: displayGroup(g.id), depth: g.depth + 1 })),
-      ],
-      confirmLabel: "Move",
-      submit: (target, allowLong) => movePages(ids, target, allowLong, done),
-    });
-  }
-
-  /** Several pages dragged onto a group: move them all (asks only about long paths). */
-  async function dropPicked(target: string) {
-    const ids = pickedIds();
-    const done = new Set<string>();
-    try {
-      await movePages(ids, target, false, done);
-    } catch (e) {
-      if (!isLongPath(e)) return report(e);
-      dialogs.confirm({ title: "Long file path", message: errorText(e), confirmLabel: "Move anyway", submit: () => movePages(ids, target, true, done) });
-    }
-  }
-
-  function categorisePicked() {
-    const ids = pickedIds();
-    dialogs.prompt({
-      title: `Add a category to ${plural(ids.length, "page")}`,
-      label: "Category",
-      confirmLabel: "Add",
-      submit: async (name) => {
-        const clean = name.trim().replace(/^category\s*:\s*/i, "");
-        if (!clean) throw "Type a category name.";
-        await flushAll();
-        for (const id of ids) {
-          const page = await api.readPage(project.id, id);
-          if (!page.categories.some((c) => c.toLowerCase() === clean.toLowerCase())) {
-            await api.setPageCategories(project.id, id, [...page.categories, clean]);
-          }
-        }
-        reloadCategories();
-        if (selected && ids.includes(selected)) setPageVersion((v) => v + 1);
-      },
-    });
-  }
-
-  function deletePicked() {
-    const ids = pickedIds();
-    dialogs.confirm({
-      title: "Delete pages",
-      message: (
-        <>
-          Move <strong>{plural(ids.length, "page")}</strong> to the Trash? Links to them will turn red.
-          {ids.some((id) => id === mainPage?.id) && <> One of them is the project's main page.</>}
-        </>
-      ),
-      confirmLabel: "Move to Trash",
-      danger: true,
-      submit: async () => {
-        await flushAll();
-        try {
-          for (const id of ids) await api.deletePage(project.id, id);
-        } finally {
-          if (selected && ids.includes(selected)) {
-            setSelected(null);
-            setEditing(false);
-          }
-          setHistory((h) => ({ back: h.back.filter((x) => !ids.includes(x)), forward: h.forward.filter((x) => !ids.includes(x)) }));
-          setPicked(new Set());
-          await reload();
-        }
-      },
-    });
-  }
-
-  // Escape lets go of the picked pages.
-  useEffect(() => {
-    if (!picked.size) return;
-    const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector(".backdrop")) setPicked(new Set());
-    };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
-  }, [picked]);
-
-  function moveTo(kind: Kind, id: string) {
-    const label = kind === "page" ? index.pages.get(id)?.title : index.groups.get(id)?.name;
-    const current = parentOf(id);
-    const note = (g: string) =>
-      g === current
-        ? "current"
-        : kind === "group" && !canMoveGroupInto(id, g)
-          ? g === id
-            ? "this group"
-            : "inside it"
-          : undefined;
-    const options: PickOption[] = [
-      { id: ROOT, label: "Top level", fullLabel: "Top level", depth: 0, note: note(ROOT) },
-      ...allGroupsInOrder(index).map((g) => ({
-        id: g.id,
-        label: g.name,
-        fullLabel: displayGroup(g.id),
-        depth: g.depth + 1,
-        note: note(g.id),
-      })),
-    ];
-    dialogs.pick({
-      title: `Move “${label}” to…`,
-      message: <span className="muted">Now {where(current)}.</span>,
-      options,
-      confirmLabel: "Move",
-      submit: (target, allowLong) => doMove(kind, id, target, allowLong),
-    });
-  }
+  const { newGroup, renamePage, setAsMainPage, renameGroup, deletePage, deleteGroup, canDrop, dropMove, dropPicked, movePicked, categorisePicked, deletePicked, moveTo } = usePageActions({
+    project,
+    index,
+    rows,
+    picked,
+    setPicked,
+    selected,
+    setSelected,
+    setEditing,
+    mainPageId: mainPage?.id,
+    reload,
+    reveal,
+    remapHistory,
+    remapGroup,
+    setHistory,
+    pageChanged: () => setPageVersion((v) => v + 1),
+    reloadCategories,
+    setSelectedGroup,
+    setExpanded,
+    toggle,
+    setRevealRow,
+  });
 
   function menuFor(row: Row): MenuItem[] {
     if (row.kind === "page") {
@@ -876,6 +564,31 @@ export function ProjectView({ project, onBack }: Props) {
         <p className="target-hint" title="Click a group, or the project name for the top level">
           Adding to: <strong>{targetGroup ? displayGroup(targetGroup) : "top level"}</strong>
         </p>
+        <div className={`sidebar-search ${panel === "search" ? "selected" : ""}`}>
+          <input
+            type="search"
+            value={search.query}
+            placeholder="Search…"
+            aria-label="Search the project"
+            title={`Search page text, infoboxes and more (${SEARCH_KEYS})`}
+            spellCheck={false}
+            onFocus={() => panel !== "search" && search.query && void openSearch()}
+            onChange={(e) => {
+              const query = e.target.value;
+              setSearch((s) => ({ ...s, query }));
+              if (panel === "search") return;
+              remember(SEARCH_KEY + query);
+              void openPanel("search");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === "ArrowDown") {
+                e.preventDefault();
+                void openSearch();
+              }
+            }}
+          />
+          <kbd>{SEARCH_KEYS}</kbd>
+        </div>
         <button className="find" onClick={() => setQuickOpen(true)}>
           <span>Find page…</span>
           <kbd>{QUICK_OPEN_KEYS}</kbd>
@@ -945,6 +658,7 @@ export function ProjectView({ project, onBack }: Props) {
           <CategoryView
             key={category}
             name={category}
+            find={categoryFind}
             editing={editing}
             setEditing={setEditing}
             onRenamed={(name) => {
@@ -958,6 +672,18 @@ export function ProjectView({ project, onBack }: Props) {
               setPanel("categories");
               void reload();
             }}
+          />
+        ) : panel === "search" ? (
+          <SearchView
+            state={search}
+            setState={setSearch}
+            spoilers={revealAll}
+            focusKey={searchFocus}
+            onOpen={(hit) =>
+              void (hit.kind === "category"
+                ? openCategory(hit.id, { find: search.query })
+                : openPage(hit.id, false, { find: search.query }))
+            }
           />
         ) : panel === "relations" ? (
           <RelationsView openPage={(id) => void openPage(id)} />

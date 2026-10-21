@@ -192,7 +192,7 @@ export const ALL_COLORS: { title: string; vars: [string, string][] }[] = [
     vars: [
       ["--editor-mark", "Markdown symbols"],
       ["--editor-quote", "Quote text in the source"],
-      ["--search-match", "Find matches"],
+      ["--search-match", "Find and search matches"],
       ["--search-match-current", "Current find match"],
     ],
   },

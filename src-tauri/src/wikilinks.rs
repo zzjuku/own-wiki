@@ -165,7 +165,7 @@ pub(crate) fn text_lines(body: &str, mut f: impl FnMut(usize, usize, &str)) {
 }
 
 /// Links in one line of text (not code). `base` is the line's offset.
-fn links_in_line(line: &str, base: usize, line_no: usize, out: &mut Vec<Link>) {
+pub(crate) fn links_in_line(line: &str, base: usize, line_no: usize, out: &mut Vec<Link>) {
     let b = line.as_bytes();
     let mut i = 0;
     while i < b.len() {
@@ -295,7 +295,7 @@ pub struct Embed {
 }
 
 /// The embed a line consists of, if any (`base`: the line's offset).
-fn embed_line(line: &str, base: usize, line_no: usize) -> Option<Embed> {
+pub(crate) fn embed_line(line: &str, base: usize, line_no: usize) -> Option<Embed> {
     let indent = line.len() - line.trim_start_matches(' ').len();
     if indent > 3 {
         return None;
@@ -388,7 +388,7 @@ pub fn slugify(text: &str) -> String {
 }
 
 /// An ATX heading line (`## Text`): level and raw text.
-fn atx_heading(line: &str) -> Option<(u8, &str)> {
+pub(crate) fn atx_heading(line: &str) -> Option<(u8, &str)> {
     let indent = line.len() - line.trim_start_matches(' ').len();
     if indent > 3 {
         return None;
@@ -411,7 +411,7 @@ fn atx_heading(line: &str) -> Option<(u8, &str)> {
     Some((level as u8, text))
 }
 
-fn footnote_def_label(line: &str) -> Option<&str> {
+pub(crate) fn footnote_def_label(line: &str) -> Option<&str> {
     let rest = line.strip_prefix("[^")?;
     let end = rest.find("]:")?;
     let label = &rest[..end];
@@ -560,7 +560,7 @@ pub fn headings(body: &str) -> Vec<Heading> {
 
 const SUMMARY_MAX: usize = 600;
 
-fn is_hr(t: &str) -> bool {
+pub(crate) fn is_hr(t: &str) -> bool {
     let s: String = t.chars().filter(|c| !c.is_whitespace()).collect();
     s.len() >= 3 && (s.chars().all(|c| c == '-') || s.chars().all(|c| c == '*') || s.chars().all(|c| c == '_'))
 }

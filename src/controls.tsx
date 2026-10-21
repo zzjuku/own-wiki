@@ -1,6 +1,7 @@
 // Small form controls shared by the template screen and the Infobox tab:
 // a colour picker, a list of removable chips, and drag-to-reorder rows.
 import { useRef, useState } from "react";
+import { dragOrder } from "./fieldMoves";
 import { contrastText, isColor, SWATCHES } from "./infobox";
 
 /** Colour swatches plus a custom colour; `null` = the theme's colour. */
@@ -117,65 +118,109 @@ export function Chips({
   );
 }
 
+/** The nearest ancestor that scrolls vertically (null: the page itself). */
+function scrollParent(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY;
+    if ((o === "auto" || o === "scroll") && p.scrollHeight > p.clientHeight) return p;
+  }
+  return null;
+}
+
+/** Near the top or bottom edge of the scrolling area (px), the list scrolls by itself. */
+const EDGE = 48;
+const MAX_SPEED = 22;
+
 /**
  * Drag-to-reorder for a vertical list. Rows carry `data-reorder`; dragging
- * starts on a handle (`start(event, index)`). While dragging, `drop` is the
- * insertion point (0 … rows) to draw a line at. Pointer events, because the
+ * starts on a handle (`start(event, index)`). `size(i)`: how many rows move
+ * together from row i (a section heading takes its fields along); `drops(i)`:
+ * the only insertion points allowed for row i, if limited. While dragging,
+ * the list scrolls by itself when the pointer nears its top or bottom edge.
+ * `onMove` gets the new order (old indexes). Pointer events, because the
  * Windows webview intercepts HTML5 drag and drop.
  */
-export function useReorder(onMove: (from: number, to: number) => void) {
+export function useReorder(
+  onMove: (order: number[]) => void,
+  { size = () => 1, drops }: { size?: (i: number) => number; drops?: (i: number) => number[] | null } = {},
+) {
   const listRef = useRef<HTMLElement | null>(null);
-  const [drag, setDrag] = useState<{ from: number; drop: number } | null>(null);
+  const [drag, setDrag] = useState<{ from: number; size: number; drop: number } | null>(null);
 
   function start(e: React.PointerEvent, from: number) {
-    if (e.button !== 0 || !listRef.current) return;
+    const list = listRef.current;
+    if (e.button !== 0 || !list) return;
     e.preventDefault();
-    const rows = [...listRef.current.querySelectorAll<HTMLElement>(":scope > [data-reorder]")];
-    const mids = rows.map((r) => {
+    const rows = [...list.querySelectorAll<HTMLElement>(":scope > [data-reorder]")];
+    const n = size(from);
+    const allowed = drops?.(from) ?? null;
+    const scroller = scrollParent(list);
+    // Positions are kept relative to the scrolled content, so they stay right while it scrolls.
+    const offset = () => (scroller ? scroller.scrollTop - scroller.getBoundingClientRect().top : window.scrollY);
+    const at = offset();
+    const boxes = rows.map((r) => {
       const b = r.getBoundingClientRect();
-      return b.top + b.height / 2;
+      return { top: b.top + at, bottom: b.bottom + at };
     });
+    const mids = boxes.map((b) => (b.top + b.bottom) / 2);
+    const edgeAt = (k: number) => (k < boxes.length ? boxes[k].top : (boxes[boxes.length - 1]?.bottom ?? 0));
+    let y = e.clientY;
     let drop = from;
-    setDrag({ from, drop });
+    setDrag({ from, size: n, drop });
     document.body.classList.add("reordering");
-    const move = (ev: PointerEvent) => {
-      const next = mids.filter((m) => m < ev.clientY).length;
+    const update = () => {
+      const pos = y + offset();
+      const next = allowed
+        ? allowed.reduce((best, k) => (Math.abs(edgeAt(k) - pos) < Math.abs(edgeAt(best) - pos) ? k : best), allowed[0])
+        : mids.filter((m) => m < pos).length;
       if (next !== drop) {
         drop = next;
-        setDrag({ from, drop });
+        setDrag({ from, size: n, drop });
       }
     };
+    let frame = requestAnimationFrame(function tick() {
+      frame = requestAnimationFrame(tick);
+      const area = scroller?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
+      const top = Math.max(area.top, 0);
+      const bottom = Math.min(area.bottom, window.innerHeight);
+      const speed = y < top + EDGE ? -(top + EDGE - y) : y > bottom - EDGE ? y - (bottom - EDGE) : 0;
+      if (!speed) return;
+      const step = Math.sign(speed) * Math.min(MAX_SPEED, Math.ceil((Math.abs(speed) / EDGE) * MAX_SPEED));
+      const el = scroller ?? document.scrollingElement;
+      if (!el) return;
+      const before = el.scrollTop;
+      el.scrollTop += step;
+      if (el.scrollTop !== before) update();
+    });
+    const move = (ev: PointerEvent) => {
+      y = ev.clientY;
+      update();
+    };
     const up = () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       document.body.classList.remove("reordering");
       setDrag(null);
-      const to = drop > from ? drop - 1 : drop;
-      if (to !== from) onMove(from, to);
+      const order = dragOrder(rows.length, from, n, drop);
+      if (order) onMove(order);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   }
 
-  /** Class for row `i` showing where a dragged row would land. */
+  /** Class for row `i` showing where the dragged rows would land. */
   function rowClass(i: number, count: number): string {
     if (!drag) return "";
     const parts = [];
-    if (i === drag.from) parts.push("reorder-source");
-    if (drag.drop === i && drag.drop !== drag.from && drag.drop !== drag.from + 1) parts.push("drop-before");
-    if (i === count - 1 && drag.drop === count && drag.from !== count - 1) parts.push("drop-after");
+    if (i >= drag.from && i < drag.from + drag.size) parts.push("reorder-source");
+    const stays = drag.drop >= drag.from && drag.drop <= drag.from + drag.size;
+    if (!stays && drag.drop === i) parts.push("drop-before");
+    if (!stays && i === count - 1 && drag.drop === count) parts.push("drop-after");
     return parts.join(" ");
   }
 
   return { listRef, start, rowClass, dragging: drag !== null };
-}
-
-/** Moves item `from` to position `to`. */
-export function moveItem<T>(list: T[], from: number, to: number): T[] {
-  const next = [...list];
-  const [item] = next.splice(from, 1);
-  next.splice(to, 0, item);
-  return next;
 }
 
 export function DragHandle({ onPointerDown, label }: { onPointerDown: (e: React.PointerEvent) => void; label: string }) {

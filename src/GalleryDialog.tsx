@@ -3,7 +3,8 @@
 // (new gallery) or by clicking a gallery in the source editor.
 import { useRef, useState } from "react";
 import { api, errorText } from "./api";
-import { DragHandle, moveItem, useReorder } from "./controls";
+import { DragHandle, useReorder } from "./controls";
+import { inOrder } from "./fieldMoves";
 import { useFileDrop } from "./dropFiles";
 import { chooseTextImages } from "./ImagePopup";
 import { hasExtension, TEXT_IMAGE_EXTENSIONS, type GalleryItem } from "./images";
@@ -36,7 +37,7 @@ export function GalleryDialog({ pageId, initial, initialSpoiler, save, remove, c
   const [spoiler, setSpoiler] = useState(!!initialSpoiler);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const reorder = useReorder((from, to) => setRows((r) => moveItem(r, from, to)));
+  const reorder = useReorder((order) => setRows((r) => inOrder(r, order)));
   const boxRef = useRef<HTMLFormElement>(null);
 
   async function add(files: () => Promise<string[]>) {

@@ -374,6 +374,11 @@ export const api = {
     invoke<Backlink[]>("category_backlinks", { project, name, context }),
   categoryPreview: (project: string, name: string) => invoke<CategoryPreview>("category_preview", { project, name }),
 
+  // Search (M10)
+  search: (project: string, request: SearchRequest) => invoke<SearchResults>("search", { project, request }),
+  /** Reads every file into the search index ahead of the first search. */
+  searchPrepare: (project: string) => invoke<void>("search_prepare", { project }),
+
   // Link index
   pageSections: (project: string, id: string) => invoke<Heading[]>("page_sections", { project, id }),
   linkPreview: (project: string, id: string, section: string | null) =>
@@ -418,6 +423,45 @@ export const api = {
     invoke<GroupInfo>("move_group", { project, id, target, allowLong }),
   deleteGroup: (project: string, id: string) => invoke<void>("delete_group", { project, id }),
 };
+
+export interface SearchRequest {
+  query: string;
+  /** The global eye switch: spoiler text is searched (and shown) only when on. */
+  spoilers: boolean;
+  /** Only pages in this group or its subgroups. */
+  group?: string | null;
+  category?: string | null;
+  /** Template id. */
+  template?: string | null;
+  /** Results returned in full (the rest are only counted). */
+  limit?: number;
+}
+
+/** A piece of a result snippet; a hidden spoiler comes without its text. */
+export interface SearchPart {
+  text: string;
+  hit?: boolean;
+  spoiler?: boolean;
+}
+
+export interface SearchHit {
+  kind: "page" | "category";
+  /** Page id, or the category's name. */
+  id: string;
+  title: string;
+  group: string;
+  count: number;
+  /** "Infobox: Born", "Section: Early life", "Text", "Alias"… (not the title). */
+  places: { place: string; parts: SearchPart[]; count: number }[];
+  morePlaces: number;
+}
+
+export interface SearchResults {
+  hits: SearchHit[];
+  total: number;
+  /** The query's words as matched. */
+  terms: string[];
+}
 
 interface CommandError {
   kind: string;

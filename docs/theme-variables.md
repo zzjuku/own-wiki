@@ -31,7 +31,7 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 |---|---|
 | `--editor-mark` | Markdown symbols (`##`, `**`, `-`, `>`) |
 | `--editor-quote` | Quote text in the source |
-| `--search-match` / `--search-match-current` | Find & replace matches |
+| `--search-match` / `--search-match-current` | Find matches (editor find & replace, find on page, search results) and the current one |
 | `--editor-font-size` | Source text size |
 | `--editor-padding` | Space around the source text |
 

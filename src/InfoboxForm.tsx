@@ -3,7 +3,9 @@
 // add, switch or remove the infobox; restore or discard hidden values.
 import { useRef, useState, type ReactNode } from "react";
 import type { Field, FieldKind, Infobox, Relations, Template } from "./api";
-import { ColorPicker, DragHandle, moveItem, useReorder } from "./controls";
+import { ColorPicker, DragHandle, useReorder } from "./controls";
+import { blockSize, headingDrops, inOrder } from "./fieldMoves";
+import { FieldMoveMenu } from "./FieldMoveMenu";
 import { useDialogs } from "./dialogs";
 import {
   changeTemplate,
@@ -61,10 +63,16 @@ export function InfoboxForm({ pageId, pageTitle, infobox: ib, error, templates, 
     rowIds.current = ids;
     change(next);
   };
-  const reorder = useReorder((from, to) => {
+  /** Fields (and their rows' ids) in a new order (old indexes). */
+  const reordered = (order: number[]) => {
     if (!ib) return;
     setSettingsOpen(null);
-    restructure({ ...ib, fields: moveItem(ib.fields, from, to) }, moveItem(rowIds.current, from, to));
+    restructure({ ...ib, fields: inOrder(ib.fields, order) }, inOrder(rowIds.current, order));
+  };
+  // A section heading moves with its fields, and only between sections.
+  const reorder = useReorder(reordered, {
+    size: (i) => blockSize(ib?.fields ?? [], i),
+    drops: (i) => (ib?.fields[i]?.type === "heading" ? headingDrops(ib.fields) : null),
   });
 
   if (error) {
@@ -230,6 +238,7 @@ export function InfoboxForm({ pageId, pageTitle, infobox: ib, error, templates, 
                   {f.label || <span className="muted">(no label)</span>}
                 </span>
               )}
+              <FieldMoveMenu fields={ib.fields} index={i} onOrder={reordered} />
               <button
                 className={`plain ib-gear ${settingsOpen === i ? "active" : ""}`}
                 title="Field settings: name, type, remove"

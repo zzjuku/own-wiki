@@ -16,6 +16,7 @@ import { frameFor, scrollToSection, useContentClick, useLinkContext, useWiki } f
 import { LINK_CHARS } from "./wikilinks";
 import { isReservedName } from "./categories";
 import { CategoryChips } from "./CategoryChips";
+import { FindBar, useFindBar } from "./FindBar";
 import { hasSpoilers, useSpoilerReveal } from "./spoilers";
 
 interface Props {
@@ -36,8 +37,17 @@ interface Props {
   onNamesChanged: () => void;
   /** Opens a group of the breadcrumb in the sidebar. */
   onReveal: (group: string) => void;
-  /** How the page was reached: a section to scroll to, an alias it was linked by. */
-  arrival: { section: string | null; via: string | null; key: number };
+  /** How the page was reached: a section to scroll to, an alias it was linked by,
+   * a search to show in the find bar. */
+  arrival: Arrival;
+}
+
+export interface Arrival {
+  section: string | null;
+  via: string | null;
+  /** Opened from a search result: the find bar starts with this query. */
+  find?: string | null;
+  key: number;
 }
 
 const STATUS_ORDER: SaveStatus[] = ["saved", "unsaved", "saving", "error"];
@@ -162,13 +172,17 @@ export function PageView(props: Props) {
   const [revealAll, setRevealAll] = useState(false);
   const pageHasSpoilers = useMemo(() => hasSpoilers(boxHtml) || hasSpoilers(rendered.html), [boxHtml, rendered.html]);
 
-  // Arriving through a link: scroll to its section (or the top).
+  // Arriving through a link: scroll to its section (or the top). From a
+  // search result: the find bar shows the matches (and scrolls to the first).
   const { arrival } = props;
   const loaded = page !== null;
+  const finder = useFindBar(editing);
+  const markdownRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!loaded || editing) return;
     const view = readRef.current;
     if (view) scrollToSection(view.querySelector(".markdown") ?? view, arrival.section);
+    if (arrival.find) finder.show(arrival.find);
     // Only when a new arrival happens (or the page finished loading).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrival.key, loaded]);
@@ -295,6 +309,10 @@ export function PageView(props: Props) {
         </p>
       )}
 
+      {finder.find && (
+        <FindBar key={finder.find.query} root={markdownRef} scroller={readRef} initial={finder.find.query} focusKey={finder.find.key} onClose={finder.close} />
+      )}
+
       {editing ? (
         <SplitEditor
           pageId={pageId}
@@ -322,7 +340,7 @@ export function PageView(props: Props) {
           )}
           <div className="read-column">
             <PageWidthHandle />
-            <div className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: boxHtml + rendered.html }} />
+            <div ref={markdownRef} className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: boxHtml + rendered.html }} />
             {!wiki.settings.hideCategoryBox && <CategoryChips variant="box" values={categories} save={saveCategories} />}
           </div>
         </div>

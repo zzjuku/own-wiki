@@ -5,6 +5,7 @@ import type {
   Backlink, CategoryInfo, Field, IncomingField, Infobox, PageInfo, ProjectSettings, Relations, Template,
 } from "../../../src/api";
 import type { ThemeData } from "../../../src/themes/engine";
+import { search } from "./search";
 
 export interface MockPage {
   id: string;
@@ -365,6 +366,11 @@ export function createBackend(fixture: Fixture) {
       tgt.infobox = ib;
     },
 
+    search: ({ project, request }) => {
+      const p = proj(project);
+      return search([...p.pages.values()], [...p.catTexts.values()], request, parent);
+    },
+    search_prepare: () => undefined,
     list_categories: ({ project }) => [...categories(proj(project)).values()].map(catInfo),
     category_page: ({ project, name, includeSub }) => {
       const p = proj(project);

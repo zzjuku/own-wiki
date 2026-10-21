@@ -62,6 +62,8 @@ interface PickOptions {
   title: string;
   message?: ReactNode;
   options: PickOption[];
+  /** What the options are ("group" when not given), for the filter box and the list's name. */
+  noun?: string;
   confirmLabel: string;
   submit: (id: string, allowLong: boolean) => Promise<void>;
 }
@@ -262,6 +264,7 @@ function Picker({
   onChoose: (id: string) => void;
 }) {
   const [filter, setFilter] = useState("");
+  const noun = open.noun ?? "group";
   const shown = useMemo(() => {
     const words = filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return open.options;
@@ -276,13 +279,13 @@ function Picker({
       <input
         ref={inputRef}
         className="picker-filter"
-        placeholder="Filter groups…"
+        placeholder={`Filter ${noun}s…`}
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         spellCheck={false}
-        aria-label="Filter groups"
+        aria-label={`Filter ${noun}s`}
       />
-      <ul className="picker" role="listbox" aria-label="Groups">
+      <ul className="picker" role="listbox" aria-label={`${noun[0].toUpperCase()}${noun.slice(1)}s`}>
         {shown.map((o) => (
           <li key={o.id || "(top)"}>
             <button
@@ -305,7 +308,7 @@ function Picker({
             </button>
           </li>
         ))}
-        {shown.length === 0 && <li className="empty small">No matching group.</li>}
+        {shown.length === 0 && <li className="empty small">No matching {noun}.</li>}
       </ul>
     </>
   );

@@ -12,6 +12,7 @@ import "./styles/links.css";
 import "./styles/infobox.css";
 import "./styles/templates.css";
 import "./styles/relations.css";
+import "./styles/search.css";
 import "./styles/layoutPrefs.css";
 import "./styles/picking.css";
 import "./styles/images.css";

@@ -385,3 +385,16 @@ body.reordering * {
   font-size: 82%;
   white-space: nowrap;
 }
+
+/* A field row's ⋯ menu (Move to section…) */
+button.field-more {
+  flex-shrink: 0;
+  padding: 2px 4px;
+  align-self: start;
+  color: var(--muted);
+  font-weight: 700;
+}
+button.field-more:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}

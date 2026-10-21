@@ -122,7 +122,7 @@ pub fn images(body: &str) -> Vec<String> {
 }
 
 /// Is `[[File:…|…|spoiler|…]]` (its inside) marked as a spoiler?
-fn image_is_spoiler(inner: &str) -> bool {
+pub(crate) fn image_is_spoiler(inner: &str) -> bool {
     // Option words sit between `|`s before the caption; links in the caption can't say "spoiler" on their own.
     inner.split('|').skip(1).any(|p| p.trim_end_matches('\\').trim().eq_ignore_ascii_case("spoiler"))
 }

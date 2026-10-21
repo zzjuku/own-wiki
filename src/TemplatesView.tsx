@@ -5,7 +5,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Field, type FieldKind, type Frame, type PageInfo, type Template } from "./api";
 import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
-import { Chips, ColorPicker, DragHandle, moveItem, useReorder } from "./controls";
+import { Chips, ColorPicker, DragHandle, useReorder } from "./controls";
+import { blockSize, headingDrops, inOrder } from "./fieldMoves";
+import { FieldMoveMenu } from "./FieldMoveMenu";
 import { useDialogs } from "./dialogs";
 import { infoboxHtml, instantiate, isLayout, KINDS, newFieldKey, newFieldLabel, newTemplateId, PLACES } from "./infobox";
 import { MiniEditor } from "./MiniEditor";
@@ -258,7 +260,11 @@ function TemplateEditor({ project, template: t, onChange, onRename, onDuplicate,
   const setFields = (fields: Field[]) => onChange({ ...t, fields });
   // A field just added gets its label selected for typing.
   const [justAdded, setJustAdded] = useState<number | null>(null);
-  const reorder = useReorder((from, to) => setFields(moveItem(t.fields, from, to)));
+  // A section heading moves with its fields, and only between sections.
+  const reorder = useReorder((order) => setFields(inOrder(t.fields, order)), {
+    size: (i) => blockSize(t.fields, i),
+    drops: (i) => (t.fields[i]?.type === "heading" ? headingDrops(t.fields) : null),
+  });
 
   function addField(kind: FieldKind) {
     setFields([...t.fields, { key: newFieldKey(t.fields), label: newFieldLabel(kind), type: kind }]);
@@ -324,6 +330,7 @@ function TemplateEditor({ project, template: t, onChange, onRename, onDuplicate,
                   onChange={(nf) => setFields(t.fields.map((x, j) => (j === i ? nf : x)))}
                   onRemove={() => setFields(t.fields.filter((_, j) => j !== i))}
                   handle={<DragHandle label={`Move ${f.label}`} onPointerDown={(e) => reorder.start(e, i)} />}
+                  menu={<FieldMoveMenu fields={t.fields} index={i} onOrder={(order) => setFields(inOrder(t.fields, order))} />}
                 />
               </li>
             ))}
@@ -466,6 +473,7 @@ export function FieldDef({
   onRemove,
   onRenamed,
   handle,
+  menu,
 }: {
   field: Field;
   autoFocus?: boolean;
@@ -474,6 +482,8 @@ export function FieldDef({
   /** The label changed (called when the label box is left). */
   onRenamed?: (old: string, next: string) => void;
   handle: React.ReactNode;
+  /** The row's ⋯ menu (Move to section…). */
+  menu?: React.ReactNode;
 }) {
   const wiki = useWiki();
   const options = f.options ?? {};
@@ -501,6 +511,7 @@ export function FieldDef({
           placeholder={heading ? "Section heading" : "Label (optional)"}
           onChange={(e) => onChange({ ...f, label: e.target.value })}
         />
+        {menu}
         <button className="plain remove" title={`Remove ${heading ? "section heading" : "divider"}`} aria-label={`Remove ${heading ? "section heading" : "divider"}`} onClick={onRemove}>
           ×
         </button>
@@ -540,6 +551,7 @@ export function FieldDef({
             </option>
           ))}
         </select>
+        {menu}
         <button className="plain remove" title="Remove field" aria-label={`Remove ${f.label}`} onClick={onRemove}>
           ×
         </button>

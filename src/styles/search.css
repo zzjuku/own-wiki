@@ -1,0 +1,197 @@
+/* Search (M10): the sidebar's search box, the Search screen and the find bar on pages. */
+
+/* Sidebar search box */
+.sidebar-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.sidebar-search input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 64px 6px 10px;
+}
+.sidebar-search.selected input {
+  border-color: var(--accent);
+}
+.sidebar-search kbd {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+}
+.sidebar-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* Search screen */
+.search-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 28px 40px;
+}
+.search-box {
+  max-width: 760px;
+}
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--text-lg);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 9px 12px;
+}
+.search-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+.search-filters select {
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 5px 8px;
+  max-width: 220px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+}
+.search-clear-filters {
+  font-size: var(--text-sm);
+  color: var(--link);
+}
+.search-hint {
+  margin: 6px 0 12px;
+}
+.search-empty {
+  max-width: 620px;
+}
+.search-count {
+  margin: 0 0 6px;
+}
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 900px;
+}
+.search-results li {
+  border-bottom: 1px solid var(--border);
+}
+.search-result {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: var(--radius);
+}
+.search-result:hover,
+.search-result:focus-visible {
+  background: var(--bg-hover);
+}
+.search-result-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.search-title {
+  color: var(--link);
+  font-size: var(--text-lg);
+}
+.search-place {
+  display: flex;
+  gap: 10px;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+.search-place-name {
+  flex: 0 0 auto;
+  max-width: 34%;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-snippet {
+  min-width: 0;
+  color: var(--text);
+}
+.search-results mark {
+  background: var(--search-match);
+  color: inherit;
+  border-radius: 2px;
+}
+/* A spoiler shown in a snippet (eye switch on): marked like in the editor preview. */
+.search-spoiler {
+  background: var(--spoiler-revealed-bg);
+  border-bottom: 1px dashed var(--spoiler-mark);
+}
+/* A spoiler left out of a snippet (eye switch off): a small solid block. */
+.search-spoiler-hidden {
+  display: inline-block;
+  width: 3em;
+  height: 0.9em;
+  vertical-align: -0.05em;
+  margin: 0 2px;
+  border-radius: 2px;
+  background: var(--spoiler-bg);
+}
+.search-more-places {
+  margin-top: 1px;
+}
+.search-show-more {
+  margin-top: 12px;
+}
+
+/* Find bar (read view) */
+.find-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 5px 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--toolbar-bg);
+}
+.find-input {
+  width: 260px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+}
+.find-count {
+  min-width: 80px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  text-align: center;
+}
+.find-bar button.plain {
+  padding: 2px 7px;
+  color: var(--muted);
+}
+.find-bar button.plain:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+::highlight(find) {
+  background-color: var(--search-match);
+}
+::highlight(find-current) {
+  background-color: var(--search-match-current);
+}

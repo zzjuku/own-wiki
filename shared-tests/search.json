@@ -1,0 +1,27 @@
+{
+  "about": "Search matching (M10): src-tauri/src/searchtext.rs and src/search.ts must agree on these.",
+  "fold": [
+    ["Éowyn", "eowyn"],
+    ["Ångström", "angstrom"],
+    ["ÆSIR", "æsir"],
+    ["Straße", "straße"],
+    ["Señor Ñu", "senor nu"]
+  ],
+  "queries": [
+    { "query": "Targ  aryen", "terms": ["targ", "aryen"] },
+    { "query": "\"Snow  Falls\" john", "terms": ["snow falls", "john"] },
+    { "query": "\"unclosed phrase", "terms": ["unclosed phrase"] },
+    { "query": "- ... targ TARG", "terms": ["targ"] },
+    { "query": "Élan\"x\"", "terms": ["elan", "x"] },
+    { "query": "   ", "terms": [] }
+  ],
+  "matches": [
+    { "name": "word starts", "text": "Targaryen and Targaryens, not Maryen", "query": "targ", "found": ["Targ", "Targ"] },
+    { "name": "inside a word", "text": "Targaryen", "query": "aryen", "found": [] },
+    { "name": "accents both ways", "text": "Éowyn rode with eowyn", "query": "Eów", "found": ["Éow", "eow"] },
+    { "name": "phrase", "text": "John Snow and Snow John", "query": "\"john snow\"", "found": ["John Snow"] },
+    { "name": "after punctuation", "text": "O'Brien (Brien)", "query": "brien", "found": ["Brien", "Brien"] },
+    { "name": "digits", "text": "c. 250 AC, 1250", "query": "250", "found": ["250"] },
+    { "name": "several words", "text": "Alpha beta, Beta alpha", "query": "beta al", "found": ["beta", "Beta", "Al", "al"] }
+  ]
+}
