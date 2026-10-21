@@ -18,7 +18,7 @@ import { isSearchKey, NO_SEARCH, SEARCH_KEYS, SearchView, type SearchState } fro
 import { IS_MAC, isQuickOpenKey, QuickOpen, QUICK_OPEN_KEYS } from "./QuickOpen";
 import { DEFAULT_FRAME, WikiContext, type CreateOptions, type FollowTarget, type Wiki } from "./wiki";
 import { useGlobalReveal } from "./spoilers";
-import { useSidebarHidden } from "./layoutPrefs";
+import { loadPageEdge, useSidebarHidden } from "./layoutPrefs";
 import { Sidebar, type MenuItem } from "./Sidebar";
 import { SidebarHeader, SidebarIcon } from "./SidebarHeader";
 import { TemplatesView, useTemplates } from "./TemplatesView";
@@ -197,6 +197,7 @@ export function ProjectView({ project, onBack }: Props) {
       api.getImageFrame(project.id).then(setImageFrameState, () => {});
     }
     if (c.projectFile || c.projectThemes || c.appThemes) reloadTheme();
+    if (c.appThemes) void loadPageEdge();
     if (!selected) return;
     if (c.removed.includes(selected)) {
       // Moved or renamed on disk (the same title in a new file): follow it.

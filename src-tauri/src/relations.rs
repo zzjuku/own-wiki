@@ -207,6 +207,63 @@ pub fn set_relation(
     Ok(())
 }
 
+/// Where link `l` in page `e`'s infobox shows up on the linked page `t`:
+/// its Linked from fields that read the field ("Children", "Chapters (list)"),
+/// and its same-named field for two-way links ("Spouse (two-way)").
+fn shows_on(e: &Entry, l: &crate::infobox::FieldLink, t: &Entry) -> Vec<String> {
+    let mut shows = Vec::new();
+    for r in &t.reverse {
+        let reads = r.from.iter().any(|f| norm(f) == norm(&l.field));
+        let template_ok = r.templates.is_empty() || e.template.as_ref().is_some_and(|tp| r.templates.contains(tp));
+        if reads && template_ok {
+            shows.push(if r.list { format!("{} (list)", r.label) } else { r.label.clone() });
+        }
+    }
+    if l.two_way && t.fields.iter().any(|f| (f.kind == crate::infobox::LINK || f.kind == crate::infobox::LINKS) && norm(&f.label) == norm(&l.field)) {
+        shows.push(format!("{} (two-way)", l.field));
+    }
+    shows
+}
+
+/// A page that shows page `id` through a relation stored on `id`'s own page
+/// (its two-way fields, or a Linked from field reading one of its fields),
+/// for "What links here".
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShownOn {
+    pub id: String,
+    pub title: String,
+    pub group: String,
+    /// Where it shows there: "Children", "Lover (two-way)".
+    pub shows: Vec<String>,
+}
+
+/// Pages that show page `id` through its own relations (spoiler relations left out).
+pub fn shown_on(idx: &ProjectIndex, id: &str) -> AppResult<Vec<ShownOn>> {
+    let e = idx.pages.get(id).ok_or_else(|| AppError::NotFound(format!("Page not found: {id}")))?;
+    let mut by_name: HashMap<String, &str> = HashMap::new();
+    for (pid, p) in &idx.pages {
+        for n in names_of(p) {
+            by_name.entry(n).or_insert(pid);
+        }
+    }
+    let mut out: Vec<ShownOn> = Vec::new();
+    for l in e.field_links.iter().filter(|l| !l.typed && !l.spoiler) {
+        let Some(tid) = by_name.get(&norm(&l.target)).copied().filter(|t| *t != id) else { continue };
+        let t = &idx.pages[tid];
+        let shows = shows_on(e, l, t);
+        if shows.is_empty() {
+            continue;
+        }
+        match out.iter_mut().find(|s| s.id == tid) {
+            Some(s) => s.shows.extend(shows.into_iter().filter(|x| !s.shows.contains(x)).collect::<Vec<_>>()),
+            None => out.push(ShownOn { id: tid.to_string(), title: t.title.clone(), group: crate::fsutil::rel_parent(tid).to_string(), shows }),
+        }
+    }
+    out.sort_by_key(|s| s.title.to_lowercase());
+    Ok(out)
+}
+
 // ---- the Relations table ----
 
 /// One stored relation: a link in a page's infobox field, and where it shows up.
@@ -271,19 +328,10 @@ pub fn table(idx: &ProjectIndex) -> RelationsTable {
         for l in &e.field_links {
             let target = by_name.get(&norm(&l.target)).map(|id| (*id, &idx.pages[*id]));
             let kind = if l.typed { "typed" } else if l.in_text { "text" } else { "link" };
-            let mut shows = Vec::new();
-            if let Some((_, t)) = target.filter(|(tid, _)| *tid != pid.as_str() && !l.typed) {
-                for r in &t.reverse {
-                    let reads = r.from.iter().any(|f| norm(f) == norm(&l.field));
-                    let template_ok = r.templates.is_empty() || e.template.as_ref().is_some_and(|tp| r.templates.contains(tp));
-                    if reads && template_ok {
-                        shows.push(if r.list { format!("{} (list)", r.label) } else { r.label.clone() });
-                    }
-                }
-                if l.two_way && t.fields.iter().any(|f| (f.kind == crate::infobox::LINK || f.kind == crate::infobox::LINKS) && norm(&f.label) == norm(&l.field)) {
-                    shows.push(format!("{} (two-way)", l.field));
-                }
-            }
+            let shows = match target.filter(|(tid, _)| *tid != pid.as_str() && !l.typed) {
+                Some((_, t)) => shows_on(e, l, t),
+                None => Vec::new(),
+            };
             if l.in_text && shows.is_empty() {
                 continue;
             }
@@ -352,6 +400,23 @@ mod tests {
 
     fn child(title: &str, template: &str, fields: &str) -> String {
         format!("---\ntitle: {title}\ninfobox:\n  template: {template}\n  fields:\n{fields}---\n")
+    }
+
+    #[test]
+    fn pages_showing_a_page_through_its_relations() {
+        let kids = "  - label: Children\n    type: linkedfrom\n    options: { from: [Father] }\n  - label: Spouse\n    type: links\n    options: { twoWay: true }\n";
+        let (_l, _p, idx) = setup(&[
+            ("Page A.md", &child("Page A", "t", kids)),
+            ("Page B.md", &child("Page B", "t", "  - label: Spouse\n    type: links\n    options: { twoWay: true }\n")),
+            (
+                "Page C.md",
+                &child("Page C", "t", "  - label: Father\n    type: links\n    value: [Page A]\n  - label: Spouse\n    type: links\n    options: { twoWay: true }\n    value: [Page A, Page B]\n  - label: Secret\n    type: links\n    spoiler: true\n    options: { twoWay: true }\n    value: [Page B]\n"),
+            ),
+        ]);
+        let shown = shown_on(&idx, "Page C.md").unwrap();
+        let short: Vec<(&str, Vec<&str>)> = shown.iter().map(|s| (s.title.as_str(), s.shows.iter().map(String::as_str).collect())).collect();
+        assert_eq!(short, vec![("Page A", vec!["Children", "Spouse (two-way)"]), ("Page B", vec!["Spouse (two-way)"])]);
+        assert!(shown_on(&idx, "Page B.md").unwrap().is_empty());
     }
 
     #[test]

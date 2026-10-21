@@ -367,6 +367,8 @@ export const api = {
     invoke<ApplyResult>("apply_template", { project, id, pages, dryRun }),
   /** `typed`: names typed into the page's Linked from fields (their sort values come along). */
   relations: (project: string, id: string, typed: string[]) => invoke<Relations>("relations", { project, id, typed }),
+  /** Pages that show page `id` through relations stored on it (its two-way fields, Linked from fields reading its fields). */
+  shownOn: (project: string, id: string) => invoke<ShownOn[]>("shown_on", { project, id }),
   relationsTable: (project: string) => invoke<RelationsTable>("relations_table", { project }),
   /** Writes page `source` into (or out of) the field named `field` on page `target`. */
   setRelation: (project: string, target: string, field: string, source: string, edit: RelationEdit) =>
@@ -454,6 +456,9 @@ export const api = {
   /** The app-wide theme in use ("builtin:default", "app:<folder>"). */
   getAppTheme: () => invoke<string | null>("get_app_theme"),
   setAppTheme: (choice: string | null) => invoke<void>("set_app_theme", { choice }),
+  /** Where the page's right edge was dragged to, as a share of the window width (0–1; null = the theme's width). Synced. */
+  getPageEdge: () => invoke<number | null>("get_page_edge"),
+  setPageEdge: (edge: number | null) => invoke<void>("set_page_edge", { edge }),
   importFont: (project: string | null, id: string, path: string) => invoke<ThemeFont>("import_font", { project, id, path }),
   /** Family names of the fonts installed on this computer. */
   installedFonts: () => invoke<string[]>("installed_fonts"),
@@ -469,6 +474,15 @@ export const api = {
     invoke<GroupInfo>("move_group", { project, id, target, allowLong }),
   deleteGroup: (project: string, id: string) => invoke<void>("delete_group", { project, id }),
 };
+
+/** A page that shows another through a relation stored on that other page ("What links here"). */
+export interface ShownOn {
+  id: string;
+  title: string;
+  group: string;
+  /** Where it shows there: "Children", "Lover (two-way)". */
+  shows: string[];
+}
 
 /** The open page's unsaved version (M10 edit clash). */
 export interface MyVersion {

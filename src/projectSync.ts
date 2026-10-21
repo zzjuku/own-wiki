@@ -4,6 +4,7 @@
 import { useEffect } from "react";
 import { api, type FilesChanged } from "./api";
 import { useFilesChanged } from "./fileEvents";
+import { loadPageEdge } from "./layoutPrefs";
 
 /** How often the marker is refreshed (a marker older than 6 minutes counts as stale). */
 const MARK_EVERY_MS = 2 * 60 * 1000;
@@ -11,6 +12,8 @@ const MARK_EVERY_MS = 2 * 60 * 1000;
 export function useProjectSync(project: string, onChange: (c: FilesChanged) => void) {
   useEffect(() => {
     void api.watchProject(project).catch(() => {});
+    // The page edge may have been changed on the other computer meanwhile.
+    void loadPageEdge();
     const mark = () => void api.markOpen(project).catch(() => {});
     mark();
     const timer = setInterval(mark, MARK_EVERY_MS);

@@ -14,6 +14,28 @@ pub const PROJECT_FILE: &str = "project.json";
 pub const PAGES_DIR: &str = "pages";
 pub const ASSETS_DIR: &str = "assets";
 pub const CACHE_DIR: &str = ".cache";
+
+/// Where caches (link and search index, thumbnails) live. They must stay
+/// out of the synced library (Drive would copy them back and forth), so the
+/// app keeps them in its own local cache folder, one folder per project;
+/// without one set (tests), in the project's `.cache/`.
+static LOCAL_CACHE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+pub fn set_cache_root(dir: PathBuf) {
+    let _ = LOCAL_CACHE.set(dir);
+}
+
+/// The project's cache folder (see [`set_cache_root`]).
+pub fn cache_dir(project_dir: &Path) -> PathBuf {
+    match LOCAL_CACHE.get() {
+        Some(root) => {
+            let key = project_dir.canonicalize().unwrap_or_else(|_| project_dir.to_path_buf());
+            let name = project_dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            root.join(format!("{name}-{}", &crate::fsutil::version_of(key.to_string_lossy().as_bytes())[..8]))
+        }
+        None => project_dir.join(CACHE_DIR),
+    }
+}
 /// One file per category that has its own text or parent categories.
 pub const CATEGORIES_DIR: &str = "categories";
 const FORMAT_VERSION: u32 = 1;
@@ -236,7 +258,7 @@ pub fn create_project(library: &Path, name: &str) -> AppResult<ProjectInfo> {
     }
     let dir = library.join(&id);
     fs::create_dir(&dir)?;
-    for sub in [PAGES_DIR, ASSETS_DIR, CACHE_DIR] {
+    for sub in [PAGES_DIR, ASSETS_DIR] {
         fs::create_dir(dir.join(sub))?;
     }
     write_project_file(
@@ -334,7 +356,7 @@ mod tests {
         let p = create_project(lib.path(), " Project A ").unwrap();
         assert_eq!(p, ProjectInfo { id: "Project A".into(), name: "Project A".into() });
         let dir = lib.path().join("Project A");
-        for sub in [PAGES_DIR, ASSETS_DIR, CACHE_DIR] {
+        for sub in [PAGES_DIR, ASSETS_DIR] {
             assert!(dir.join(sub).is_dir(), "{sub}");
         }
         let json: serde_json::Value =

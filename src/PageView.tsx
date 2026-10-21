@@ -190,8 +190,9 @@ export function PageView(props: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
     let live = true;
-    api.backlinks(project, pageId, false).then(
-      (l) => live && setLinkingPages(l.length),
+    // Pages linking here, and pages showing this one through its own relations (counted once).
+    Promise.all([api.backlinks(project, pageId, false), api.shownOn(project, pageId)]).then(
+      ([l, s]) => live && setLinkingPages(new Set([...l.map((b) => b.id), ...s.map((x) => x.id)]).size),
       () => {},
     );
     return () => {

@@ -1,7 +1,7 @@
 // "What links here": every page that links to the open page, with the lines
 // that contain the links. Clicking an entry opens that page.
 import { useEffect, useMemo, useState } from "react";
-import { api, errorText, type Backlink, type EmbedHost } from "./api";
+import { api, errorText, type Backlink, type EmbedHost, type ShownOn } from "./api";
 import { renderSnippet } from "./markdown";
 import { compareNames, displayGroup } from "./tree";
 import { useWiki } from "./wiki";
@@ -44,10 +44,13 @@ export function Backlinks({ pageId, category, title, close }: Props) {
   const [embeds, setEmbeds] = useState<EmbedHost[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Pages that embed this one are listed apart: an embed isn't a link.
+  // Listed apart: pages that embed this one (an embed isn't a link), and pages
+  // that show it through relations stored on this page (no link in their file).
+  const [shown, setShown] = useState<ShownOn[]>([]);
   useEffect(() => {
     if (pageId === undefined) return;
     api.embeddedIn(wiki.project, pageId).then(setEmbeds, () => {});
+    api.shownOn(wiki.project, pageId).then(setShown, () => {});
   }, [wiki.project, pageId]);
 
   useEffect(() => {
@@ -111,6 +114,31 @@ export function Backlinks({ pageId, category, title, close }: Props) {
               </li>
             ))}
           </ul>
+        )}
+        {shown.length > 0 && (
+          <>
+            <h3 className="backlinks-sub">Shows this page through a relation ({shown.length})</h3>
+            <p className="muted small">Set on this page's own infobox; these pages show it automatically.</p>
+            <ul className="backlink-list">
+              {shown.map((s) => (
+                <li key={s.id}>
+                  <button
+                    className="plain backlink"
+                    onClick={() => {
+                      close();
+                      wiki.follow({ pageId: s.id });
+                    }}
+                  >
+                    <span className="backlink-head">
+                      <span className="backlink-title">{s.title}</span>
+                      {s.group && <span className="backlink-group">{displayGroup(s.group)}</span>}
+                    </span>
+                    <span className="backlink-via">in {s.shows.map((x) => `“${x}”`).join(", ")}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
         {embeds.length > 0 && (
           <>

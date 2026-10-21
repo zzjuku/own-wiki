@@ -281,7 +281,7 @@ pub fn create_page(
         set_list_meta(&mut meta, "categories", &t.categories);
         body = t.starter_text.clone();
     }
-    safe_write(&dir.join(rel_name(&id)), serialize(&meta, &body)?.as_bytes())?;
+    crate::edits::write(&dir.join(rel_name(&id)), &mut meta, &body)?;
     Ok(info(id, title.to_string(), Vec::new()))
 }
 
@@ -315,15 +315,15 @@ pub fn save_infobox(library: &Path, project: &str, id: &str, infobox: Option<&In
         return Ok(());
     }
     set_infobox_meta(&mut meta, infobox)?;
-    safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+    crate::edits::write(&path, &mut meta, &body)?;
     Ok(())
 }
 
 /// Replaces the page's Markdown body, keeping its front matter.
 pub fn save_page(library: &Path, project: &str, id: &str, body: &str, version: Option<&str>) -> AppResult<()> {
     let path = saved_page_path(&pages_dir(library, project)?, id, version)?;
-    let (meta, _) = parse(&fs::read_to_string(&path)?)?;
-    safe_write(&path, serialize(&meta, body)?.as_bytes())?;
+    let (mut meta, _) = parse(&fs::read_to_string(&path)?)?;
+    crate::edits::write(&path, &mut meta, body)?;
     Ok(())
 }
 
@@ -380,13 +380,15 @@ fn disk_meta(path: &Path) -> Mapping {
 pub fn keep_mine(library: &Path, project: &str, id: &str, mine: &Mine) -> AppResult<String> {
     check_rel(id)?;
     let path = crate::fsutil::join_rel(&pages_dir(library, project)?, id);
-    let meta = disk_meta(&path);
-    let text = mine_file(meta, mine)?;
+    let mut meta = disk_meta(&path);
+    if mine.with_infobox {
+        set_infobox_meta(&mut meta, mine.infobox.as_ref())?;
+    }
     if path.exists() {
         move_to_trash(&path)?;
     }
-    safe_write(&path, text.as_bytes())?;
-    Ok(version_of(text.as_bytes()))
+    crate::edits::write(&path, &mut meta, &mine.body)?;
+    crate::fsutil::file_version(&path).ok_or_else(|| AppError::NotFound("The page couldn't be written.".into()))
 }
 
 /// "Use the other version": the open page's unsaved version goes to the Trash
@@ -400,7 +402,7 @@ pub fn trash_mine(library: &Path, project: &str, id: &str, title: &str, mine: &M
 
 /// Puts `text` in the Trash as a file "<name> (version not kept).md" (a version the user chose not to keep).
 pub fn trash_as_file(project_dir: &Path, name: &str, text: &str) -> AppResult<()> {
-    let dir = project_dir.join(crate::projects::CACHE_DIR).join("not-kept");
+    let dir = crate::projects::cache_dir(project_dir).join("not-kept");
     fs::create_dir_all(&dir)?;
     let file = dir.join(format!("{} (version not kept){EXT}", to_file_name(name).unwrap_or_else(|_| "Page".into())));
     safe_write(&file, text.as_bytes())?;
@@ -436,12 +438,11 @@ pub fn restore_page(library: &Path, project: &str, id: &str, page: &Restored) ->
         meta.insert("sort".into(), s.into());
     }
     set_infobox_meta(&mut meta, page.infobox.as_ref())?;
-    let text = serialize(&meta, &page.body)?;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    safe_write(&path, text.as_bytes())?;
-    Ok(version_of(text.as_bytes()))
+    crate::edits::write(&path, &mut meta, &page.body)?;
+    crate::fsutil::file_version(&path).ok_or_else(|| AppError::NotFound("The page couldn't be written.".into()))
 }
 
 pub fn rename_page(
@@ -471,7 +472,7 @@ pub fn rename_page(
         aliases.retain(|a| norm(a) != norm(new_title));
         set_aliases_meta(&mut meta, &aliases);
     }
-    safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+    crate::edits::write(&path, &mut meta, &body)?;
     if new_name != own {
         crate::fsutil::rename(&path, dir.join(&new_name))?;
     }
@@ -551,7 +552,7 @@ pub fn set_aliases(
         clean.push(a.to_string());
     }
     set_aliases_meta(&mut meta, &clean);
-    safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+    crate::edits::write(&path, &mut meta, &body)?;
     Ok(info(id.to_string(), title, clean))
 }
 
@@ -570,7 +571,7 @@ pub fn rewrite_page_links(pages: &Path, id: &str, old: &str, new: &str) -> AppRe
         }
     }
     if n > 0 {
-        safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+        crate::edits::write(&path, &mut meta, &body)?;
     }
     Ok(n)
 }
@@ -585,7 +586,7 @@ pub fn update_categories(pages: &Path, id: &str, f: impl FnOnce(&mut Vec<String>
         return Ok(false);
     }
     set_list_meta(&mut meta, "categories", &cats);
-    safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+    crate::edits::write(&path, &mut meta, &body)?;
     Ok(true)
 }
 
@@ -603,7 +604,7 @@ pub fn set_sort(pages: &Path, id: &str, sort: Option<&str>) -> AppResult<()> {
             }
         }
     }
-    safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+    crate::edits::write(&path, &mut meta, &body)?;
     Ok(())
 }
 
@@ -618,7 +619,7 @@ pub fn write_infobox(pages: &Path, id: &str, infobox: &Infobox) -> AppResult<()>
     let path = page_path(pages, id)?;
     let (mut meta, body) = parse(&fs::read_to_string(&path)?)?;
     set_infobox_meta(&mut meta, Some(infobox))?;
-    safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+    crate::edits::write(&path, &mut meta, &body)?;
     Ok(())
 }
 

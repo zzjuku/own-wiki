@@ -7,6 +7,7 @@ import { flushAll } from "./autosave";
 import { DialogProvider } from "./dialogs";
 import { NotifyProvider, useReportError } from "./notify";
 import { Library } from "./Library";
+import { loadPageEdge } from "./layoutPrefs";
 import { ProjectView } from "./ProjectView";
 import { ThemeProvider } from "./themes/runtime";
 import { Tooltips } from "./Tooltip";
@@ -49,6 +50,12 @@ function Main() {
       report(e);
     }
   }
+
+  // The dragged page edge is kept in the library.
+  const libraryPath = settings?.libraryPath ?? null;
+  useEffect(() => {
+    if (libraryPath) void loadPageEdge();
+  }, [libraryPath]);
 
   if (!settings) return null;
 

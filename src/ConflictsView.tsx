@@ -108,7 +108,8 @@ export function ConflictsView({ onResolved }: { onResolved: (c: Conflict) => voi
       </header>
       <div className="conflicts-body">
         <p className="hint">
-          These files were changed on both computers before Google Drive could sync them, so Drive kept two versions. Until you
+          These files were changed on both computers before Google Drive could sync them. Either Drive kept both versions, or one
+          computer's edit was overwritten by the other's and the app brought it back as a copy (“from …” in its name). Until you
           choose, the copy stays out of the sidebar, links and search. The version you don't keep goes to the Trash.
         </p>
         {error && <p className="dialog-error">{error}</p>}

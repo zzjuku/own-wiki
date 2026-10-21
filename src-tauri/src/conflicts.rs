@@ -21,11 +21,12 @@ use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 
+use crate::edits;
 use crate::error::{AppError, AppResult};
-use crate::fsutil::{check_rel, join_rel, move_to_trash, name_taken, rel_name, safe_write, to_file_name};
+use crate::fsutil::{check_rel, join_rel, move_to_trash, name_taken, rel_name, to_file_name};
 use crate::index::{Entry, ProjectIndex};
 use crate::infobox::Infobox;
-use crate::pages::{meta_infobox, parse, serialize};
+use crate::pages::{meta_infobox, parse};
 use crate::projects::{CATEGORIES_DIR, PAGES_DIR, PROJECT_FILE};
 use crate::themes::{APP_THEMES_DIR, PROJECT_THEMES_DIR};
 use crate::tree::EXT;
@@ -208,10 +209,22 @@ pub fn resolve(library: &Path, idx: &mut ProjectIndex, c: &Conflict, keep: Keep)
     match keep {
         Keep::Original => move_to_trash(&copy)?,
         Keep::Copy => {
+            // The kept version counts the dropped one's edits as seen, so the
+            // other computer doesn't take its own version for lost (edits.rs).
+            let seen = fs::read_to_string(&original).ok().and_then(|t| parse(&t).ok()).map(|(m, _)| edits::counts(&m));
             if original.exists() {
                 move_to_trash(&original)?;
             }
             crate::fsutil::rename(&copy, &original)?;
+            if let (Some(seen), Kind::Page | Kind::Category) = (seen, c.kind) {
+                if let Ok((mut meta, body)) = parse(&fs::read_to_string(&original)?) {
+                    let all = edits::merged(&edits::counts(&meta), &seen);
+                    if !meta.is_empty() && !all.is_empty() {
+                        edits::set_counts(&mut meta, &all);
+                        edits::write(&original, &mut meta, &body)?;
+                    }
+                }
+            }
         }
         Keep::Both => {
             if !matches!(c.kind, Kind::Page | Kind::Category) {
@@ -231,7 +244,7 @@ pub fn resolve(library: &Path, idx: &mut ProjectIndex, c: &Conflict, keep: Keep)
                 .map(|n| if n == 1 { format!("{stem}{EXT}") } else { format!("{stem} ({n}){EXT}") })
                 .find(|f| !name_taken(&dir, f).unwrap_or(true))
                 .unwrap();
-            safe_write(&dir.join(&name), serialize(&meta, &body)?.as_bytes())?;
+            crate::edits::write(&dir.join(&name), &mut meta, &body)?;
             crate::fsutil::note_own_change(&copy);
             fs::remove_file(&copy)?;
         }

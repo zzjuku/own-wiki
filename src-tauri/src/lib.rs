@@ -1,6 +1,7 @@
 mod assets;
 mod categories;
 mod conflicts;
+mod edits;
 mod error;
 mod fonts;
 mod fsutil;
@@ -79,7 +80,14 @@ impl AppState {
                     idx.refresh(&[])?;
                 }
             }
-            _ => *guard = Some(ProjectIndex::open(&dir)?),
+            _ => {
+                let mut idx = ProjectIndex::open(&dir)?;
+                // Edits of this computer that Drive overwrote while the project was closed come back as copies.
+                if edits::check(&dir, None) > 0 {
+                    idx.refresh(&[])?;
+                }
+                *guard = Some(idx);
+            }
         }
         f(&library, guard.as_mut().unwrap())
     }
@@ -88,7 +96,14 @@ impl AppState {
     pub(crate) fn refresh_open_index(&self, dir: &std::path::Path) -> AppResult<()> {
         let mut guard = self.index.lock().unwrap();
         match guard.as_mut() {
-            Some(idx) if idx.dir.canonicalize().ok().as_deref() == Some(dir) || idx.dir == dir => idx.refresh(&[]),
+            Some(idx) if idx.dir.canonicalize().ok().as_deref() == Some(dir) || idx.dir == dir => {
+                idx.refresh(&[])?;
+                // An edit of this computer overwritten by the other's version comes back as a copy.
+                if edits::check(&idx.dir, None) > 0 {
+                    idx.refresh(&[])?;
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
@@ -311,6 +326,12 @@ fn apply_template(
 #[tauri::command(async)]
 fn relations(state: State<'_, AppState>, project: String, id: String, typed: Vec<String>) -> AppResult<relations::Relations> {
     state.with_index(&project, false, |_, idx| relations::relations(idx, &id, &typed))
+}
+
+/// Pages that show page `id` through relations stored on it ("What links here").
+#[tauri::command(async)]
+fn shown_on(state: State<'_, AppState>, project: String, id: String) -> AppResult<Vec<relations::ShownOn>> {
+    state.with_index(&project, false, |_, idx| relations::shown_on(idx, &id))
 }
 
 /// Every stored relation, where it shows up, and what doesn't work.
@@ -803,6 +824,17 @@ fn set_app_theme(state: State<AppState>, choice: Option<String>) -> AppResult<()
     themes::set_app_choice(&state.library()?, choice.as_deref())
 }
 
+/// The dragged page edge as a share of the window width (synced in the library).
+#[tauri::command]
+fn get_page_edge(state: State<AppState>) -> AppResult<Option<f64>> {
+    Ok(themes::page_edge(&state.library()?))
+}
+
+#[tauri::command]
+fn set_page_edge(state: State<AppState>, edge: Option<f64>) -> AppResult<()> {
+    themes::set_page_edge(&state.library()?, edge)
+}
+
 #[tauri::command]
 fn import_font(state: State<AppState>, project: Option<String>, id: String, path: String) -> AppResult<fonts::FontFile> {
     fonts::import(&state.theme_dir(project.as_deref(), &id)?, std::path::Path::new(&path))
@@ -873,6 +905,8 @@ pub fn run() {
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
             let settings = settings::load(&config_dir);
+            edits::init(&settings::machine_id(&config_dir), &markers::computer_name(), &config_dir);
+            projects::set_cache_root(app.path().app_cache_dir()?.join("projects"));
             app.manage(AppState {
                 config_dir,
                 settings: Mutex::new(settings),
@@ -920,6 +954,7 @@ pub fn run() {
             apply_template,
             relations,
             relations_table,
+            shown_on,
             set_relation,
             import_image,
             import_image_data,
@@ -961,6 +996,8 @@ pub fn run() {
             delete_theme,
             get_app_theme,
             set_app_theme,
+            get_page_edge,
+            set_page_edge,
             import_font,
             installed_fonts,
             copy_installed_font,

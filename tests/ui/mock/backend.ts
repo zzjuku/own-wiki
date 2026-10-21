@@ -137,6 +137,8 @@ export function createBackend(fixture: Fixture) {
   const ownWrite = (r: Rev) => Object.assign(r, { rev: r.rev + 1, own: true });
   /** Versions the user chose not to keep, put in the Trash (for the tests to check). */
   const trashed: string[] = [];
+  /** The dragged page edge (a share of the window width), as kept in the library. */
+  let pageEdge: number | null = null;
   const marks: string[] = [];
   const info = (pg: Required<MockPage>): PageInfo => ({ id: pg.id, title: pg.title, group: parent(pg.id), aliases: pg.aliases });
   const findTitle = (p: Project, name: string) =>
@@ -370,6 +372,8 @@ export function createBackend(fixture: Fixture) {
     },
     watch_project: () => undefined,
     exit_app: () => undefined,
+    get_page_edge: () => pageEdge,
+    set_page_edge: ({ edge }) => void (pageEdge = edge),
     unwatch_project: () => undefined,
     open_elsewhere: ({ project }) => proj(project).openElsewhere,
     mark_open: ({ project }) => void marks.push(`open:${project}`),
@@ -416,6 +420,28 @@ export function createBackend(fixture: Fixture) {
     apply_template: () => ({ changes: [], failed: [] }),
     relations: ({ project, id, typed }) => relations(proj(project), id, typed ?? []),
     // A simple copy of src-tauri/src/relations.rs (table): Page link and typed-in rows, problems.
+    shown_on: ({ project, id }) => {
+      // Simplified: two-way Page link fields, and Linked from fields reading this page's Page link fields.
+      const p = proj(project);
+      const me = page(p, id);
+      const out: { id: string; title: string; group: string; shows: string[] }[] = [];
+      for (const f of me.infobox?.fields ?? []) {
+        if (f.type !== "links" || f.spoiler) continue;
+        for (const name of strings(f.value)) {
+          const t = findTitle(p, (/\[\[([^\]|#]*)/.exec(name)?.[1] ?? name).trim());
+          if (!t || t.id === id) continue;
+          const shows = [
+            ...(t.infobox?.fields ?? []).filter((g) => g.type === "linkedfrom" && strings(g.options?.from).some((x) => lc(x) === lc(f.label))).map((g) => g.label),
+            ...(f.options?.twoWay && (t.infobox?.fields ?? []).some((g) => g.type === "links" && lc(g.label) === lc(f.label)) ? [`${f.label} (two-way)`] : []),
+          ];
+          if (!shows.length) continue;
+          const have = out.find((o) => o.id === t.id);
+          if (have) have.shows.push(...shows.filter((x) => !have.shows.includes(x)));
+          else out.push({ id: t.id, title: t.title, group: parent(t.id), shows });
+        }
+      }
+      return out;
+    },
     relations_table: ({ project }) => {
       const p = proj(project);
       const all = [...p.pages.values()];

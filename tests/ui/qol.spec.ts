@@ -98,7 +98,7 @@ test("the sidebar can be hidden and shown again; remembered on this computer", a
   await expect(page.locator(".sidebar")).toBeHidden();
 });
 
-test("dragging the page edge sets the page width; the infobox stays put when the sidebar hides", async ({ page }) => {
+test("dragging the page edge sets the page width (a share of the window, kept in the library); the infobox stays put when the sidebar hides", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await openProject(page, data());
   const column = page.locator(".read-view > .read-column");
@@ -111,7 +111,17 @@ test("dragging the page edge sets the page width; the infobox stays put when the
   await page.mouse.move(h.x + h.width / 2 - 300, h.y + 40, { steps: 5 });
   await page.mouse.up();
   await expect.poll(async () => (await column.boundingBox())!.width).toBeLessThan(before - 250);
-  expect(await page.evaluate(() => localStorage.getItem("ownwiki.pageRight"))).not.toBeNull();
+  const edge = (await page.evaluate(() => window.__mock.handle("get_page_edge", {}))) as number;
+  const columnRight = async () => {
+    const b = (await column.boundingBox())!;
+    return b.x + b.width;
+  };
+  expect(Math.abs(edge * 1600 - (await columnRight()))).toBeLessThan(3);
+  // Another window size (the other computer's screen): the edge keeps its share of the width.
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await expect.poll(async () => Math.abs(edge * 1200 - (await columnRight()))).toBeLessThan(3);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await expect.poll(async () => Math.abs(edge * 1600 - (await columnRight()))).toBeLessThan(3);
 
   // Hiding the sidebar: the infobox keeps its place, the text gets the room.
   const boxX = (await box.boundingBox())!.x;
@@ -124,7 +134,7 @@ test("dragging the page edge sets the page width; the infobox stays put when the
 
   await handle.dblclick();
   await expect.poll(async () => (await column.boundingBox())!.width).toBeCloseTo(before, 0);
-  expect(await page.evaluate(() => localStorage.getItem("ownwiki.pageRight"))).toBeNull();
+  expect(await page.evaluate(() => window.__mock.handle("get_page_edge", {}))).toBeNull();
 });
 
 test("Date, place and Date, text fields: date with text after it, several entries", async ({ page }) => {

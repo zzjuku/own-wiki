@@ -16,10 +16,10 @@ use serde::Serialize;
 use serde_yaml_ng::Mapping;
 
 use crate::error::{AppError, AppResult};
-use crate::fsutil::{move_to_trash, name_taken, rel_parent, safe_write, to_file_name};
+use crate::fsutil::{move_to_trash, name_taken, rel_parent, to_file_name};
 use crate::index::ProjectIndex;
 use crate::infobox::Template;
-use crate::pages::{self, check_link_chars, parse, serialize, set_list_meta};
+use crate::pages::{self, check_link_chars, parse, set_list_meta};
 use crate::projects::{self, CATEGORIES_DIR};
 use crate::relink::{Backlink, parallel};
 use crate::tree::{EXT, pages_dir};
@@ -298,7 +298,7 @@ fn edit_file(idx: &mut ProjectIndex, reg: &Registry, name: &str, f: impl FnOnce(
         }
     };
     f(&mut meta, &mut body);
-    safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+    crate::edits::write(&path, &mut meta, &body)?;
     idx.reload_cats();
     Ok(())
 }
@@ -507,7 +507,7 @@ pub fn rename_or_delete(
                 Some(n) => rewrite_category_links(&body, &key, n).0,
                 None => body,
             };
-            safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+            crate::edits::write(&path, &mut meta, &body)?;
             Ok(())
         })();
         if r.is_err() {
@@ -532,7 +532,7 @@ pub fn rename_or_delete(
                 let (mut meta, body) = parse(&fs::read_to_string(&path)?)?;
                 meta.insert("title".into(), n.as_str().into());
                 let body = rewrite_category_links(&body, &key, n).0;
-                safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
+                crate::edits::write(&path, &mut meta, &body)?;
                 let stem = to_file_name(n)?;
                 if !file.eq_ignore_ascii_case(&format!("{stem}{EXT}")) {
                     let target = new_file_name(&dir, n)?;
@@ -571,7 +571,7 @@ fn update_page_file(path: &Path, key: &str, new: Option<&str>) -> AppResult<()> 
         None => body,
     };
     if changed {
-        safe_write(path, serialize(&meta, &body)?.as_bytes())?;
+        crate::edits::write(path, &mut meta, &body)?;
     }
     Ok(())
 }
@@ -632,9 +632,9 @@ pub fn rewrite_page_links_in_cats(idx: &ProjectIndex, old: &str, new: &str) -> u
             continue;
         }
         let path = dir.join(file);
-        let Ok((meta, body)) = fs::read_to_string(&path).map_err(AppError::from).and_then(|t| parse(&t)) else { continue };
+        let Ok((mut meta, body)) = fs::read_to_string(&path).map_err(AppError::from).and_then(|t| parse(&t)) else { continue };
         let (body, k) = crate::wikilinks::rewrite_links(&body, old, new);
-        if k > 0 && serialize(&meta, &body).map(|t| safe_write(&path, t.as_bytes()).is_ok()).unwrap_or(false) {
+        if k > 0 && crate::edits::write(&path, &mut meta, &body).is_ok() {
             count += k;
         }
     }

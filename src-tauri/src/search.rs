@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::fsutil::{join_rel, rel_name, rel_parent, safe_write};
 use crate::index::ProjectIndex;
-use crate::projects::{CACHE_DIR, CATEGORIES_DIR, PAGES_DIR};
+use crate::projects::{CATEGORIES_DIR, PAGES_DIR};
 use crate::searchtext::{Place, Seg, category_segs, fold, fold_map, page_segs, parse_query, word_matches};
 use crate::wikilinks::norm;
 
@@ -377,7 +377,7 @@ pub struct SearchIndex {
 impl SearchIndex {
     /// The cached search index of the project in `dir` (or an empty one).
     pub fn open(dir: &Path) -> Self {
-        let mut docs = fs::read(dir.join(CACHE_DIR).join(CACHE_FILE))
+        let mut docs = fs::read(crate::projects::cache_dir(dir).join(CACHE_FILE))
             .ok()
             .and_then(|t| serde_json::from_slice::<CacheFile>(&t).ok())
             .filter(|c| c.version == CACHE_VERSION)
@@ -420,7 +420,7 @@ impl SearchIndex {
         if self.unsaved == 0 || (!now && self.unsaved < 50 && self.saved_at.elapsed() < CACHE_SAVE_INTERVAL) {
             return;
         }
-        let dir = self.dir.join(CACHE_DIR);
+        let dir = crate::projects::cache_dir(&self.dir);
         let _ = fs::create_dir_all(&dir);
         #[derive(Serialize)]
         struct Out<'a> {

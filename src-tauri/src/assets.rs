@@ -11,7 +11,7 @@ use std::time::UNIX_EPOCH;
 
 use crate::error::{AppError, AppResult};
 use crate::fsutil::{check_id, name_taken, to_file_name};
-use crate::projects::{ASSETS_DIR, CACHE_DIR, project_dir};
+use crate::projects::{ASSETS_DIR, project_dir};
 
 /// Images for infobox fields.
 pub const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
@@ -186,7 +186,7 @@ pub fn display_file(project_dir: &Path, image: &Path, width: u32) -> PathBuf {
     meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_nanos()).hash(&mut h);
     width.hash(&mut h);
     let key = format!("{:016x}-{width}", h.finish());
-    let dir = project_dir.join(CACHE_DIR).join(THUMBS_DIR);
+    let dir = crate::projects::cache_dir(project_dir).join(THUMBS_DIR);
     for e in ["jpg", "png"] {
         let p = dir.join(format!("{key}.{e}"));
         if p.is_file() {

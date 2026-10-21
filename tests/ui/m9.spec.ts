@@ -372,3 +372,18 @@ test("Relations table: rows, where they show up, problems, filter", async ({ pag
   await row("Chapter Two").getByRole("button", { name: "Place A" }).click();
   await expect(page.getByRole("heading", { name: "Place A", level: 1 })).toBeVisible();
 });
+
+test("What links here also lists pages that show this page through its relations", async ({ page }) => {
+  await openProject(page, data());
+  // Page B's Father field links Page A, so Page A's Children shows Page B; nothing links to Page B itself.
+  await page.locator(".sidebar").getByText("Page B", { exact: true }).click();
+  const button = page.getByRole("button", { name: /Links here/ });
+  await expect(button).toContainText("1");
+  await button.click();
+  const dialog = page.getByRole("dialog", { name: "What links here" });
+  await expect(dialog).toContainText("No page links here yet.");
+  await expect(dialog.getByRole("heading", { name: "Shows this page through a relation (1)" })).toBeVisible();
+  await expect(dialog.locator(".backlink").filter({ hasText: "Page A" })).toContainText("in “Children”");
+  await dialog.locator(".backlink").filter({ hasText: "Page A" }).click();
+  await expect(page.getByRole("heading", { name: "Page A", level: 1 })).toBeVisible();
+});

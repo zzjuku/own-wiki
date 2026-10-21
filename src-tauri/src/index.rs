@@ -16,7 +16,7 @@ use crate::error::AppResult;
 use crate::fsutil::{rel_join, rel_parent, safe_write};
 use crate::infobox::{FieldLink, FieldName, ReverseDef, field_infos, field_links, first_image, sortable_values};
 use crate::pages::{meta_aliases, meta_categories, meta_infobox, meta_sort, meta_title, parse};
-use crate::projects::{CACHE_DIR, CATEGORIES_DIR, PAGES_DIR};
+use crate::projects::{CATEGORIES_DIR, PAGES_DIR};
 use crate::tree::{GroupInfo, PageInfo, is_page_file};
 use crate::wikilinks::{self, Heading};
 
@@ -222,7 +222,7 @@ impl ProjectIndex {
     /// Loads the cached index of the project in `dir` (or starts empty) and
     /// brings it up to date with the files.
     pub fn open(dir: &Path) -> AppResult<Self> {
-        let (pages, cats) = fs::read_to_string(dir.join(CACHE_DIR).join(CACHE_FILE))
+        let (pages, cats) = fs::read_to_string(crate::projects::cache_dir(dir).join(CACHE_FILE))
             .ok()
             .and_then(|t| serde_json::from_str::<CacheFile>(&t).ok())
             .filter(|c| c.version == CACHE_VERSION)
@@ -341,7 +341,7 @@ impl ProjectIndex {
         let mut cats = self.cats.clone();
         cats.extend(self.cat_copies.clone());
         let file = CacheFile { version: CACHE_VERSION, pages, cats };
-        let dir = self.dir.join(CACHE_DIR);
+        let dir = crate::projects::cache_dir(&self.dir);
         // The cache is optional: failing to write it only slows the next open.
         let _ = fs::create_dir_all(&dir);
         if let Ok(json) = serde_json::to_vec(&file) {

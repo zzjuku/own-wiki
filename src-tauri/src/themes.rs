@@ -195,35 +195,64 @@ pub fn delete(dir: &Path, id: &str) -> AppResult<()> {
     move_to_trash(&theme_dir(dir, id)?)
 }
 
-/// The app-wide theme in use ("builtin:default", "app:<folder>"), if chosen.
-pub fn app_choice(library: &Path) -> Option<String> {
-    let text = fs::read_to_string(library.join(APP_THEMES_DIR).join(CHOICE_FILE)).ok()?;
-    let map: Map<String, Value> = serde_json::from_str(&text).ok()?;
-    map.get("active").and_then(Value::as_str).map(str::to_string)
-}
-
-pub fn set_app_choice(library: &Path, choice: Option<&str>) -> AppResult<()> {
-    let dir = library.join(APP_THEMES_DIR);
-    fs::create_dir_all(&dir)?;
-    let path = dir.join(CHOICE_FILE);
-    let mut map: Map<String, Value> = fs::read_to_string(&path)
+/// The library-wide look settings (`_themes/settings.json`, synced): the
+/// app theme in use (`active`) and where the page's right edge was dragged
+/// to (`pageEdge`). Unknown keys are kept.
+fn library_settings(library: &Path) -> Map<String, Value> {
+    fs::read_to_string(library.join(APP_THEMES_DIR).join(CHOICE_FILE))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default();
-    match choice {
-        Some(c) => map.insert("active".into(), Value::String(c.to_string())),
-        None => map.remove("active"),
+        .unwrap_or_default()
+}
+
+fn set_library_setting(library: &Path, key: &str, value: Option<Value>) -> AppResult<()> {
+    let dir = library.join(APP_THEMES_DIR);
+    fs::create_dir_all(&dir)?;
+    let mut map = library_settings(library);
+    match value {
+        Some(v) => map.insert(key.into(), v),
+        None => map.remove(key),
     };
     let mut json = serde_json::to_string_pretty(&map)?;
     json.push('\n');
-    safe_write(&path, json.as_bytes())?;
+    safe_write(&dir.join(CHOICE_FILE), json.as_bytes())?;
     Ok(())
+}
+
+/// The app-wide theme in use ("builtin:default", "app:<folder>"), if chosen.
+pub fn app_choice(library: &Path) -> Option<String> {
+    library_settings(library).get("active").and_then(Value::as_str).map(str::to_string)
+}
+
+pub fn set_app_choice(library: &Path, choice: Option<&str>) -> AppResult<()> {
+    set_library_setting(library, "active", choice.map(|c| Value::String(c.into())))
+}
+
+/// Where the page's right edge was dragged to, as a share of the window's
+/// width (0–1), the same on every computer; None = the theme's page width.
+pub fn page_edge(library: &Path) -> Option<f64> {
+    library_settings(library).get("pageEdge").and_then(Value::as_f64).filter(|e| (0.0..=1.0).contains(e))
+}
+
+pub fn set_page_edge(library: &Path, edge: Option<f64>) -> AppResult<()> {
+    let edge = edge.filter(|e| e.is_finite()).map(|e| e.clamp(0.0, 1.0));
+    set_library_setting(library, "pageEdge", edge.and_then(serde_json::Number::from_f64).map(Value::Number))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn page_edge_lives_next_to_the_app_theme() {
+        let lib = tempfile::tempdir().unwrap();
+        set_app_choice(lib.path(), Some("app:Theme A")).unwrap();
+        set_page_edge(lib.path(), Some(0.75)).unwrap();
+        assert_eq!((app_choice(lib.path()).as_deref(), page_edge(lib.path())), (Some("app:Theme A"), Some(0.75)));
+        set_page_edge(lib.path(), None).unwrap();
+        assert_eq!((app_choice(lib.path()).as_deref(), page_edge(lib.path())), (Some("app:Theme A"), None));
+    }
 
     #[test]
     fn copy_of_builtin_theme_writes_bundled_fonts() {
