@@ -34,6 +34,38 @@ export function Library({ libraryPath, onOpen, onChooseLibrary, onLibraryMoved }
 
   useEffect(() => void reload(), [reload, libraryPath]);
 
+  /** Opens a project; if another computer has it open right now, asks first (M10). */
+  async function openProject(p: ProjectInfo) {
+    let others: Awaited<ReturnType<typeof api.openElsewhere>> = [];
+    try {
+      others = await api.openElsewhere(p.id);
+    } catch {
+      // Not knowing doesn't stop opening.
+    }
+    if (!others.length) return onOpen(p);
+    const time = (ms: number) => {
+      const d = new Date(ms);
+      const today = d.toDateString() === new Date().toDateString();
+      return d.toLocaleString(undefined, today ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    };
+    dialogs.confirm({
+      title: "Open on another computer",
+      message: (
+        <>
+          <strong>{p.name}</strong> is open on {others.map((o, i) => (
+            <span key={i}>
+              {i > 0 && " and "}
+              <strong>{o.computer}</strong> since {time(o.since)}
+            </span>
+          ))}
+          . Editing the same pages on both computers at once can lead to conflicts. Close it there first, or open it here anyway.
+        </>
+      ),
+      confirmLabel: "Open anyway",
+      submit: async () => onOpen(p),
+    });
+  }
+
   function newProject() {
     dialogs.prompt({
       title: "New project",
@@ -173,7 +205,7 @@ export function Library({ libraryPath, onOpen, onChooseLibrary, onLibraryMoved }
           <ul className="project-list">
             {projects.map((p) => (
               <li key={p.id}>
-                <button className="project-open" onClick={() => onOpen(p)}>
+                <button className="project-open" onClick={() => void openProject(p)}>
                   {p.name}
                 </button>
                 <div className="row-actions">

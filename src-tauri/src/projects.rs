@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
-use crate::fsutil::{check_id, move_to_trash, name_taken, safe_write, to_file_name};
+use crate::fsutil::{check_id, check_version, file_version, move_to_trash, name_taken, safe_write, to_file_name};
 use crate::infobox::Template;
 use crate::wikilinks::norm;
 
@@ -129,14 +129,19 @@ pub struct ProjectSettings {
     /// See [`ProjectFile::present_day`].
     #[serde(default)]
     pub present_day: Option<serde_json::Value>,
+    /// project.json's version when read; saving sends it back (not stored).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 pub fn settings(dir: &Path) -> AppResult<ProjectSettings> {
+    let version = file_version(&dir.join(PROJECT_FILE));
     let file = read_project_file(dir)?;
-    Ok(ProjectSettings { hide_category_box: file.hide_category_box, theme: file.theme, present_day: file.present_day })
+    Ok(ProjectSettings { hide_category_box: file.hide_category_box, theme: file.theme, present_day: file.present_day, version })
 }
 
 pub fn set_settings(dir: &Path, s: &ProjectSettings) -> AppResult<()> {
+    check_version(&dir.join(PROJECT_FILE), s.version.as_deref())?;
     let mut file = read_project_file(dir)?;
     file.hide_category_box = s.hide_category_box;
     file.theme = s.theme.clone().filter(|t| !t.trim().is_empty());
@@ -155,9 +160,23 @@ pub fn templates(dir: &Path) -> AppResult<Vec<Template>> {
         .collect())
 }
 
+#[derive(Debug, Serialize)]
+pub struct VersionedTemplates {
+    pub templates: Vec<Template>,
+    /// project.json's version when read.
+    pub version: Option<String>,
+}
+
+pub fn templates_versioned(dir: &Path) -> AppResult<VersionedTemplates> {
+    let version = file_version(&dir.join(PROJECT_FILE));
+    Ok(VersionedTemplates { templates: templates(dir)?, version })
+}
+
 /// Replaces the project's templates. Names must be unique (ignoring case).
-/// Entries this version couldn't read are kept as they were.
-pub fn set_templates(dir: &Path, list: &[Template]) -> AppResult<()> {
+/// Entries this version couldn't read are kept as they were. `version`:
+/// project.json's version when the templates were loaded (not overwritten if changed since).
+pub fn set_templates(dir: &Path, list: &[Template], version: Option<&str>) -> AppResult<()> {
+    check_version(&dir.join(PROJECT_FILE), version)?;
     for (i, t) in list.iter().enumerate() {
         if t.name.trim().is_empty() {
             return Err(AppError::Invalid("A template needs a name.".into()));
@@ -271,7 +290,7 @@ pub fn rename_project(library: &Path, id: &str, new_name: &str) -> AppResult<Pro
     file.name = new_name.to_string();
     write_project_file(&dir, &file)?;
     if new_id != id {
-        fs::rename(&dir, library.join(&new_id))?;
+        crate::fsutil::rename(&dir, library.join(&new_id))?;
     }
     Ok(ProjectInfo {
         id: new_id,
@@ -294,13 +313,13 @@ mod tests {
         let dir = lib.path().join("Project A");
         assert!(!settings(&dir).unwrap().hide_category_box);
         let today = serde_json::json!({ "year": 300, "era": "AC" });
-        set_settings(&dir, &ProjectSettings { hide_category_box: true, theme: Some("project:Theme A".into()), present_day: Some(today.clone()) }).unwrap();
+        set_settings(&dir, &ProjectSettings { hide_category_box: true, theme: Some("project:Theme A".into()), present_day: Some(today.clone()), version: None }).unwrap();
         assert!(settings(&dir).unwrap().hide_category_box);
         assert_eq!(settings(&dir).unwrap().present_day, Some(today));
         assert_eq!(settings(&dir).unwrap().theme.as_deref(), Some("project:Theme A"));
         let json = fs::read_to_string(dir.join(PROJECT_FILE)).unwrap();
         assert!(json.contains("\"hideCategoryBox\": true") && json.contains("\"theme\": \"project:Theme A\""));
-        set_settings(&dir, &ProjectSettings { hide_category_box: false, theme: None, present_day: None }).unwrap();
+        set_settings(&dir, &ProjectSettings { hide_category_box: false, theme: None, present_day: None, version: None }).unwrap();
         assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("theme"));
         assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("presentDay"));
         // The app's themes folder name is not available for projects.
@@ -347,7 +366,7 @@ mod tests {
             "fields": [{"key": "a", "label": "Field A", "type": "text", "hint": "Help"}]
         }))
         .unwrap();
-        set_templates(&dir, &[t.clone()]).unwrap();
+        set_templates(&dir, &[t.clone()], None).unwrap();
         assert_eq!(templates(&dir).unwrap(), [t.clone()]);
         let json: serde_json::Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(json["templates"][1], serde_json::json!({"broken": true}));
@@ -357,7 +376,7 @@ mod tests {
         let mut t2 = t.clone();
         t2.id = "t-2".into();
         t2.name = "template a".into();
-        assert!(matches!(set_templates(&dir, &[t.clone(), t2]), Err(AppError::Exists(_))));
+        assert!(matches!(set_templates(&dir, &[t.clone(), t2], None), Err(AppError::Exists(_))));
     }
 
     #[test]

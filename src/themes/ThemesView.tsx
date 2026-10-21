@@ -3,7 +3,8 @@
 // project's own themes; choose, create, copy, rename, delete; edit one with
 // a live sample. Changes save a moment after each edit.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type ThemeInfo } from "../api";
+import { api, isChanged, type ThemeInfo } from "../api";
+import { useFilesChanged } from "../fileEvents";
 import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "../autosave";
 import { useDialogs } from "../dialogs";
 import { useReportError } from "../notify";
@@ -53,7 +54,12 @@ export function ThemesView({ project, projectTheme = null, onProjectTheme, onClo
         (text) => api.saveTheme(storeOf(place, project), place.id, JSON.parse(text) as ThemeData),
         (s, e) => {
           setStatus(s);
-          if (e) report(e);
+          if (!e) return;
+          if (!isChanged(e)) return report(e);
+          // Changed on the other computer meanwhile: show theirs; this last change is dropped.
+          saver.discard();
+          setReloads((n) => n + 1);
+          report("This theme was changed on another computer, so your last change couldn't be saved. It shows the newer version now.");
         },
         400,
       ),
@@ -68,6 +74,8 @@ export function ThemesView({ project, projectTheme = null, onProjectTheme, onClo
     };
   }, [saver]);
 
+  // Bumped when the selected theme must be read again (changed on disk).
+  const [reloads, setReloads] = useState(0);
   useEffect(() => {
     let stale = false;
     setData(null);
@@ -77,7 +85,14 @@ export function ThemesView({ project, projectTheme = null, onProjectTheme, onClo
       else setSelected(DEFAULT_REF);
     });
     return () => void (stale = true);
-  }, [selected, project]);
+  }, [selected, project, reloads]);
+  // Themes changed on disk (M10): lists and the open theme are read again (an unsaved edit first tries to save, which notices).
+  useFilesChanged(project, (c) => {
+    if (!c.appThemes && !c.projectThemes) return;
+    void reloadLists();
+    if (saver.hasPending) void saver.flush();
+    else setReloads((n) => n + 1);
+  });
 
   function change(next: ThemeData) {
     if (readOnly) return;

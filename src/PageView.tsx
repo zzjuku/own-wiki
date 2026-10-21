@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageWidthHandle } from "./PageWidthHandle";
 import { api, errorText, type Infobox, type Page, type Relations } from "./api";
 import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
@@ -17,6 +17,7 @@ import { LINK_CHARS } from "./wikilinks";
 import { isReservedName } from "./categories";
 import { CategoryChips } from "./CategoryChips";
 import { FindBar, useFindBar } from "./FindBar";
+import { usePageSync } from "./PageSync";
 import { hasSpoilers, useSpoilerReveal } from "./spoilers";
 
 interface Props {
@@ -40,6 +41,10 @@ interface Props {
   /** How the page was reached: a section to scroll to, an alias it was linked by,
    * a search to show in the find bar. */
   arrival: Arrival;
+  /** Changes whenever the file watcher saw this page's file change (M10). */
+  diskTick: number;
+  /** The page was deleted on disk and the user chose Close. */
+  onClosed: () => void;
 }
 
 export interface Arrival {
@@ -71,14 +76,20 @@ export function PageView(props: Props) {
   // While editing, the latest text lives here (not in state) so typing
   // doesn't re-render the whole page.
   const latest = useRef("");
+  // The file's version when loaded: saves send it, so a file changed on disk isn't overwritten.
+  const version = useRef<string | null>(null);
+  // The text read again from disk (changed on another computer): the editor shows it in place.
+  const [replaced, setReplaced] = useState<{ text: string; key: number } | null>(null);
+  // A save refused because the file changed on disk is handled by the sync bar.
+  const saveError = useRef<(e: unknown) => boolean>(() => false);
 
   const saver = useMemo(
     () =>
       new Autosaver(
-        (text) => api.savePage(project, pageId, text),
+        (text) => api.savePage(project, pageId, text, version.current),
         (s, e) => {
           setStatus(s);
-          if (e) report(`Couldn't save the page: ${errorText(e)}`);
+          if (e && !saveError.current(e)) report(`Couldn't save the page: ${errorText(e)}`);
         },
       ),
     [project, pageId, report],
@@ -86,10 +97,10 @@ export function PageView(props: Props) {
   const boxSaver = useMemo(
     () =>
       new Autosaver(
-        (json) => api.saveInfobox(project, pageId, JSON.parse(json) as Infobox | null),
+        (json) => api.saveInfobox(project, pageId, JSON.parse(json) as Infobox | null, version.current),
         (s, e) => {
           setBoxStatus(s);
-          if (e) report(`Couldn't save the infobox: ${errorText(e)}`);
+          if (e && !saveError.current(e)) report(`Couldn't save the infobox: ${errorText(e)}`);
         },
         400,
       ),
@@ -105,18 +116,63 @@ export function PageView(props: Props) {
     };
   }, [saver, boxSaver]);
 
+  const show = useCallback((p: Page) => {
+    setPage(p);
+    setBody(p.body);
+    setInfobox(p.infobox);
+    setCategories(p.categories ?? []);
+    latest.current = p.body;
+    version.current = p.version;
+    setLoadError(null);
+  }, []);
+  const load = useCallback(
+    () =>
+      api.readPage(project, pageId).then(
+        (p) => {
+          show(p);
+          return p;
+        },
+        (e) => {
+          setLoadError(errorText(e));
+          setPage(null);
+          return null;
+        },
+      ),
+    [project, pageId, show],
+  );
+  useEffect(() => void load(), [load]);
+
+  const sync = usePageSync({
+    project,
+    pageId,
+    title: props.title ?? page?.title ?? "",
+    version,
+    savers: [saver, boxSaver],
+    mine: () => ({ body: latest.current, infobox, withInfobox: !page?.infoboxError }),
+    restoreData: () => ({
+      title: props.title ?? page?.title ?? "",
+      aliases: props.aliases,
+      categories,
+      sort: page?.sort ?? null,
+      infobox: page?.infoboxError ? null : infobox,
+      body: latest.current,
+    }),
+    reload: async () => {
+      const p = await load();
+      if (p) setReplaced({ text: p.body, key: Date.now() });
+    },
+    onRestored: props.onNamesChanged,
+    onClosed: props.onClosed,
+    diskTick: props.diskTick,
+  });
+  saveError.current = sync.onSaveError;
+  // An unreadable file (half-synced, broken front matter) is tried again when it changes.
+  const { diskTick } = props;
   useEffect(() => {
-    api.readPage(project, pageId).then(
-      (p) => {
-        setPage(p);
-        setBody(p.body);
-        setInfobox(p.infobox);
-        setCategories(p.categories ?? []);
-        latest.current = p.body;
-      },
-      (e) => setLoadError(errorText(e)),
-    );
-  }, [project, pageId]);
+    if (diskTick && loadError) void load();
+    // Only when the file changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diskTick]);
 
   function changeInfobox(next: Infobox | null) {
     setInfobox(next);
@@ -215,7 +271,19 @@ export function PageView(props: Props) {
     wiki.reloadCategories();
   }
 
-  if (loadError) return <p className="empty center">{loadError}</p>;
+  if (loadError)
+    return (
+      <div className="page">
+        <div className="notice unreadable" role="alert">
+          <p>
+            <strong>This page's file can't be read.</strong> It may still be arriving from the other computer, or something in it
+            is broken. The file is left as it is.
+          </p>
+          <p className="muted small">{loadError}</p>
+          <button onClick={() => void load()}>Try again</button>
+        </div>
+      </div>
+    );
   if (!page) return null;
   const shownName = props.title ?? page.title;
 
@@ -309,6 +377,9 @@ export function PageView(props: Props) {
         </p>
       )}
 
+      {sync.bar}
+      {sync.dialog}
+
       {finder.find && (
         <FindBar key={finder.find.query} root={markdownRef} scroller={readRef} initial={finder.find.query} focusKey={finder.find.key} onClose={finder.close} />
       )}
@@ -316,6 +387,7 @@ export function PageView(props: Props) {
       {editing ? (
         <SplitEditor
           pageId={pageId}
+          replaced={replaced}
           title={shownTitle}
           initial={latest.current}
           onChange={(text) => {

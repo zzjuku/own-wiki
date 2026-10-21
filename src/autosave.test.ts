@@ -69,4 +69,21 @@ describe("Autosaver", () => {
     expect(save).toHaveBeenLastCalledWith("x");
     expect(statuses.at(-1)).toBe("saved");
   });
+
+  it("pause keeps edits without saving; resume saves them; discard drops them", async () => {
+    const { saver, save } = setup();
+    saver.pause();
+    saver.change("kept");
+    await vi.advanceTimersByTimeAsync(200);
+    await saver.flush();
+    expect(save).not.toHaveBeenCalled();
+    expect(saver.hasPending).toBe(true);
+    saver.resume();
+    await saver.flush();
+    expect(save).toHaveBeenCalledWith("kept");
+    saver.change("dropped");
+    saver.discard();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
 });

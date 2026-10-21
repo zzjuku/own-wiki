@@ -77,10 +77,16 @@ pub fn list(dir: &Path) -> AppResult<Vec<ThemeInfo>> {
     Ok(out)
 }
 
+/// Key in [`read`]'s answer with theme.json's version; [`save`] checks and drops it.
+const VERSION_KEY: &str = "_version";
+
 pub fn read(dir: &Path, id: &str) -> AppResult<Value> {
     let theme = theme_dir(dir, id)?;
     let mut map = read_file(&theme)?;
     map.entry("name").or_insert_with(|| Value::String(id.to_string()));
+    if let Some(v) = crate::fsutil::file_version(&theme.join(THEME_FILE)) {
+        map.insert(VERSION_KEY.into(), Value::String(v));
+    }
     Ok(Value::Object(map))
 }
 
@@ -119,6 +125,7 @@ pub fn create(dir: &Path, name: &str, data: Value, fonts_from: Option<&Path>, bu
     let id = check_name_free(dir, name, None)?;
     let name = name.trim().to_string();
     let mut map = as_object(data)?;
+    map.remove(VERSION_KEY);
     map.insert("name".into(), Value::String(name.clone()));
     map.insert("formatVersion".into(), FORMAT_VERSION.into());
     let theme = dir.join(&id);
@@ -157,9 +164,12 @@ pub fn create(dir: &Path, name: &str, data: Value, fonts_from: Option<&Path>, bu
 /// the UI doesn't send are kept.
 pub fn save(dir: &Path, id: &str, data: Value) -> AppResult<()> {
     let theme = theme_dir(dir, id)?;
+    let mut data = as_object(data)?;
+    let version = data.remove(VERSION_KEY);
+    crate::fsutil::check_version(&theme.join(THEME_FILE), version.as_ref().and_then(Value::as_str))?;
     let mut map = read_file(&theme).unwrap_or_default();
     let name = map.get("name").cloned().unwrap_or_else(|| Value::String(id.to_string()));
-    for (k, v) in as_object(data)? {
+    for (k, v) in data {
         map.insert(k, v);
     }
     map.insert("name".into(), name);
@@ -175,7 +185,7 @@ pub fn rename(dir: &Path, id: &str, name: &str) -> AppResult<ThemeInfo> {
     map.insert("name".into(), Value::String(name.trim().to_string()));
     write_file(&theme, &map)?;
     if new_id != id {
-        fs::rename(&theme, dir.join(&new_id))?;
+        crate::fsutil::rename(&theme, dir.join(&new_id))?;
     }
     Ok(ThemeInfo { id: new_id, name: name.trim().to_string() })
 }

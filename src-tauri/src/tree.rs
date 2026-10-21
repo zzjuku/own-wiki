@@ -40,6 +40,8 @@ pub struct Tree {
     pub pages: Vec<PageInfo>,
     /// Title of the project's main page, if one is set.
     pub main_page: Option<String>,
+    /// Conflict copies waiting to be resolved (conflicts.rs).
+    pub conflicts: usize,
 }
 
 pub fn pages_dir(library: &Path, project: &str) -> AppResult<PathBuf> {
@@ -95,7 +97,7 @@ pub fn get_tree(library: &Path, project: &str) -> AppResult<Tree> {
     let dir = project_dir(library, project)?;
     pages_dir(library, project)?;
     let index = crate::index::ProjectIndex::open(&dir)?;
-    Ok(Tree { groups: index.groups.clone(), pages: index.page_infos(), main_page: crate::projects::main_page(&dir) })
+    Ok(Tree { groups: index.groups.clone(), pages: index.page_infos(), main_page: crate::projects::main_page(&dir), conflicts: 0 })
 }
 
 #[cfg(test)]

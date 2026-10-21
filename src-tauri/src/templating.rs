@@ -135,7 +135,7 @@ mod tests {
         let p = create_project(lib.path(), "Project A").unwrap().id;
         let dir = lib.path().join(&p);
         let t = tpl(serde_json::json!([{ "key": "a", "label": "Field A", "type": "text" }]));
-        set_templates(&dir, &[t.clone()]).unwrap();
+        set_templates(&dir, &[t.clone()], None).unwrap();
         let mut idx = ProjectIndex::open(&dir).unwrap();
         for title in ["Page A", "Page B"] {
             pages::create_page(lib.path(), &p, "", title, false, &idx.page_infos(), Some(&t)).unwrap();
@@ -152,7 +152,7 @@ mod tests {
             { "key": "a", "label": "Field A", "type": "text" },
             { "key": "b", "label": "Field B", "type": "number" }
         ]));
-        set_templates(&dir, &[t2]).unwrap();
+        set_templates(&dir, &[t2], None).unwrap();
         let dry = apply(lib.path(), &p, &mut idx, "t-1", None, true).unwrap();
         assert_eq!(dry.changes.len(), 2);
         assert_eq!(dry.changes[0].summary.added, 1);
@@ -174,7 +174,7 @@ mod tests {
         let dir = lib.path().join(&p);
         let mut t = tpl(serde_json::json!([{ "key": "a", "label": "Field A", "type": "text" }]));
         t.categories = vec!["Cat A".into()];
-        set_templates(&dir, &[t.clone()]).unwrap();
+        set_templates(&dir, &[t.clone()], None).unwrap();
         let mut idx = ProjectIndex::open(&dir).unwrap();
         let a = pages::create_page(lib.path(), &p, "", "Page A", false, &idx.page_infos(), Some(&t)).unwrap();
         idx.refresh(&[]).unwrap();
@@ -182,7 +182,7 @@ mod tests {
         // The page's own choice stays; Apply only adds what's missing.
         crate::categories::set_page_categories(lib.path(), &p, &mut idx, &a.id, &["Cat Z".into()]).unwrap();
         t.categories = vec!["Cat A".into(), "Cat Z".into()];
-        set_templates(&dir, &[t.clone()]).unwrap();
+        set_templates(&dir, &[t.clone()], None).unwrap();
         let dry = apply(lib.path(), &p, &mut idx, "t-1", None, true).unwrap();
         assert_eq!(dry.changes[0].summary.categories, 1);
         apply(lib.path(), &p, &mut idx, "t-1", None, false).unwrap();
@@ -205,7 +205,7 @@ mod tests {
             { "key": "born", "label": "Born", "type": "date" },
             { "key": "note", "label": "Note", "type": "text" }
         ]));
-        set_templates(&dir, &[t.clone()]).unwrap();
+        set_templates(&dir, &[t.clone()], None).unwrap();
         for g in 0..50 {
             fs::create_dir_all(dir.join(format!("pages/Group {g}"))).unwrap();
         }
@@ -233,7 +233,7 @@ mod tests {
         let mut t2 = t.clone();
         t2.fields.push(serde_json::from_value(serde_json::json!({ "key": "title", "label": "Title", "type": "text" })).unwrap());
         t2.fields.swap(0, 1);
-        set_templates(&dir, &[t2]).unwrap();
+        set_templates(&dir, &[t2], None).unwrap();
         let only: Vec<String> = (0..1000).map(|i| format!("Group {}/Page {i}.md", i % 50)).collect();
         let t0 = Instant::now();
         let r = apply(lib.path(), &p, &mut idx, "t-1", Some(&only), true).unwrap();

@@ -1,5 +1,6 @@
 mod assets;
 mod categories;
+mod conflicts;
 mod error;
 mod fonts;
 mod fsutil;
@@ -7,6 +8,7 @@ mod groups;
 mod index;
 mod infobox;
 mod library;
+mod markers;
 mod pages;
 mod projects;
 mod relations;
@@ -18,6 +20,7 @@ mod templating;
 mod textimages;
 mod themes;
 mod tree;
+mod watcher;
 mod wikilinks;
 
 use std::path::PathBuf;
@@ -36,7 +39,7 @@ use settings::Settings;
 use tree::{GroupInfo, PageInfo, Tree};
 use wikilinks::{Heading, norm};
 
-struct AppState {
+pub(crate) struct AppState {
     config_dir: PathBuf,
     settings: Mutex<Settings>,
     /// Fonts installed on this computer, by family (read once, when first asked).
@@ -45,6 +48,12 @@ struct AppState {
     index: Mutex<Option<ProjectIndex>>,
     /// Search index of the open project (built on first use, see search.rs).
     search: Mutex<Option<search::SearchIndex>>,
+    /// Watches the open project for changes from outside (watcher.rs).
+    watch: Mutex<Option<watcher::Watch>>,
+    /// The folder of the project marked as open here (its marker goes when the app quits).
+    marked: Mutex<Option<PathBuf>>,
+    /// The window has saved everything and the app may quit now.
+    may_exit: std::sync::atomic::AtomicBool,
 }
 
 impl AppState {
@@ -73,6 +82,15 @@ impl AppState {
             _ => *guard = Some(ProjectIndex::open(&dir)?),
         }
         f(&library, guard.as_mut().unwrap())
+    }
+
+    /// Re-reads changed files into the link index, if project `dir`'s is loaded (the watcher calls this).
+    pub(crate) fn refresh_open_index(&self, dir: &std::path::Path) -> AppResult<()> {
+        let mut guard = self.index.lock().unwrap();
+        match guard.as_mut() {
+            Some(idx) if idx.dir.canonicalize().ok().as_deref() == Some(dir) || idx.dir == dir => idx.refresh(&[]),
+            _ => Ok(()),
+        }
     }
 
     fn forget_index(&self) {
@@ -188,8 +206,13 @@ fn delete_project(state: State<AppState>, id: String) -> AppResult<()> {
 
 #[tauri::command(async)]
 fn get_tree(state: State<'_, AppState>, project: String) -> AppResult<Tree> {
-    state.with_index(&project, true, |_, idx| {
-        Ok(Tree { groups: idx.groups.clone(), pages: idx.page_infos(), main_page: projects::main_page(&idx.dir) })
+    state.with_index(&project, true, |library, idx| {
+        Ok(Tree {
+            groups: idx.groups.clone(),
+            pages: idx.page_infos(),
+            main_page: projects::main_page(&idx.dir),
+            conflicts: conflicts::list(library, idx).len(),
+        })
     })
 }
 
@@ -225,9 +248,9 @@ fn read_page(state: State<AppState>, project: String, id: String) -> AppResult<P
 }
 
 #[tauri::command(async)]
-fn save_page(state: State<'_, AppState>, project: String, id: String, body: String) -> AppResult<()> {
+fn save_page(state: State<'_, AppState>, project: String, id: String, body: String, version: Option<String>) -> AppResult<()> {
     state.with_index(&project, false, |library, idx| {
-        pages::save_page(library, &project, &id, &body)?;
+        pages::save_page(library, &project, &id, &body, version.as_deref())?;
         idx.reload_page(&id);
         Ok(())
     })
@@ -239,9 +262,10 @@ fn save_infobox(
     project: String,
     id: String,
     infobox: Option<Infobox>,
+    version: Option<String>,
 ) -> AppResult<()> {
     state.with_index(&project, false, |library, idx| {
-        pages::save_infobox(library, &project, &id, infobox.as_ref())?;
+        pages::save_infobox(library, &project, &id, infobox.as_ref(), version.as_deref())?;
         idx.reload_page(&id);
         Ok(())
     })
@@ -254,8 +278,14 @@ fn get_templates(state: State<AppState>, project: String) -> AppResult<Vec<Templ
 }
 
 #[tauri::command(async)]
-fn set_templates(state: State<'_, AppState>, project: String, templates: Vec<Template>) -> AppResult<()> {
-    state.with_index(&project, false, |_, idx| projects::set_templates(&idx.dir, &templates))
+fn set_templates(state: State<'_, AppState>, project: String, templates: Vec<Template>, version: Option<String>) -> AppResult<()> {
+    state.with_index(&project, false, |_, idx| projects::set_templates(&idx.dir, &templates, version.as_deref()))
+}
+
+/// The open project's templates and project.json's version (for saving them back).
+#[tauri::command]
+fn project_templates(state: State<AppState>, project: String) -> AppResult<projects::VersionedTemplates> {
+    projects::templates_versioned(&projects::project_dir(&state.library()?, &project)?)
 }
 
 #[tauri::command(async)]
@@ -513,6 +543,117 @@ fn delete_group(state: State<'_, AppState>, project: String, id: String) -> AppR
     })
 }
 
+// ---- sync safety (M10) ----
+
+/// Starts watching the project (and the library's `_themes/`) for changes from outside.
+#[tauri::command]
+fn watch_project(app: tauri::AppHandle, state: State<AppState>, project: String) -> AppResult<()> {
+    let library = state.library()?;
+    let dir = projects::project_dir(&library, &project)?;
+    let mut guard = state.watch.lock().unwrap();
+    *guard = None;
+    let w = watcher::start(app.clone(), project, dir, library.join(themes::APP_THEMES_DIR))
+        .map_err(|e| AppError::Invalid(format!("Can't watch the project folder for changes: {e}")))?;
+    *guard = Some(w);
+    Ok(())
+}
+
+#[tauri::command]
+fn unwatch_project(state: State<AppState>) {
+    *state.watch.lock().unwrap() = None;
+}
+
+/// Other computers that have the project open right now.
+#[tauri::command]
+fn open_elsewhere(state: State<AppState>, project: String) -> AppResult<Vec<markers::Marker>> {
+    let dir = projects::project_dir(&state.library()?, &project)?;
+    Ok(markers::others(&dir, &settings::machine_id(&state.config_dir), markers::now_ms()))
+}
+
+/// Marks the project as open on this computer (and refreshes the mark).
+#[tauri::command]
+fn mark_open(state: State<AppState>, project: String) -> AppResult<()> {
+    let dir = projects::project_dir(&state.library()?, &project)?;
+    markers::mark_open(&dir, &settings::machine_id(&state.config_dir), &markers::computer_name(), markers::now_ms())?;
+    *state.marked.lock().unwrap() = Some(dir);
+    Ok(())
+}
+
+#[tauri::command]
+fn mark_closed(state: State<AppState>, project: String) -> AppResult<()> {
+    let dir = projects::project_dir(&state.library()?, &project)?;
+    markers::mark_closed(&dir, &settings::machine_id(&state.config_dir));
+    *state.marked.lock().unwrap() = None;
+    Ok(())
+}
+
+/// The window saved everything after "exit-requested": quit now.
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle, state: State<AppState>) {
+    state.may_exit.store(true, std::sync::atomic::Ordering::SeqCst);
+    app.exit(0);
+}
+
+/// Has the open page's file changed (or gone) since `version` was loaded?
+#[tauri::command]
+fn page_disk_state(state: State<AppState>, project: String, id: String, version: String) -> AppResult<pages::DiskState> {
+    pages::disk_state(&state.library()?, &project, &id, &version)
+}
+
+/// "Keep mine" for a page changed on disk: theirs to the Trash, mine written. Returns the new version.
+#[tauri::command(async)]
+fn keep_mine(state: State<'_, AppState>, project: String, id: String, mine: pages::Mine) -> AppResult<String> {
+    state.with_index(&project, false, |library, idx| {
+        let v = pages::keep_mine(library, &project, &id, &mine)?;
+        idx.reload_page(&id);
+        Ok(v)
+    })
+}
+
+/// "Use the other version": mine to the Trash (as a file), the one on disk stays.
+#[tauri::command]
+fn trash_mine(state: State<AppState>, project: String, id: String, title: String, mine: pages::Mine) -> AppResult<()> {
+    pages::trash_mine(&state.library()?, &project, &id, &title, &mine)
+}
+
+/// A version not kept (e.g. category text changed on disk while edited) goes to the Trash as a file.
+#[tauri::command]
+fn trash_text(state: State<AppState>, project: String, name: String, text: String) -> AppResult<()> {
+    pages::trash_as_file(&projects::project_dir(&state.library()?, &project)?, &name, &text)
+}
+
+/// "Keep it" for a page deleted on disk while open. Returns the new version.
+#[tauri::command(async)]
+fn restore_page(state: State<'_, AppState>, project: String, id: String, page: pages::Restored) -> AppResult<String> {
+    state.with_index(&project, false, |library, idx| {
+        let v = pages::restore_page(library, &project, &id, &page)?;
+        idx.refresh(&[])?;
+        Ok(v)
+    })
+}
+
+/// Conflict copies waiting to be resolved.
+#[tauri::command(async)]
+fn conflicts(state: State<'_, AppState>, project: String) -> AppResult<Vec<conflicts::Conflict>> {
+    state.with_index(&project, true, |library, idx| Ok(conflicts::list(library, idx)))
+}
+
+/// One file of a conflict pair (`path` relative to the library), to show the differences.
+#[tauri::command]
+fn conflict_side(state: State<AppState>, kind: conflicts::Kind, path: String) -> AppResult<conflicts::Side> {
+    conflicts::side(&state.library()?, kind, &path)
+}
+
+#[tauri::command(async)]
+fn resolve_conflict(
+    state: State<'_, AppState>,
+    project: String,
+    conflict: conflicts::Conflict,
+    keep: conflicts::Keep,
+) -> AppResult<()> {
+    state.with_index(&project, true, |library, idx| conflicts::resolve(library, idx, &conflict, keep))
+}
+
 // ---- search (M10) ----
 
 /// Reads every file into the search index ahead of the first search.
@@ -554,8 +695,8 @@ fn create_category(state: State<'_, AppState>, project: String, name: String) ->
 }
 
 #[tauri::command(async)]
-fn save_category_text(state: State<'_, AppState>, project: String, name: String, text: String) -> AppResult<()> {
-    state.with_index(&project, false, |_, idx| categories::save_text(idx, &name, &text))
+fn save_category_text(state: State<'_, AppState>, project: String, name: String, text: String, version: Option<String>) -> AppResult<()> {
+    state.with_index(&project, false, |_, idx| categories::save_text(idx, &name, &text, version.as_deref()))
 }
 
 #[tauri::command(async)]
@@ -738,6 +879,9 @@ pub fn run() {
                 installed_fonts: Mutex::new(None),
                 index: Mutex::new(None),
                 search: Mutex::new(None),
+                watch: Mutex::new(None),
+                marked: Mutex::new(None),
+                may_exit: std::sync::atomic::AtomicBool::new(false),
             });
             Ok(())
         })
@@ -770,6 +914,7 @@ pub fn run() {
             embed_sources,
             save_infobox,
             get_templates,
+            project_templates,
             set_templates,
             template_pages,
             apply_template,
@@ -794,6 +939,20 @@ pub fn run() {
             category_preview,
             search_prepare,
             search,
+            watch_project,
+            unwatch_project,
+            open_elsewhere,
+            mark_open,
+            mark_closed,
+            page_disk_state,
+            keep_mine,
+            trash_mine,
+            trash_text,
+            restore_page,
+            exit_app,
+            conflicts,
+            conflict_side,
+            resolve_conflict,
             list_themes,
             read_theme,
             create_theme,
@@ -807,6 +966,33 @@ pub fn run() {
             copy_installed_font,
             font_data,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| match event {
+            // Quitting (⌘Q, the menu): let the window save unsaved edits first; it calls
+            // exit_app when done. If it doesn't answer, quit anyway after a few seconds.
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                let state = app.state::<AppState>();
+                if !state.may_exit.load(std::sync::atomic::Ordering::SeqCst) {
+                    api.prevent_exit();
+                    use tauri::Emitter;
+                    let _ = app.emit("exit-requested", ());
+                    let handle = app.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_secs(4));
+                        handle.state::<AppState>().may_exit.store(true, std::sync::atomic::Ordering::SeqCst);
+                        handle.exit(0);
+                    });
+                }
+            }
+            // This computer no longer has the project open.
+            tauri::RunEvent::Exit => {
+                let state = app.state::<AppState>();
+                if let Some(dir) = state.marked.lock().unwrap().take() {
+                    markers::mark_closed(&dir, &settings::machine_id(&state.config_dir));
+                }
+                state.forget_index();
+            }
+            _ => {}
+        });
 }

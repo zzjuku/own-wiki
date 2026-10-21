@@ -3,7 +3,7 @@
 // with a live preview of the box. Templates are starting points: changing
 // one never changes existing pages (see SPEC.md, M5).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Field, type FieldKind, type Frame, type PageInfo, type Template } from "./api";
+import { api, isChanged, type Field, type FieldKind, type Frame, type PageInfo, type Template } from "./api";
 import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
 import { Chips, ColorPicker, DragHandle, useReorder } from "./controls";
 import { blockSize, headingDrops, inOrder } from "./fieldMoves";
@@ -26,16 +26,32 @@ export function useTemplates(project: string) {
   const report = useReportError();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [status, setStatus] = useState<SaveStatus>("saved");
+  // project.json's version when the templates were loaded (a file changed on disk since isn't overwritten).
+  const version = useRef<string | null>(null);
+  const load = useCallback(
+    () =>
+      api.projectTemplates(project).then((t) => {
+        version.current = t.version;
+        setTemplates(t.templates);
+      }, report),
+    [project, report],
+  );
   const saver = useMemo(
     () =>
       new Autosaver(
-        (text) => api.setTemplates(project, JSON.parse(text) as Template[]),
+        (text) => api.setTemplates(project, JSON.parse(text) as Template[], version.current),
         (s, e) => {
           setStatus(s);
-          if (e) report(e);
+          if (!e) return;
+          if (!isChanged(e)) return report(e);
+          // Changed on the other computer meanwhile: show theirs; this last change is dropped.
+          saver.discard();
+          void load();
+          report("The templates were changed on another computer, so your last change couldn't be saved. They show the newer version now.");
         },
         500,
       ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [project, report],
   );
   useEffect(() => {
@@ -45,9 +61,7 @@ export function useTemplates(project: string) {
       void saver.flush();
     };
   }, [saver]);
-  useEffect(() => {
-    api.getTemplates(project).then(setTemplates, report);
-  }, [project, report]);
+  useEffect(() => void load(), [load]);
   const update = useCallback(
     (next: Template[]) => {
       setTemplates(next);
@@ -56,7 +70,9 @@ export function useTemplates(project: string) {
     [saver],
   );
   const flush = useCallback(() => saver.flush(), [saver]);
-  return { templates, update, status, flush };
+  /** project.json changed on disk: read the templates again (an unsaved change first tries to save, which notices). */
+  const reload = useCallback(() => (saver.hasPending ? void saver.flush() : void load()), [saver, load]);
+  return { templates, update, status, flush, reload };
 }
 
 export type TemplatesState = ReturnType<typeof useTemplates>;

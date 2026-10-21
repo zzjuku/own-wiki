@@ -32,6 +32,20 @@ pub fn save(config_dir: &Path, settings: &Settings) -> AppResult<()> {
     Ok(())
 }
 
+/// A random id for this computer (its "open on another computer" marker),
+/// made once and kept in the app-config folder.
+pub fn machine_id(config_dir: &Path) -> String {
+    let file = config_dir.join("machine-id");
+    if let Some(id) = fs::read_to_string(&file).ok().map(|t| t.trim().to_string()).filter(|t| t.len() >= 8) {
+        return id;
+    }
+    let seed = format!("{:?}-{}-{:?}", std::time::SystemTime::now(), std::process::id(), config_dir);
+    let id = crate::fsutil::version_of(seed.as_bytes());
+    let _ = fs::create_dir_all(config_dir);
+    let _ = safe_write(&file, id.as_bytes());
+    id
+}
+
 /// The library folder, if one is set and currently reachable.
 pub fn library_dir(settings: &Settings) -> AppResult<PathBuf> {
     let path = settings

@@ -33,6 +33,8 @@ export interface Tree {
   pages: PageInfo[];
   /** Title of the project's main page, if set. */
   mainPage?: string | null;
+  /** Conflict copies waiting to be resolved. */
+  conflicts?: number;
 }
 
 export interface Heading {
@@ -154,6 +156,8 @@ export interface ProjectSettings {
   theme?: string | null;
   /** The story's "today", which ages are counted to ({year, month, day, era}). */
   presentDay?: Record<string, unknown> | null;
+  /** project.json's version when read (sent back when saving). */
+  version?: string | null;
 }
 
 export interface ThemeInfo {
@@ -261,6 +265,8 @@ export interface Page extends PageInfo {
   categories: string[];
   /** "Sort as" on category pages. */
   sort: string | null;
+  /** The file's version when read; saves send it back so a file changed on disk isn't overwritten. */
+  version: string;
 }
 
 export interface CategoryInfo {
@@ -282,6 +288,8 @@ export interface CategoryPage {
   parents: string[];
   subcategories: CategoryInfo[];
   pages: { id: string; title: string; group: string; sort: string | null }[];
+  /** Its file's version when read (null without a file). */
+  version: string | null;
 }
 
 export interface CategoryChange {
@@ -322,8 +330,9 @@ export const api = {
   createPage: (project: string, group: string, title: string, allowLong: boolean, template: string | null = null) =>
     invoke<PageInfo>("create_page", { project, group, title, allowLong, template }),
   readPage: (project: string, id: string) => invoke<Page>("read_page", { project, id }),
-  savePage: (project: string, id: string, body: string) =>
-    invoke<void>("save_page", { project, id, body }),
+  /** `version`: the page's version when loaded (refused with kind "changed" if the file changed since). */
+  savePage: (project: string, id: string, body: string, version: string | null) =>
+    invoke<void>("save_page", { project, id, body, version }),
   renamePage: (project: string, id: string, title: string, allowLong: boolean, keepAlias: boolean) =>
     invoke<RenameResult>("rename_page", { project, id, title, allowLong, keepAlias }),
   movePage: (project: string, id: string, target: string, allowLong: boolean) =>
@@ -332,8 +341,8 @@ export const api = {
   setAliases: (project: string, id: string, aliases: string[]) =>
     invoke<PageInfo>("set_aliases", { project, id, aliases }),
   setMainPage: (project: string, title: string | null) => invoke<void>("set_main_page", { project, title }),
-  saveInfobox: (project: string, id: string, infobox: Infobox | null) =>
-    invoke<void>("save_infobox", { project, id, infobox }),
+  saveInfobox: (project: string, id: string, infobox: Infobox | null, version: string | null) =>
+    invoke<void>("save_infobox", { project, id, infobox, version }),
   /** Copies an image file into assets/; `svg`: SVG allowed (page text, galleries). Returns its file name there. */
   importImage: (project: string, path: string, svg: boolean) => invoke<string>("import_image", { project, path, svg }),
   /** Stores a pasted image (bytes) in assets/. */
@@ -349,7 +358,10 @@ export const api = {
 
   // Templates
   getTemplates: (project: string) => invoke<Template[]>("get_templates", { project }),
-  setTemplates: (project: string, templates: Template[]) => invoke<void>("set_templates", { project, templates }),
+  /** The open project's templates with project.json's version (sent back by setTemplates). */
+  projectTemplates: (project: string) => invoke<{ templates: Template[]; version: string | null }>("project_templates", { project }),
+  setTemplates: (project: string, templates: Template[], version: string | null) =>
+    invoke<void>("set_templates", { project, templates, version }),
   templatePages: (project: string, id: string) => invoke<PageInfo[]>("template_pages", { project, id }),
   applyTemplate: (project: string, id: string, pages: string[] | null, dryRun: boolean) =>
     invoke<ApplyResult>("apply_template", { project, id, pages, dryRun }),
@@ -368,8 +380,8 @@ export const api = {
     invoke<string[]>("set_page_categories", { project, id, categories }),
   setPageSort: (project: string, id: string, sort: string | null) => invoke<void>("set_page_sort", { project, id, sort }),
   createCategory: (project: string, name: string) => invoke<string>("create_category", { project, name }),
-  saveCategoryText: (project: string, name: string, text: string) =>
-    invoke<void>("save_category_text", { project, name, text }),
+  saveCategoryText: (project: string, name: string, text: string, version: string | null) =>
+    invoke<void>("save_category_text", { project, name, text, version }),
   setCategoryParents: (project: string, name: string, parents: string[]) =>
     invoke<string[]>("set_category_parents", { project, name, parents }),
   /** Renames (newName) or deletes (null) a category; dryRun only counts. */
@@ -378,6 +390,35 @@ export const api = {
   categoryBacklinks: (project: string, name: string, context: boolean) =>
     invoke<Backlink[]>("category_backlinks", { project, name, context }),
   categoryPreview: (project: string, name: string) => invoke<CategoryPreview>("category_preview", { project, name }),
+
+  // Sync safety (M10)
+  /** Starts watching the project for changes from outside (event "files-changed"). */
+  watchProject: (project: string) => invoke<void>("watch_project", { project }),
+  unwatchProject: () => invoke<void>("unwatch_project"),
+  /** Other computers that have the project open now. */
+  openElsewhere: (project: string) => invoke<OpenMarker[]>("open_elsewhere", { project }),
+  markOpen: (project: string) => invoke<void>("mark_open", { project }),
+  markClosed: (project: string) => invoke<void>("mark_closed", { project }),
+  /** Quits the app (after unsaved edits were saved). */
+  exitApp: () => invoke<void>("exit_app"),
+  /** Has the page's file changed (or gone) since `version` was loaded? */
+  pageDiskState: (project: string, id: string, version: string) => invoke<"same" | "changed" | "deleted">("page_disk_state", { project, id, version }),
+  /** "Keep mine": the version on disk to the Trash, mine written. Returns the new version. */
+  keepMine: (project: string, id: string, mine: MyVersion) => invoke<string>("keep_mine", { project, id, mine }),
+  /** "Use the other version": mine to the Trash as a file. */
+  trashMine: (project: string, id: string, title: string, mine: MyVersion) => invoke<void>("trash_mine", { project, id, title, mine }),
+  /** Puts text the user chose not to keep in the Trash, as a file "<name> (version not kept).md". */
+  trashText: (project: string, name: string, text: string) => invoke<void>("trash_text", { project, name, text }),
+  /** "Keep it": a page deleted on disk while open, written again. Returns the new version. */
+  restorePage: (
+    project: string,
+    id: string,
+    page: { title: string; aliases: string[]; categories: string[]; sort: string | null; infobox: Infobox | null; body: string },
+  ) => invoke<string>("restore_page", { project, id, page }),
+  conflicts: (project: string) => invoke<Conflict[]>("conflicts", { project }),
+  conflictSide: (kind: Conflict["kind"], path: string) => invoke<ConflictSide>("conflict_side", { kind, path }),
+  resolveConflict: (project: string, conflict: Conflict, keep: "original" | "copy" | "both") =>
+    invoke<void>("resolve_conflict", { project, conflict, keep }),
 
   // Search (M10)
   search: (project: string, request: SearchRequest) => invoke<SearchResults>("search", { project, request }),
@@ -429,6 +470,52 @@ export const api = {
   deleteGroup: (project: string, id: string) => invoke<void>("delete_group", { project, id }),
 };
 
+/** The open page's unsaved version (M10 edit clash). */
+export interface MyVersion {
+  body: string;
+  infobox: Infobox | null;
+  /** False when the infobox couldn't be edited (the file's stays). */
+  withInfobox: boolean;
+}
+
+/** Another computer that has the project open. */
+export interface OpenMarker {
+  computer: string;
+  /** Open since (ms since 1970). */
+  since: number;
+  refreshed: number;
+}
+
+/** A conflict pair: two files for one page, category, project.json or theme.json. Paths relative to the library. */
+export interface Conflict {
+  kind: "page" | "category" | "project" | "theme";
+  title: string;
+  original: string;
+  copy: string;
+}
+
+export interface ConflictSide {
+  text: string;
+  infobox: Infobox | null;
+  /** Last changed (ms since 1970). */
+  modified: number;
+}
+
+/** What the file watcher saw change (event "files-changed"). */
+export interface FilesChanged {
+  project: string;
+  /** Page ids changed or added. */
+  pages: string[];
+  /** Page ids gone (deleted, moved or renamed). */
+  removed: string[];
+  groups: boolean;
+  categories: boolean;
+  projectFile: boolean;
+  projectThemes: boolean;
+  appThemes: boolean;
+  assets: boolean;
+}
+
 export interface SearchRequest {
   query: string;
   /** The global eye switch: spoiler text is searched (and shown) only when on. */
@@ -475,6 +562,11 @@ interface CommandError {
 
 function isCommandError(e: unknown): e is CommandError {
   return typeof e === "object" && e !== null && typeof (e as CommandError).message === "string";
+}
+
+/** A save was refused because the file changed (or was deleted) on disk since it was loaded. */
+export function isChanged(e: unknown): boolean {
+  return isCommandError(e) && e.kind === "changed";
 }
 
 /** Rust errors arrive as `{ kind, message }`; anything else gets a generic message. */

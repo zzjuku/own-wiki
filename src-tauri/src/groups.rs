@@ -76,7 +76,7 @@ pub fn rename_group(
     let new_id = rel_join(parent, &folder);
     check_group_path(project, &new_id, &dir, allow_long)?;
     if folder != own {
-        fs::rename(&dir, dir.with_file_name(&folder))?;
+        crate::fsutil::rename(&dir, dir.with_file_name(&folder))?;
     }
     Ok(info(new_id))
 }
@@ -109,7 +109,7 @@ pub fn move_group(
     }
     let new_id = rel_join(target, name);
     check_group_path(project, &new_id, &dir, allow_long)?;
-    fs::rename(&dir, target_dir.join(name))?;
+    crate::fsutil::rename(&dir, target_dir.join(name))?;
     Ok(info(new_id))
 }
 

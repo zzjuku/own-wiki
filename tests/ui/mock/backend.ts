@@ -2,7 +2,8 @@
 // runs in a plain browser under Playwright. It mirrors the real behaviour only
 // as far as the smoke tests need; file rules themselves are tested in Rust.
 import type {
-  Backlink, CategoryInfo, Field, IncomingField, Infobox, PageInfo, ProjectSettings, Relations, Template,
+  Backlink, CategoryInfo, Conflict, ConflictSide, Field, FilesChanged, IncomingField, Infobox, OpenMarker, PageInfo, ProjectSettings,
+  Relations, Template,
 } from "../../../src/api";
 import type { ThemeData } from "../../../src/themes/engine";
 import { search } from "./search";
@@ -29,13 +30,34 @@ export interface Fixture {
     groups?: string[];
     settings?: ProjectSettings;
     themes?: Record<string, ThemeData>;
+    /** Conflict pairs (M10) with both files' contents. */
+    conflicts?: MockConflict[];
+    /** Other computers that have the project open (M10). */
+    openElsewhere?: OpenMarker[];
   }[];
   /** App-wide themes by folder name, and the chosen one ("app:<id>"). */
   themes?: Record<string, ThemeData>;
   appTheme?: string | null;
 }
 
+export interface MockConflict {
+  conflict: Conflict;
+  original: ConflictSide;
+  copy: ConflictSide;
+}
+
+/** A page's version (M10): its revision; `own` = the app wrote that revision itself. */
+interface Rev {
+  rev: number;
+  own: boolean;
+}
+
 interface Project {
+  conflicts: MockConflict[];
+  openElsewhere: OpenMarker[];
+  /** Page revisions by page id, and project.json's. */
+  revs: Map<string, Rev>;
+  projectRev: Rev;
   id: string;
   name: string;
   mainPage: string | null;
@@ -72,6 +94,7 @@ export function createBackend(fixture: Fixture) {
       groups: new Set(f.groups ?? []), templates: f.templates ?? [],
       catTexts: new Map(), settings: f.settings ?? { hideCategoryBox: false }, frame: { width: 250, height: 300 },
       themes: new Map(Object.entries(f.themes ?? {})),
+      conflicts: f.conflicts ?? [], openElsewhere: f.openElsewhere ?? [], revs: new Map(), projectRev: { rev: 1, own: false },
     };
     projects.set(p.id, p);
     return p;
@@ -102,6 +125,19 @@ export function createBackend(fixture: Fixture) {
     if (!pg) throw new CommandError("notFound", `Page ${id} not found.`);
     return pg;
   };
+  // ---- versions (M10): a save from an older version is refused unless the app wrote what's there now ----
+  const revOf = (p: Project, id: string) => {
+    if (!p.revs.has(id)) p.revs.set(id, { rev: 1, own: false });
+    return p.revs.get(id)!;
+  };
+  const checkRev = (r: Rev, version: string | null | undefined, what = "This page") => {
+    if (version && version !== String(r.rev) && !r.own)
+      throw new CommandError("changed", `${what} was changed on another computer (or by another program) since it was opened.`);
+  };
+  const ownWrite = (r: Rev) => Object.assign(r, { rev: r.rev + 1, own: true });
+  /** Versions the user chose not to keep, put in the Trash (for the tests to check). */
+  const trashed: string[] = [];
+  const marks: string[] = [];
   const info = (pg: Required<MockPage>): PageInfo => ({ id: pg.id, title: pg.title, group: parent(pg.id), aliases: pg.aliases });
   const findTitle = (p: Project, name: string) =>
     [...p.pages.values()].find((pg) => lc(pg.title) === lc(name) || pg.aliases.some((a) => lc(a) === lc(name)));
@@ -224,6 +260,7 @@ export function createBackend(fixture: Fixture) {
         groups: [...p.groups].map((id) => ({ id, name: id.split("/").pop() })),
         pages: [...p.pages.values()].map(info),
         mainPage: p.mainPage,
+        conflicts: p.conflicts.length,
       };
     },
     create_page: ({ project, group, title, template }) => {
@@ -245,10 +282,18 @@ export function createBackend(fixture: Fixture) {
       return info(page(p, id));
     },
     read_page: ({ project, id }) => {
-      const pg = page(proj(project), id);
-      return { ...info(pg), body: pg.body, infobox: pg.infobox, infoboxError: null, categories: pg.categories, sort: pg.sort };
+      const p = proj(project);
+      const pg = page(p, id);
+      const version = String(revOf(p, id).rev);
+      return { ...info(pg), body: pg.body, infobox: pg.infobox, infoboxError: null, categories: pg.categories, sort: pg.sort, version };
     },
-    save_page: ({ project, id, body }) => void (page(proj(project), id).body = body),
+    save_page: ({ project, id, body, version }) => {
+      const p = proj(project);
+      if (!p.pages.has(id) && version) throw new CommandError("changed", "This was deleted on another computer.");
+      checkRev(revOf(p, id), version);
+      page(p, id).body = body;
+      ownWrite(revOf(p, id));
+    },
     rename_page: ({ project, id, title, keepAlias }) => {
       const p = proj(project);
       const pg = page(p, id);
@@ -294,16 +339,78 @@ export function createBackend(fixture: Fixture) {
       return info(pg);
     },
     set_main_page: ({ project, title }) => void (proj(project).mainPage = title),
-    save_infobox: ({ project, id, infobox }) => void (page(proj(project), id).infobox = infobox),
+    save_infobox: ({ project, id, infobox, version }) => {
+      const p = proj(project);
+      if (!p.pages.has(id) && version) throw new CommandError("changed", "This was deleted on another computer.");
+      checkRev(revOf(p, id), version);
+      page(p, id).infobox = infobox;
+      ownWrite(revOf(p, id));
+    },
+    page_disk_state: ({ project, id, version }) => {
+      const p = proj(project);
+      if (!p.pages.has(id)) return "deleted";
+      const r = revOf(p, id);
+      return version === String(r.rev) || r.own ? "same" : "changed";
+    },
+    keep_mine: ({ project, id, mine }) => {
+      const p = proj(project);
+      const pg = page(p, id);
+      trashed.push(`theirs:${id}:${pg.body}`);
+      pg.body = mine.body;
+      if (mine.withInfobox) pg.infobox = mine.infobox;
+      return String(ownWrite(revOf(p, id)).rev);
+    },
+    trash_mine: ({ id, mine }) => void trashed.push(`mine:${id}:${mine.body}`),
+    trash_text: ({ name, text }) => void trashed.push(`text:${name}:${text}`),
+    restore_page: ({ project, id, page: pg }) => {
+      const p = proj(project);
+      p.pages.set(id, fullPage({ id, title: pg.title, aliases: pg.aliases, body: pg.body, infobox: pg.infobox, categories: pg.categories, sort: pg.sort }));
+      p.revs.set(id, { rev: 1, own: true });
+      return "1";
+    },
+    watch_project: () => undefined,
+    exit_app: () => undefined,
+    unwatch_project: () => undefined,
+    open_elsewhere: ({ project }) => proj(project).openElsewhere,
+    mark_open: ({ project }) => void marks.push(`open:${project}`),
+    mark_closed: ({ project }) => void marks.push(`closed:${project}`),
+    conflicts: ({ project }) => proj(project).conflicts.map((c) => c.conflict),
+    conflict_side: ({ path }) => {
+      for (const p of projects.values())
+        for (const c of p.conflicts) {
+          if (c.conflict.original === path) return c.original;
+          if (c.conflict.copy === path) return c.copy;
+        }
+      throw new CommandError("notFound", `No file ${path}`);
+    },
+    resolve_conflict: ({ project, conflict, keep }) => {
+      const p = proj(project);
+      const c = p.conflicts.find((x) => x.conflict.copy === conflict.copy);
+      if (!c) throw new CommandError("notFound", "This conflict is gone.");
+      p.conflicts = p.conflicts.filter((x) => x !== c);
+      trashed.push(keep === "original" ? `copy:${c.conflict.copy}` : keep === "copy" ? `original:${c.conflict.original}` : `kept both:${c.conflict.copy}`);
+    },
     import_image: ({ path }) => path.split("/").pop(),
     import_image_data: () => "Pasted image.png",
-    get_project_settings: ({ project }) => proj(project).settings,
-    set_project_settings: ({ project, settings }) => void (proj(project).settings = settings),
+    get_project_settings: ({ project }) => ({ ...proj(project).settings, version: String(proj(project).projectRev.rev) }),
+    set_project_settings: ({ project, settings }) => {
+      const p = proj(project);
+      checkRev(p.projectRev, settings.version, "The project settings");
+      const { version: _, ...rest } = settings;
+      p.settings = rest;
+      ownWrite(p.projectRev);
+    },
     get_image_frame: ({ project }) => proj(project).frame,
     set_image_frame: ({ project, frame }) => void (proj(project).frame = frame),
 
     get_templates: ({ project }) => proj(project).templates,
-    set_templates: ({ project, templates }) => void (proj(project).templates = templates),
+    project_templates: ({ project }) => ({ templates: proj(project).templates, version: String(proj(project).projectRev.rev) }),
+    set_templates: ({ project, templates, version }) => {
+      const p = proj(project);
+      checkRev(p.projectRev, version, "The templates");
+      p.templates = templates;
+      ownWrite(p.projectRev);
+    },
     template_pages: ({ project, id }) =>
       [...proj(project).pages.values()].filter((pg) => pg.infobox?.template === id).map(info),
     apply_template: () => ({ changes: [], failed: [] }),
@@ -382,7 +489,7 @@ export function createBackend(fixture: Fixture) {
       const p = proj(project);
       const all = categories(p);
       const c = all.get(lc(name));
-      if (!c) return { name, exists: false, text: "", parents: [], subcategories: [], pages: [] };
+      if (!c) return { name, exists: false, text: "", parents: [], subcategories: [], pages: [], version: null };
       const subs = [...all.values()].filter((x) => x.parents.some((y) => lc(y) === lc(c.name)));
       const members = new Set(c.members);
       if (includeSub) subs.forEach((s) => s.members.forEach((m) => members.add(m)));
@@ -390,6 +497,7 @@ export function createBackend(fixture: Fixture) {
         name: c.name, exists: true, text: p.catTexts.get(lc(name))?.text ?? "", parents: c.parents,
         subcategories: subs.map(catInfo),
         pages: [...members].map((m) => ({ id: m.id, title: m.title, group: parent(m.id), sort: m.sort })),
+        version: "1",
       };
     },
     set_page_categories: ({ project, id, categories: cats }) => {
@@ -551,9 +659,42 @@ export function createBackend(fixture: Fixture) {
     "plugin:opener|open_url": () => undefined,
   };
 
+  /**
+   * A change from outside the app (the other computer via Drive): `change`
+   * edits the page (null deletes it; `moveTo` moves it). Returns what the file
+   * watcher would report.
+   */
+  function outside(project: string, id: string, change: Partial<MockPage> | null, moveTo?: string): FilesChanged {
+    const p = proj(project);
+    const report: FilesChanged = {
+      project, pages: [], removed: [], groups: false, categories: false, projectFile: false, projectThemes: false, appThemes: false, assets: false,
+    };
+    if (change === null) {
+      p.pages.delete(id);
+      report.removed.push(id);
+    } else if (moveTo) {
+      const pg = page(p, id);
+      p.pages.delete(id);
+      pg.id = moveTo;
+      p.pages.set(moveTo, pg);
+      report.removed.push(id);
+      report.pages.push(moveTo);
+    } else {
+      if (p.pages.has(id)) Object.assign(page(p, id), change);
+      else p.pages.set(id, fullPage({ id, title: id.replace(/\.md$/, ""), ...change }));
+      const r = revOf(p, id);
+      Object.assign(r, { rev: r.rev + 1, own: false });
+      report.pages.push(id);
+    }
+    return report;
+  }
+
   return {
     projects,
     appThemes,
+    trashed,
+    marks,
+    outside,
     get appTheme() {
       return appTheme;
     },

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type CategoryInfo, type Frame, type ProjectInfo, type ProjectSettings, type Tree } from "./api";
+import { api, isChanged, type CategoryInfo, type Conflict, type FilesChanged, type Frame, type ProjectInfo, type ProjectSettings, type Tree } from "./api";
 import { CategoryIndex } from "./categories";
 import { CategoriesList, CategoryView } from "./CategoryView";
 import { flushAll } from "./autosave";
@@ -11,6 +11,9 @@ import { useReportError } from "./notify";
 import { PageView, type Arrival } from "./PageView";
 import { catKey, HISTORY_LIMIT, historyKey, keyCategory, keySearch, SEARCH_KEY, type History } from "./history";
 import { usePageActions } from "./pageActions";
+import { ConflictsView } from "./ConflictsView";
+import { useProjectSync } from "./projectSync";
+import { norm } from "./wikilinks";
 import { isSearchKey, NO_SEARCH, SEARCH_KEYS, SearchView, type SearchState } from "./SearchView";
 import { IS_MAC, isQuickOpenKey, QuickOpen, QUICK_OPEN_KEYS } from "./QuickOpen";
 import { DEFAULT_FRAME, WikiContext, type CreateOptions, type FollowTarget, type Wiki } from "./wiki";
@@ -40,7 +43,7 @@ interface Props {
   onBack: () => void;
 }
 
-type Panel = "categories" | "templates" | "themes" | "relations" | "search";
+type Panel = "categories" | "templates" | "themes" | "relations" | "search" | "conflicts";
 
 // Which groups are open is remembered on this computer only (not synced).
 const expandedKey = (project: string) => `ownwiki.expanded.${project}`;
@@ -113,10 +116,14 @@ export function ProjectView({ project, onBack }: Props) {
 
   function changeSettings(next: ProjectSettings) {
     setSettings(next);
-    api.setProjectSettings(project.id, next).catch(report);
+    api.setProjectSettings(project.id, next).catch((e) => {
+      if (!isChanged(e)) return report(e);
+      api.getProjectSettings(project.id).then(setSettings, () => {});
+      report("The project settings were changed on another computer, so your change couldn't be saved. They show the newer settings now.");
+    });
   }
   // The project's own theme (if any) shows while the project is open.
-  const { setProject: setThemeProject } = useThemes();
+  const { setProject: setThemeProject, reload: reloadTheme } = useThemes();
   useEffect(() => {
     setThemeProject(project.id, settings.theme ?? null);
   }, [project.id, settings.theme, setThemeProject]);
@@ -127,6 +134,10 @@ export function ProjectView({ project, onBack }: Props) {
   const [history, setHistory] = useState<History>({ back: [], forward: [] });
   // Bumped when the open page's file changed behind its back (rename rewrote its links).
   const [pageVersion, setPageVersion] = useState(0);
+  // Bumped when the file watcher saw the open page's file change (M10).
+  const [diskTick, setDiskTick] = useState(0);
+  // The open page was deleted on disk: it stays open (with a bar) until Keep it or Close.
+  const [deletedOpen, setDeletedOpen] = useState<string | null>(null);
   // Pages picked in the sidebar with ⌘/Ctrl-click or Shift-click, to move,
   // categorise or delete together.
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -169,6 +180,53 @@ export function ProjectView({ project, onBack }: Props) {
   }, [project.id, report]);
 
   useEffect(() => void reload(), [reload]);
+
+  // Files changed outside the app (M10: Drive, another program): read everything affected again.
+  useProjectSync(project.id, (c) => void applyChanges(c));
+  async function applyChanges(c: FilesChanged) {
+    let t: Tree;
+    try {
+      [t] = await Promise.all([api.getTree(project.id), api.listCategories(project.id).then(setCategoryList)]);
+    } catch (e) {
+      return report(e);
+    }
+    setTree(t);
+    if (c.projectFile) {
+      templates.reload();
+      api.getProjectSettings(project.id).then(setSettings, () => {});
+      api.getImageFrame(project.id).then(setImageFrameState, () => {});
+    }
+    if (c.projectFile || c.projectThemes || c.appThemes) reloadTheme();
+    if (!selected) return;
+    if (c.removed.includes(selected)) {
+      // Moved or renamed on disk (the same title in a new file): follow it.
+      const title = index.pages.get(selected)?.title;
+      const moved = title !== undefined && t.pages.find((p) => c.pages.includes(p.id) && norm(p.title) === norm(title));
+      if (moved) {
+        remapHistory(selected, moved.id);
+        setSelected(moved.id);
+      } else if (!t.pages.some((p) => p.id === selected)) {
+        setDeletedOpen(selected);
+        setDiskTick((n) => n + 1);
+      }
+    } else if (c.pages.includes(selected)) setDiskTick((n) => n + 1);
+  }
+
+  /** A conflict was resolved: what it replaced is read again like a change from outside. */
+  function conflictResolved(c: Conflict) {
+    const pagesDir = `${project.id}/pages/`;
+    void applyChanges({
+      project: project.id,
+      pages: c.kind === "page" && c.original.startsWith(pagesDir) ? [c.original.slice(pagesDir.length)] : [],
+      removed: [],
+      groups: false,
+      categories: c.kind === "category",
+      projectFile: c.kind === "project",
+      projectThemes: c.kind === "theme",
+      appThemes: c.kind === "theme",
+      assets: false,
+    });
+  }
   // Read every page into the search index in the background, so the first search is quick.
   useEffect(() => void api.searchPrepare(project.id).catch(() => {}), [project.id]);
 
@@ -610,6 +668,16 @@ export function ProjectView({ project, onBack }: Props) {
         <button className={`plain templates-button ${panel === "themes" ? "selected" : ""}`} onClick={() => void openPanel("themes")}>
           Themes
         </button>
+        {(tree?.conflicts ?? 0) > 0 && (
+          <button
+            className={`plain templates-button conflicts-button ${panel === "conflicts" ? "selected" : ""}`}
+            title="Files Google Drive kept twice: choose which version to keep"
+            onClick={() => void openPanel("conflicts")}
+          >
+            Conflicts
+            <span className="count warn">{tree?.conflicts}</span>
+          </button>
+        )}
         <Sidebar
           rows={rows}
           selected={panel || category ? null : selected}
@@ -685,6 +753,8 @@ export function ProjectView({ project, onBack }: Props) {
                 : openPage(hit.id, false, { find: search.query }))
             }
           />
+        ) : panel === "conflicts" ? (
+          <ConflictsView onResolved={conflictResolved} />
         ) : panel === "relations" ? (
           <RelationsView openPage={(id) => void openPage(id)} />
         ) : panel === "themes" ? (
@@ -701,7 +771,7 @@ export function ProjectView({ project, onBack }: Props) {
             setSelected={setTemplateSelected}
             openPage={(id) => void openPage(id)}
           />
-        ) : selected && selectedExists ? (
+        ) : selected && (selectedExists || deletedOpen === selected) ? (
           <PageView
             key={`${selected}\n${pageVersion}`}
             project={project.id}
@@ -721,6 +791,13 @@ export function ProjectView({ project, onBack }: Props) {
               setRevealRow({ id: group });
             }}
             arrival={arrival}
+            diskTick={diskTick}
+            onClosed={() => {
+              setDeletedOpen(null);
+              setSelected(null);
+              setEditing(false);
+              void reload();
+            }}
           />
         ) : (
           <p className="empty center">

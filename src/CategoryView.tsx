@@ -4,7 +4,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageWidthHandle } from "./PageWidthHandle";
 import { NO_RELATIONS } from "./relations";
-import { api, errorText, type CategoryChange, type CategoryPage } from "./api";
+import { api, errorText, isChanged, type CategoryChange, type CategoryPage } from "./api";
+import { useFilesChanged } from "./fileEvents";
 import { Autosaver, registerFlusher, STATUS_TEXT, type SaveStatus } from "./autosave";
 import { Backlinks } from "./Backlinks";
 import { fileMembers } from "./categories";
@@ -67,6 +68,10 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted, 
   const latest = useRef<string | null>(null);
   // Re-read after the text was saved (it may have created the category's file).
   const [version, setVersion] = useState(0);
+  // The file's version when the text in the editor was loaded (M10: a file changed on disk since isn't overwritten).
+  const fileVersion = useRef<string | null>(null);
+  // Bumped when the text was read again from disk: the editor starts over with it.
+  const [editorKey, setEditorKey] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -74,7 +79,10 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted, 
       (d) => {
         if (!live) return;
         setData(d);
-        if (latest.current === null) latest.current = d.text;
+        if (latest.current === null) {
+          latest.current = d.text;
+          fileVersion.current = d.version;
+        }
       },
       (e) => live && setError(errorText(e)),
     );
@@ -90,14 +98,34 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted, 
   const saver = useMemo(
     () =>
       new Autosaver(
-        (text) => api.saveCategoryText(project, name, text),
+        (text) => api.saveCategoryText(project, name, text, fileVersion.current),
         (s, e) => {
           setStatus(s);
-          if (e) report(`Couldn't save the category text: ${errorText(e)}`);
+          if (!e) return;
+          if (!isChanged(e)) return report(`Couldn't save the category text: ${errorText(e)}`);
+          // Changed on the other computer meanwhile: theirs is shown, yours goes to the Trash.
+          const mine = latest.current ?? "";
+          saver.discard();
+          void api.trashText(project, `Category ${name}`, mine).catch(() => {});
+          reloadText();
+          report("This category's text was changed on another computer. It shows the new text now; yours is in the Trash.");
         },
       ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [project, name, report],
   );
+  /** Reads the text again from disk (the editor starts over with it). */
+  function reloadText() {
+    latest.current = null;
+    setVersion((v) => v + 1);
+    setEditorKey((k) => k + 1);
+  }
+  // Category files changed on disk: read again (an unsaved edit first tries to save, which notices).
+  useFilesChanged(project, (c) => {
+    if (!c.categories) return;
+    if (saver.hasPending) void saver.flush();
+    else reloadText();
+  });
   useEffect(() => {
     const unregister = registerFlusher(() => saver.flush());
     return () => {
@@ -242,6 +270,7 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted, 
 
       {editing ? (
         <SplitEditor
+          key={editorKey}
           pageId={`category:${shown}`}
           title={`Category: ${shown}`}
           initial={latest.current ?? data.text}

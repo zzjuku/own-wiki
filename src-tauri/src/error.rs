@@ -14,6 +14,10 @@ pub enum AppError {
     /// The UI asks the user and retries with permission.
     #[error("{0}")]
     LongPath(String),
+    /// The file was changed (or deleted) outside the app since the app read
+    /// it, so the save was refused (M10: no blind overwrites).
+    #[error("{0}")]
+    Changed(String),
     #[error("File error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Could not read page data: {0}")]
@@ -32,6 +36,7 @@ impl AppError {
             AppError::NotFound(_) => "notFound",
             AppError::Exists(_) => "exists",
             AppError::LongPath(_) => "longPath",
+            AppError::Changed(_) => "changed",
             AppError::Io(_) => "io",
             AppError::Yaml(_) | AppError::Json(_) => "data",
             AppError::Trash(_) => "trash",

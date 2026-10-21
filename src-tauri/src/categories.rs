@@ -220,6 +220,8 @@ pub struct CategoryPage {
     pub subcategories: Vec<CategoryInfo>,
     /// Pages directly in it, or with `include_sub` every page below it (once).
     pub pages: Vec<Member>,
+    /// Its file's version when read (none without a file); saving the text sends it back.
+    pub version: Option<String>,
 }
 
 pub fn page(idx: &ProjectIndex, name: &str, include_sub: bool) -> AppResult<CategoryPage> {
@@ -233,12 +235,12 @@ pub fn page(idx: &ProjectIndex, name: &str, include_sub: bool) -> AppResult<Cate
             parents: Vec::new(),
             subcategories: Vec::new(),
             pages: Vec::new(),
+            version: None,
         });
     };
-    let text = match &c.file {
-        Some(f) => fs::read_to_string(idx.dir.join(CATEGORIES_DIR).join(f)).ok().and_then(|t| parse(&t).ok()).map(|(_, b)| b).unwrap_or_default(),
-        None => String::new(),
-    };
+    let raw = c.file.as_ref().and_then(|f| fs::read_to_string(idx.dir.join(CATEGORIES_DIR).join(f)).ok());
+    let version = raw.as_ref().map(|t| crate::fsutil::version_of(t.as_bytes()));
+    let text = raw.and_then(|t| parse(&t).ok()).map(|(_, b)| b).unwrap_or_default();
     let mut subcategories: Vec<CategoryInfo> = reg.children(&key).into_iter().map(|k| reg.info(k)).collect();
     subcategories.sort_by_key(|s| s.name.to_lowercase());
     let keys = if include_sub { reg.below(&key) } else { vec![key.clone()] };
@@ -252,7 +254,7 @@ pub fn page(idx: &ProjectIndex, name: &str, include_sub: bool) -> AppResult<Cate
             }
         }
     }
-    Ok(CategoryPage { name: c.name.clone(), exists: true, text, parents: c.parents.clone(), subcategories, pages })
+    Ok(CategoryPage { name: c.name.clone(), exists: true, text, parents: c.parents.clone(), subcategories, pages, version })
 }
 
 // ---- category files ----
@@ -313,11 +315,15 @@ pub fn create(idx: &mut ProjectIndex, name: &str) -> AppResult<String> {
 }
 
 /// Replaces the category page's own text.
-pub fn save_text(idx: &mut ProjectIndex, name: &str, text: &str) -> AppResult<()> {
+/// `version`: the file's version when the text was loaded (a file changed since isn't overwritten).
+pub fn save_text(idx: &mut ProjectIndex, name: &str, text: &str, version: Option<&str>) -> AppResult<()> {
     let name = clean_name(name)?;
     let reg = registry(idx)?;
     if reg.get(&name).is_none_or(|c| c.file.is_none()) && text.trim().is_empty() {
         return Ok(());
+    }
+    if let Some(file) = reg.get(&name).and_then(|c| c.file.as_ref()) {
+        crate::fsutil::check_version(&idx.dir.join(CATEGORIES_DIR).join(file), version)?;
     }
     edit_file(idx, &reg, &name, |_, body| *body = text.to_string())
 }
@@ -515,7 +521,7 @@ pub fn rename_or_delete(
         changed |= replace_in(&mut t.categories, &key, new.as_deref());
     }
     if changed {
-        projects::set_templates(&idx.dir, &templates)?;
+        projects::set_templates(&idx.dir, &templates, None)?;
     }
 
     // Its own file: renamed along, or moved to the Trash.
@@ -530,12 +536,12 @@ pub fn rename_or_delete(
                 let stem = to_file_name(n)?;
                 if !file.eq_ignore_ascii_case(&format!("{stem}{EXT}")) {
                     let target = new_file_name(&dir, n)?;
-                    fs::rename(&path, dir.join(target))?;
+                    crate::fsutil::rename(&path, dir.join(target))?;
                 } else if file != format!("{stem}{EXT}") {
                     // Only upper/lower case changed: rename through a temporary name.
                     let tmp = dir.join(format!(".{file}.renaming"));
-                    fs::rename(&path, &tmp)?;
-                    fs::rename(&tmp, dir.join(format!("{stem}{EXT}")))?;
+                    crate::fsutil::rename(&path, &tmp)?;
+                    crate::fsutil::rename(&tmp, dir.join(format!("{stem}{EXT}")))?;
                 }
             }
             None => move_to_trash(&path)?,
@@ -649,7 +655,7 @@ mod tests {
 
     fn add_page(lib: &Path, p: &str, idx: &mut ProjectIndex, title: &str, body: &str, cats: &[&str]) -> String {
         let info = pages::create_page(lib, p, "", title, false, &idx.page_infos(), None).unwrap();
-        pages::save_page(lib, p, &info.id, body).unwrap();
+        pages::save_page(lib, p, &info.id, body, None).unwrap();
         idx.refresh(&[&info.id]).unwrap();
         let cats: Vec<String> = cats.iter().map(|s| s.to_string()).collect();
         set_page_categories(lib, p, idx, &info.id, &cats).unwrap();
@@ -687,11 +693,11 @@ mod tests {
     #[test]
     fn text_and_red_links() {
         let (_lib, _p, mut idx) = setup();
-        save_text(&mut idx, "Cat A", "").unwrap();
+        save_text(&mut idx, "Cat A", "", None).unwrap();
         assert!(!idx.dir.join("categories").join("Cat A.md").exists());
         assert_eq!(create(&mut idx, "Cat A").unwrap(), "Cat A");
         assert!(page(&idx, "Cat A", false).unwrap().exists);
-        save_text(&mut idx, "Cat A", "Own *text*.").unwrap();
+        save_text(&mut idx, "Cat A", "Own *text*.", None).unwrap();
         assert_eq!(page(&idx, "Cat A", false).unwrap().text, "Own *text*.");
         assert_eq!(preview(&idx, "cat a").unwrap().text, "Own *text*.");
     }
@@ -702,9 +708,9 @@ mod tests {
         let a = add_page(lib.path(), &p, &mut idx, "Page A", "See [[Category:Cat A]] and [[category: cat a|x]].", &["Cat A", "Cat Z"]);
         let b = add_page(lib.path(), &p, &mut idx, "Page B", "", &["Cat A"]);
         set_parents(&mut idx, "Cat B", &["Cat A".into()]).unwrap();
-        save_text(&mut idx, "Cat A", "Text [[Category:Cat A]]").unwrap();
+        save_text(&mut idx, "Cat A", "Text [[Category:Cat A]]", None).unwrap();
         let mut t: Template = serde_json::from_value(serde_json::json!({ "id": "t", "name": "T", "categories": ["Cat A"] })).unwrap();
-        set_templates(&idx.dir, &[t.clone()]).unwrap();
+        set_templates(&idx.dir, &[t.clone()], None).unwrap();
         let counts = rename_or_delete(lib.path(), &p, &mut idx, "Cat A", Some("Cat N"), true).unwrap();
         assert_eq!((counts.pages, counts.subcategories, counts.links, counts.linking_pages, counts.templates), (2, 1, 2, 1, 1));
         assert!(rename_or_delete(lib.path(), &p, &mut idx, "Cat A", Some("cat b"), false).is_err());

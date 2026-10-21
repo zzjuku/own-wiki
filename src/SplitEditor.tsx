@@ -2,7 +2,7 @@
 // the right, toolbar on top, word count at the bottom.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { autocompletion } from "@codemirror/autocomplete";
-import { EditorState, Prec, type Extension, type StateCommand } from "@codemirror/state";
+import { EditorState, Prec, Transaction, type Extension, type StateCommand } from "@codemirror/state";
 import { EditorView, drawSelection, keymap, placeholder, type Command } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
 import { syntaxHighlighting } from "@codemirror/language";
@@ -49,6 +49,8 @@ interface Props {
   /** Its title (the infobox's title bar). */
   title: string;
   initial: string;
+  /** The text was read again from disk (changed on another computer): shown in place, the cursor stays where it was. */
+  replaced?: { text: string; key: number } | null;
   onChange: (text: string) => void;
   infobox: Infobox | null;
   infoboxError: string | null;
@@ -205,7 +207,7 @@ const NO_FORMATS: ActiveFormats = {
   quote: false,
 };
 
-export function SplitEditor({ pageId, title, initial, onChange, infobox, infoboxError, relations, onRelationsChanged, onInfoboxChange, status, noInfobox, currentCategory }: Props) {
+export function SplitEditor({ pageId, title, initial, replaced, onChange, infobox, infoboxError, relations, onRelationsChanged, onInfoboxChange, status, noInfobox, currentCategory }: Props) {
   const wiki = useWiki();
   const report = useReportError();
   const [tab, setTab] = useState<Tab>("text");
@@ -301,7 +303,8 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
       EditorView.updateListener.of((u) => {
         if (u.docChanged) {
           const doc = u.state.doc.toString();
-          onChangeRef.current(doc);
+          // Text read again from disk isn't an edit.
+          if (!u.transactions.some((t) => t.annotation(Transaction.remote))) onChangeRef.current(doc);
           clearTimeout(timer);
           const delay = previewDelay(doc.length);
           if (delay) timer = setTimeout(() => setText(doc), delay);
@@ -370,6 +373,22 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
     // `initial` is only read when the editor is created.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Text read again from disk replaces the editor's, keeping the cursor and scroll position.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !replaced || replaced.text === view.state.doc.toString()) return;
+    const top = view.scrollDOM.scrollTop;
+    const head = Math.min(view.state.selection.main.head, replaced.text.length);
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: replaced.text },
+      selection: { anchor: head },
+      annotations: [Transaction.remote.of(true), Transaction.addToHistory.of(false)],
+    });
+    view.scrollDOM.scrollTop = top;
+    // Only when new text arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replaced?.key]);
 
   // What the editor needs to know about the project's pages; refreshed when they change.
   const env = useMemo<LinkEnv>(

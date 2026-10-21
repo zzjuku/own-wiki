@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type ProjectInfo, type Settings } from "./api";
@@ -28,9 +29,14 @@ function Main() {
 
   useEffect(() => {
     api.getSettings().then(setSettings, report);
-    // Save any open edit before the window closes.
-    const unlisten = getCurrentWindow().onCloseRequested(() => flushAll());
-    return () => void unlisten.then((fn) => fn());
+    // Save any open edit before the window closes or the app quits (⌘Q asks
+    // the window first: "exit-requested"); then quit.
+    const quit = async () => {
+      await flushAll().catch(() => {});
+      await api.exitApp();
+    };
+    const unlisten = [getCurrentWindow().onCloseRequested(quit), listen("exit-requested", () => void quit())];
+    return () => unlisten.forEach((u) => void u.then((fn) => fn()));
   }, [report]);
 
   async function chooseLibrary() {

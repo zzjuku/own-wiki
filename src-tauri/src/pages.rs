@@ -20,6 +20,7 @@ use serde_yaml_ng::{Mapping, Value};
 use crate::error::{AppError, AppResult};
 use crate::infobox::{Infobox, Template, instantiate, rewrite_infobox_links};
 use crate::fsutil::{
+    check_version, version_of,
     check_path_len, check_rel, move_to_trash, name_taken, rel_join, rel_name, rel_parent,
     safe_write, to_file_name, windows_len,
 };
@@ -39,6 +40,8 @@ pub struct Page {
     pub infobox_error: Option<String>,
     pub categories: Vec<String>,
     pub sort: Option<String>,
+    /// The file's version when read (saves send it back; see fsutil::check_version).
+    pub version: String,
 }
 
 /// The `infobox:` field. Err: it exists but can't be read.
@@ -180,6 +183,17 @@ pub fn is_reserved_name(name: &str) -> bool {
     n.starts_with("category:") || n.starts_with("file:")
 }
 
+/// The file of a page being saved from a loaded version: a file that's gone
+/// counts as changed (deleted elsewhere), not as an unknown page.
+fn saved_page_path(pages: &Path, id: &str, version: Option<&str>) -> AppResult<PathBuf> {
+    let path = page_path(pages, id).or_else(|e| match (e, version) {
+        (AppError::NotFound(_), Some(_)) => Ok(crate::fsutil::join_rel(pages, id)),
+        (e, _) => Err(e),
+    })?;
+    check_version(&path, version)?;
+    Ok(path)
+}
+
 fn page_path(pages: &Path, id: &str) -> AppResult<PathBuf> {
     check_rel(id)?;
     let path = crate::fsutil::join_rel(pages, id);
@@ -273,6 +287,7 @@ pub fn create_page(
 
 pub fn read_page(library: &Path, project: &str, id: &str) -> AppResult<Page> {
     let text = fs::read_to_string(page_path(&pages_dir(library, project)?, id)?)?;
+    let version = version_of(text.as_bytes());
     let (meta, body) = parse(&text)?;
     let (infobox, infobox_error) = match meta_infobox(&meta) {
         Ok(ib) => (ib, None),
@@ -287,12 +302,14 @@ pub fn read_page(library: &Path, project: &str, id: &str) -> AppResult<Page> {
         infobox_error,
         categories: meta_categories(&meta),
         sort: meta_sort(&meta),
+        version,
     })
 }
 
 /// Replaces (or with `None` removes) the page's infobox, keeping everything else.
-pub fn save_infobox(library: &Path, project: &str, id: &str, infobox: Option<&Infobox>) -> AppResult<()> {
-    let path = page_path(&pages_dir(library, project)?, id)?;
+/// `version`: the version the page was loaded at (a page changed on disk since isn't overwritten).
+pub fn save_infobox(library: &Path, project: &str, id: &str, infobox: Option<&Infobox>, version: Option<&str>) -> AppResult<()> {
+    let path = saved_page_path(&pages_dir(library, project)?, id, version)?;
     let (mut meta, body) = parse(&fs::read_to_string(&path)?)?;
     if infobox.is_none() && !meta.contains_key("infobox") {
         return Ok(());
@@ -303,14 +320,130 @@ pub fn save_infobox(library: &Path, project: &str, id: &str, infobox: Option<&In
 }
 
 /// Replaces the page's Markdown body, keeping its front matter.
-pub fn save_page(library: &Path, project: &str, id: &str, body: &str) -> AppResult<()> {
-    let path = page_path(&pages_dir(library, project)?, id)?;
+pub fn save_page(library: &Path, project: &str, id: &str, body: &str, version: Option<&str>) -> AppResult<()> {
+    let path = saved_page_path(&pages_dir(library, project)?, id, version)?;
     let (meta, _) = parse(&fs::read_to_string(&path)?)?;
     safe_write(&path, serialize(&meta, body)?.as_bytes())?;
     Ok(())
 }
 
 /// Changes the page title and renames its file to match.
+// ---- a page changed on disk while open with unsaved edits (M10) ----
+
+/// What happened to a page's file since version `version` was loaded.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DiskState {
+    /// Unchanged (or changed only by the app itself).
+    Same,
+    Changed,
+    Deleted,
+}
+
+pub fn disk_state(library: &Path, project: &str, id: &str, version: &str) -> AppResult<DiskState> {
+    let path = crate::fsutil::join_rel(&pages_dir(library, project)?, id);
+    Ok(match check_version(&path, Some(version)) {
+        Ok(()) => DiskState::Same,
+        Err(_) if !path.is_file() => DiskState::Deleted,
+        Err(_) => DiskState::Changed,
+    })
+}
+
+/// The open page's unsaved state: its text, and its infobox unless that
+/// couldn't be edited (`infobox` None = leave the file's as it is).
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Mine {
+    pub body: String,
+    #[serde(default)]
+    pub infobox: Option<Infobox>,
+    /// False when the infobox couldn't be edited: the file's stays.
+    #[serde(default)]
+    pub with_infobox: bool,
+}
+
+/// `mine` as a whole file, on top of `meta` (the front matter on disk).
+fn mine_file(mut meta: Mapping, mine: &Mine) -> AppResult<String> {
+    if mine.with_infobox {
+        set_infobox_meta(&mut meta, mine.infobox.as_ref())?;
+    }
+    serialize(&meta, &mine.body)
+}
+
+fn disk_meta(path: &Path) -> Mapping {
+    fs::read_to_string(path).ok().and_then(|t| parse(&t).ok()).map(|(m, _)| m).unwrap_or_default()
+}
+
+/// "Keep mine": the version on disk goes to the Trash and the open page's is
+/// written (with the rest of the front matter, e.g. categories, from disk).
+/// Returns the new version.
+pub fn keep_mine(library: &Path, project: &str, id: &str, mine: &Mine) -> AppResult<String> {
+    check_rel(id)?;
+    let path = crate::fsutil::join_rel(&pages_dir(library, project)?, id);
+    let meta = disk_meta(&path);
+    let text = mine_file(meta, mine)?;
+    if path.exists() {
+        move_to_trash(&path)?;
+    }
+    safe_write(&path, text.as_bytes())?;
+    Ok(version_of(text.as_bytes()))
+}
+
+/// "Use the other version": the open page's unsaved version goes to the Trash
+/// as a file "<title> (version not kept).md"; the file on disk stays.
+pub fn trash_mine(library: &Path, project: &str, id: &str, title: &str, mine: &Mine) -> AppResult<()> {
+    check_rel(id)?;
+    let path = crate::fsutil::join_rel(&pages_dir(library, project)?, id);
+    let text = mine_file(disk_meta(&path), mine)?;
+    trash_as_file(&crate::projects::project_dir(library, project)?, title, &text)
+}
+
+/// Puts `text` in the Trash as a file "<name> (version not kept).md" (a version the user chose not to keep).
+pub fn trash_as_file(project_dir: &Path, name: &str, text: &str) -> AppResult<()> {
+    let dir = project_dir.join(crate::projects::CACHE_DIR).join("not-kept");
+    fs::create_dir_all(&dir)?;
+    let file = dir.join(format!("{} (version not kept){EXT}", to_file_name(name).unwrap_or_else(|_| "Page".into())));
+    safe_write(&file, text.as_bytes())?;
+    move_to_trash(&file)
+}
+
+/// A page deleted on disk while open, saved again ("Keep it"). Returns the new version.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct Restored {
+    pub title: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub categories: Vec<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub infobox: Option<Infobox>,
+    pub body: String,
+}
+
+pub fn restore_page(library: &Path, project: &str, id: &str, page: &Restored) -> AppResult<String> {
+    check_rel(id)?;
+    let path = crate::fsutil::join_rel(&pages_dir(library, project)?, id);
+    if path.exists() {
+        return Err(AppError::Exists("A page file with that name is there again. Reopen the page.".into()));
+    }
+    let mut meta = Mapping::new();
+    meta.insert("title".into(), page.title.as_str().into());
+    set_list_meta(&mut meta, "aliases", &page.aliases);
+    set_list_meta(&mut meta, "categories", &page.categories);
+    if let Some(s) = page.sort.as_deref().filter(|s| !s.trim().is_empty()) {
+        meta.insert("sort".into(), s.into());
+    }
+    set_infobox_meta(&mut meta, page.infobox.as_ref())?;
+    let text = serialize(&meta, &page.body)?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    safe_write(&path, text.as_bytes())?;
+    Ok(version_of(text.as_bytes()))
+}
+
 pub fn rename_page(
     library: &Path,
     project: &str,
@@ -340,7 +473,7 @@ pub fn rename_page(
     }
     safe_write(&path, serialize(&meta, &body)?.as_bytes())?;
     if new_name != own {
-        fs::rename(&path, dir.join(&new_name))?;
+        crate::fsutil::rename(&path, dir.join(&new_name))?;
     }
     Ok(info(new_id, new_title.to_string(), aliases))
 }
@@ -372,7 +505,7 @@ pub fn move_page(
     };
     let new_id = rel_join(target, &new_name);
     check_page_path(project, &new_id, allow_long)?;
-    fs::rename(&path, target_dir.join(&new_name))?;
+    crate::fsutil::rename(&path, target_dir.join(&new_name))?;
     Ok(info(new_id, title, aliases))
 }
 
@@ -540,6 +673,56 @@ mod tests {
     }
 
     #[test]
+    fn clash_choices_keep_one_version_and_trash_the_other() {
+        let (lib, p) = setup();
+        let info = create(lib.path(), &p, "", "Page A").unwrap();
+        let loaded = read_page(lib.path(), &p, &info.id).unwrap();
+        assert_eq!(disk_state(lib.path(), &p, &info.id, &loaded.version).unwrap(), DiskState::Same);
+        let path = pages(lib.path(), &p).join(&info.id);
+        fs::write(&path, "---\ntitle: Page A\ncategories: [Cat B]\n---\nTheirs").unwrap();
+        assert_eq!(disk_state(lib.path(), &p, &info.id, &loaded.version).unwrap(), DiskState::Changed);
+        let mine = Mine { body: "Mine".into(), infobox: None, with_infobox: true };
+        // Use the other version: the file stays theirs.
+        trash_mine(lib.path(), &p, &info.id, "Page A", &mine).unwrap();
+        assert!(raw(lib.path(), &p, &info.id).ends_with("Theirs"));
+        // Keep mine: my text, their categories.
+        let v = keep_mine(lib.path(), &p, &info.id, &mine).unwrap();
+        let now = read_page(lib.path(), &p, &info.id).unwrap();
+        assert_eq!((now.body.as_str(), now.categories.clone(), now.version), ("Mine", vec!["Cat B".to_string()], v));
+        // Deleted, then kept again.
+        fs::remove_file(&path).unwrap();
+        assert_eq!(disk_state(lib.path(), &p, &info.id, "x").unwrap(), DiskState::Deleted);
+        let back = Restored { title: "Page A".into(), aliases: vec![], categories: vec!["Cat C".into()], sort: None, infobox: None, body: "Again".into() };
+        restore_page(lib.path(), &p, &info.id, &back).unwrap();
+        let again = read_page(lib.path(), &p, &info.id).unwrap();
+        assert_eq!((again.title.as_str(), again.body.as_str()), ("Page A", "Again"));
+    }
+
+    #[test]
+    fn save_refused_when_the_file_changed_on_disk() {
+        let (lib, p) = setup();
+        let info = create(lib.path(), &p, "", "Page A").unwrap();
+        let loaded = read_page(lib.path(), &p, &info.id).unwrap();
+        let v = Some(loaded.version.as_str());
+        // The app's own saves (text, then infobox, both from the same load) are fine.
+        save_page(lib.path(), &p, &info.id, "One", v).unwrap();
+        save_infobox(lib.path(), &p, &info.id, Some(&Infobox::default()), v).unwrap();
+        save_page(lib.path(), &p, &info.id, "Two", v).unwrap();
+        // Changed by someone else: refused, the file stays as they left it.
+        let path = pages(lib.path(), &p).join(&info.id);
+        fs::write(&path, "---\ntitle: Page A\n---\nTheirs").unwrap();
+        assert!(matches!(save_page(lib.path(), &p, &info.id, "Mine", v), Err(AppError::Changed(_))));
+        assert!(matches!(save_infobox(lib.path(), &p, &info.id, None, v), Err(AppError::Changed(_))));
+        assert!(raw(lib.path(), &p, &info.id).ends_with("Theirs"));
+        // Loaded again, it saves.
+        let fresh = read_page(lib.path(), &p, &info.id).unwrap();
+        save_page(lib.path(), &p, &info.id, "Mine", Some(&fresh.version)).unwrap();
+        // Deleted by someone else: refused too.
+        fs::remove_file(&path).unwrap();
+        assert!(matches!(save_page(lib.path(), &p, &info.id, "Mine", Some(&fresh.version)), Err(AppError::Changed(_))));
+    }
+
+    #[test]
     fn create_writes_front_matter() {
         let (lib, p) = setup();
         let page = create(lib.path(), &p, "", "Page A").unwrap();
@@ -598,7 +781,7 @@ mod tests {
         mkgroup(lib.path(), &p, "G");
         create(lib.path(), &p, "G", "Page A").unwrap();
         let body = "# Heading\n\nSome *text*.\n---\nA line after a rule.\n";
-        save_page(lib.path(), &p, "G/Page A.md", body).unwrap();
+        save_page(lib.path(), &p, "G/Page A.md", body, None).unwrap();
         let page = read_page(lib.path(), &p, "G/Page A.md").unwrap();
         assert_eq!(page.body, body);
         assert_eq!(page.title, "Page A");
@@ -609,7 +792,7 @@ mod tests {
         let (lib, p) = setup();
         let path = pages(lib.path(), &p).join("Page A.md");
         fs::write(&path, "---\ntitle: Page A\nexample field: 7\n---\nold\n").unwrap();
-        save_page(lib.path(), &p, "Page A.md", "new\n").unwrap();
+        save_page(lib.path(), &p, "Page A.md", "new\n", None).unwrap();
         let text = raw(lib.path(), &p, "Page A.md");
         assert!(text.contains("example field: 7"), "{text}");
         assert!(text.ends_with("---\nnew\n"), "{text}");
@@ -639,7 +822,7 @@ mod tests {
         let (lib, p) = setup();
         mkgroup(lib.path(), &p, "G");
         create(lib.path(), &p, "G", "Page A").unwrap();
-        save_page(lib.path(), &p, "G/Page A.md", "Body\n").unwrap();
+        save_page(lib.path(), &p, "G/Page A.md", "Body\n", None).unwrap();
         let page = rename_page(lib.path(), &p, "G/Page A.md", "Page B", false, &others(lib.path(), &p)).unwrap();
         assert_eq!((page.id.as_str(), page.group.as_str()), ("G/Page B.md", "G"));
         assert!(read_page(lib.path(), &p, "G/Page A.md").is_err());
@@ -674,7 +857,7 @@ mod tests {
         let (lib, p) = setup();
         mkgroup(lib.path(), &p, "G/Sub");
         create(lib.path(), &p, "", "Page A").unwrap();
-        save_page(lib.path(), &p, "Page A.md", "Body\n").unwrap();
+        save_page(lib.path(), &p, "Page A.md", "Body\n", None).unwrap();
         let moved = move_page(lib.path(), &p, "Page A.md", "G/Sub", false, &others(lib.path(), &p)).unwrap();
         assert_eq!(
             moved,
@@ -807,12 +990,12 @@ mod tests {
         let mut ib = page.infobox.unwrap();
         assert_eq!(page.body, "## Section A\n");
         ib.fields[0].value = Some(serde_json::json!("Example value"));
-        save_infobox(lib.path(), &p, "Page A.md", Some(&ib)).unwrap();
-        save_page(lib.path(), &p, "Page A.md", "Text\n").unwrap();
+        save_infobox(lib.path(), &p, "Page A.md", Some(&ib), None).unwrap();
+        save_page(lib.path(), &p, "Page A.md", "Text\n", None).unwrap();
         let page = read_page(lib.path(), &p, "Page A.md").unwrap();
         assert_eq!(page.infobox.unwrap().fields[0].value, Some(serde_json::json!("Example value")));
         assert_eq!(page.body, "Text\n");
-        save_infobox(lib.path(), &p, "Page A.md", None).unwrap();
+        save_infobox(lib.path(), &p, "Page A.md", None, None).unwrap();
         assert_eq!(raw(lib.path(), &p, "Page A.md"), "---\ntitle: Page A\n---\nText\n");
     }
 
@@ -824,7 +1007,7 @@ mod tests {
         let page = read_page(lib.path(), &p, "Page A.md").unwrap();
         assert!(page.infobox.is_none());
         assert!(page.infobox_error.is_some());
-        save_page(lib.path(), &p, "Page A.md", "y\n").unwrap();
+        save_page(lib.path(), &p, "Page A.md", "y\n", None).unwrap();
         assert!(raw(lib.path(), &p, "Page A.md").contains("infobox:\n- 1\n- 2\n"));
     }
 

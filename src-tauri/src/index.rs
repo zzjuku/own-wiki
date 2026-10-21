@@ -98,6 +98,12 @@ pub struct ProjectIndex {
     /// Files in `categories/` (categories with own text or parents):
     /// file name -> entry (title = category name, categories = parents).
     pub cats: BTreeMap<String, Entry>,
+    /// Conflict copies (M10): a second page file with a title another page
+    /// already has (Drive's "[Conflict]" / "(1)" copies). Kept out of `pages`
+    /// (so out of the sidebar, links, search and relations) until resolved.
+    pub copies: BTreeMap<String, Entry>,
+    /// The same for category files with the same name.
+    pub cat_copies: BTreeMap<String, Entry>,
     /// Entries changed since the cache was last written.
     unsaved: usize,
     saved_at: Instant,
@@ -227,6 +233,8 @@ impl ProjectIndex {
             groups: Vec::new(),
             pages,
             cats,
+            copies: BTreeMap::new(),
+            cat_copies: BTreeMap::new(),
             unsaved: 0,
             saved_at: Instant::now(),
         };
@@ -238,6 +246,7 @@ impl ProjectIndex {
     /// Re-reads every page file that changed on disk (by time and size),
     /// plus the ids in `force`, and forgets pages that are gone.
     pub fn refresh(&mut self, force: &[&str]) -> AppResult<()> {
+        self.merge_copies();
         let (groups, found) = walk(&self.dir.join(PAGES_DIR))?;
         self.groups = groups;
         let seen: HashSet<&str> = found.iter().map(|f| f.id.as_str()).collect();
@@ -259,8 +268,29 @@ impl ProjectIndex {
             };
         }
         self.unsaved += changed + self.refresh_cats();
+        self.split_copies();
         self.save_cache(false);
         Ok(())
+    }
+
+    /// Puts conflict copies back with the others (before re-reading).
+    fn merge_copies(&mut self) {
+        self.pages.append(&mut self.copies);
+        self.cats.append(&mut self.cat_copies);
+    }
+
+    /// Moves conflict copies out of `pages` and `cats` (see conflicts.rs for which one is the copy).
+    fn split_copies(&mut self) {
+        for id in crate::conflicts::copies(&self.pages) {
+            if let Some(e) = self.pages.remove(&id) {
+                self.copies.insert(id, e);
+            }
+        }
+        for id in crate::conflicts::copies(&self.cats) {
+            if let Some(e) = self.cats.remove(&id) {
+                self.cat_copies.insert(id, e);
+            }
+        }
     }
 
     /// Re-reads changed category files; returns how many changed.
@@ -295,7 +325,9 @@ impl ProjectIndex {
 
     /// Re-reads the category files after the app changed one.
     pub fn reload_cats(&mut self) {
+        self.merge_copies();
         self.unsaved += self.refresh_cats();
+        self.split_copies();
         self.save_cache(false);
     }
 
@@ -304,7 +336,11 @@ impl ProjectIndex {
         if self.unsaved == 0 || (!now && self.unsaved < 50 && self.saved_at.elapsed() < CACHE_SAVE_INTERVAL) {
             return;
         }
-        let file = CacheFile { version: CACHE_VERSION, pages: self.pages.clone(), cats: self.cats.clone() };
+        let mut pages = self.pages.clone();
+        pages.extend(self.copies.clone());
+        let mut cats = self.cats.clone();
+        cats.extend(self.cat_copies.clone());
+        let file = CacheFile { version: CACHE_VERSION, pages, cats };
         let dir = self.dir.join(CACHE_DIR);
         // The cache is optional: failing to write it only slows the next open.
         let _ = fs::create_dir_all(&dir);
@@ -318,11 +354,13 @@ impl ProjectIndex {
 
     /// Re-reads one page after the app saved it (cheaper than a full refresh).
     pub fn reload_page(&mut self, id: &str) {
+        self.merge_copies();
         let path = crate::fsutil::join_rel(&self.dir.join(PAGES_DIR), id);
         match read_entry(&path, crate::fsutil::rel_name(id)) {
             Some(e) => self.pages.insert(id.to_string(), e),
             None => self.pages.remove(id),
         };
+        self.split_copies();
         self.unsaved += 1;
         self.save_cache(false);
     }

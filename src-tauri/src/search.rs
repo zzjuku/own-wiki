@@ -648,7 +648,12 @@ mod tests {
         }
         let t = Instant::now();
         let idx = ProjectIndex::open(&dir).unwrap();
-        println!("link index: {:?}", t.elapsed());
+        println!("link index, first open: {:?}", t.elapsed());
+        drop(idx);
+        let t = Instant::now();
+        let idx = ProjectIndex::open(&dir).unwrap();
+        let _ = crate::conflicts::list(tmp.path(), &idx);
+        println!("reopen (cached) with conflict check: {:?}", t.elapsed());
         let src = sources(&idx);
         let t = Instant::now();
         let mut s = SearchIndex::open(&idx.dir);

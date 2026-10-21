@@ -1,10 +1,12 @@
 //! File-system helpers shared by projects, pages and settings.
 
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::error::{AppError, AppResult};
 
@@ -49,8 +51,100 @@ pub fn safe_write(path: &Path, contents: &[u8]) -> io::Result<()> {
     })();
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
+    } else {
+        own_writes().insert(own_key(path), version_of(contents));
     }
     result
+}
+
+// ---- versions and the app's own writes (M10) ----
+//
+// A file's version is a hash of its bytes. Saves from the UI send the version
+// they loaded; a file that changed on disk since then (another computer, via
+// Drive) is not overwritten. The app remembers what it wrote last to each
+// file, so its own saves (text and infobox save separately) never count as
+// outside changes, and the file watcher can ignore them.
+
+/// A version for these bytes (FNV-1a, 64 bit, as hex).
+pub fn version_of(bytes: &[u8]) -> String {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in bytes {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    format!("{h:016x}")
+}
+
+/// The file's version now (None if it can't be read).
+pub fn file_version(path: &Path) -> Option<String> {
+    fs::read(path).ok().map(|b| version_of(&b))
+}
+
+fn own_writes() -> std::sync::MutexGuard<'static, HashMap<PathBuf, String>> {
+    static OWN: std::sync::LazyLock<Mutex<HashMap<PathBuf, String>>> = std::sync::LazyLock::new(Default::default);
+    // A poisoned lock only means a panic elsewhere; the map is still usable.
+    OWN.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Paths the app itself renamed, moved, created or put in the Trash just now.
+fn own_recent() -> std::sync::MutexGuard<'static, Vec<(PathBuf, Instant)>> {
+    static RECENT: Mutex<Vec<(PathBuf, Instant)>> = Mutex::new(Vec::new());
+    RECENT.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// How long a rename, move or delete by the app counts as its own for the watcher.
+const OWN_WINDOW: Duration = Duration::from_secs(5);
+
+/// The same file always gets the same key (folder resolved, so symlinks and
+/// the watcher's paths agree).
+pub fn own_key(path: &Path) -> PathBuf {
+    match (path.parent().and_then(|p| p.canonicalize().ok()), path.file_name()) {
+        (Some(dir), Some(name)) => dir.join(name),
+        _ => path.to_path_buf(),
+    }
+}
+
+/// What the app last wrote to this file.
+pub fn own_version(path: &Path) -> Option<String> {
+    own_writes().get(&own_key(path)).cloned()
+}
+
+/// The app is about to rename, move, create or delete `path` (and what's in it).
+pub fn note_own_change(path: &Path) {
+    let mut recent = own_recent();
+    recent.retain(|(_, at)| at.elapsed() < OWN_WINDOW);
+    recent.push((own_key(path), Instant::now()));
+}
+
+/// Did the app itself change this file (by content), or rename, move or delete it (or a folder around it) just now?
+pub fn is_own_change(path: &Path) -> bool {
+    let key = own_key(path);
+    if own_recent().iter().any(|(p, at)| at.elapsed() < OWN_WINDOW && key.starts_with(p)) {
+        return true;
+    }
+    match (own_writes().get(&key), file_version(path)) {
+        (Some(own), Some(now)) => *own == now,
+        _ => false,
+    }
+}
+
+/// Refuses to overwrite a file that changed on disk since the app loaded
+/// version `expected` (None: no check). The app's own last write counts as unchanged.
+pub fn check_version(path: &Path, expected: Option<&str>) -> AppResult<()> {
+    let Some(expected) = expected else { return Ok(()) };
+    match file_version(path) {
+        None => Err(AppError::Changed("This was deleted on another computer (or by another program).".into())),
+        Some(now) if now == expected || own_version(path).as_deref() == Some(now.as_str()) => Ok(()),
+        Some(_) => Err(AppError::Changed("This was changed on another computer (or by another program) since it was opened.".into())),
+    }
+}
+
+/// `fs::rename`, noted as the app's own change.
+pub fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
+    let (from, to) = (from.as_ref(), to.as_ref());
+    note_own_change(from);
+    note_own_change(to);
+    fs::rename(from, to)
 }
 
 /// Turns a user-typed name into a file or folder name that is valid on both
@@ -205,6 +299,7 @@ pub fn name_taken(dir: &Path, name: &str) -> io::Result<bool> {
 /// Moves a file or folder to the system Trash / Recycle Bin.
 #[cfg(not(test))]
 pub fn move_to_trash(path: &Path) -> AppResult<()> {
+    note_own_change(path);
     #[allow(unused_mut)]
     let mut ctx = trash::TrashContext::default();
     #[cfg(target_os = "macos")]
@@ -219,6 +314,7 @@ pub fn move_to_trash(path: &Path) -> AppResult<()> {
 /// Tests must not fill the real Trash, so they delete directly.
 #[cfg(test)]
 pub fn move_to_trash(path: &Path) -> AppResult<()> {
+    note_own_change(path);
     if path.is_dir() {
         fs::remove_dir_all(path)?;
     } else {
