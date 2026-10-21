@@ -622,14 +622,17 @@ export function FieldDef({
 }
 
 /** Settings of a Linked from field: which fields point here, from which templates, sorted how. */
-function LinkedFromOptions({
+export function LinkedFromOptions({
   options,
   setOptions,
   templates,
+  pageList,
 }: {
   options: NonNullable<Field["options"]>;
   setOptions: (o: Field["options"]) => void;
   templates: Template[];
+  /** For a page list line (no "Show" choice: it is a list). */
+  pageList?: boolean;
 }) {
   const filter = options.templates ?? [];
   const sortable = labelsOf(templates, ["number", "date", "dateplace", "datetext"]);
@@ -701,6 +704,24 @@ function LinkedFromOptions({
         </select>
         <span className="muted">{sortBy ? "pages without it come last" : ""}</span>
       </label>
+      {!pageList && (
+        <div className="field-option">
+          <span>Show</span>
+          <select aria-label="Show" value={options.show === "list" ? "list" : ""} onChange={(e) => setOptions({ ...options, show: e.target.value || undefined })}>
+            <option value="">In the infobox</option>
+            <option value="list">As a list at the bottom of the page</option>
+          </select>
+          {options.show === "list" && (
+            <input
+              className="list-heading"
+              aria-label="List heading"
+              placeholder="Heading, e.g. Chapters that take place here"
+              value={typeof options.listHeading === "string" ? options.listHeading : ""}
+              onChange={(e) => setOptions({ ...options, listHeading: e.target.value || undefined })}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

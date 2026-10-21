@@ -138,6 +138,10 @@ export interface FieldOptions {
   multiple?: boolean;
   /** Date / Date, place: "birth" or "death", for ages ("age 9", "aged 69"). */
   age?: string;
+  /** Linked from: "list" = shown as a list at the bottom of the page instead of in the infobox. */
+  show?: string;
+  /** Linked from shown as a list: its heading (default: the field's label). */
+  listHeading?: string;
   ranges?: boolean;
   [extra: string]: unknown;
 }
@@ -205,6 +209,29 @@ export interface Relations {
   incoming: IncomingField[];
   /** Page id -> field label (as compared, see norm) -> sort key (number, or year/month/day). */
   values: Record<string, Record<string, number[]>>;
+}
+
+/** One stored relation in the Relations table (src-tauri/src/relations.rs). */
+export interface RelationRow {
+  id: string;
+  title: string;
+  field: string;
+  target: string;
+  targetId?: string;
+  targetTitle?: string;
+  /** link: a Page link field; text: a [[link]] in a text field a Linked from field reads; typed: a name typed into a Linked from field. */
+  kind: "link" | "text" | "typed";
+  twoWay: boolean;
+  spoiler: boolean;
+  /** Where it shows up on the linked page ("Children", "Spouse (two-way)", "Chapters (list)"). */
+  shows: string[];
+  problem?: string;
+}
+
+export interface RelationsTable {
+  rows: RelationRow[];
+  /** Linked from fields reading names no field on any page has. */
+  fieldProblems: { id: string; title: string; field: string; names: string[] }[];
 }
 
 /** How setRelation changes the other page's field. */
@@ -323,6 +350,7 @@ export const api = {
     invoke<ApplyResult>("apply_template", { project, id, pages, dryRun }),
   /** `typed`: names typed into the page's Linked from fields (their sort values come along). */
   relations: (project: string, id: string, typed: string[]) => invoke<Relations>("relations", { project, id, typed }),
+  relationsTable: (project: string) => invoke<RelationsTable>("relations_table", { project }),
   /** Writes page `source` into (or out of) the field named `field` on page `target`. */
   setRelation: (project: string, target: string, field: string, source: string, edit: RelationEdit) =>
     invoke<void>("set_relation", { project, target, field, source, edit }),

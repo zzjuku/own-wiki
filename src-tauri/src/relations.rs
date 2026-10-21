@@ -207,6 +207,121 @@ pub fn set_relation(
     Ok(())
 }
 
+// ---- the Relations table ----
+
+/// One stored relation: a link in a page's infobox field, and where it shows up.
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TableRow {
+    /// The page the relation is stored on.
+    pub id: String,
+    pub title: String,
+    pub field: String,
+    /// The page linked to, as written.
+    pub target: String,
+    /// The linked page, if it exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_title: Option<String>,
+    /// "link" (Page link field), "text" (a [[link]] in a text field that a
+    /// Linked from field reads) or "typed" (a name typed into a Linked from field).
+    pub kind: &'static str,
+    pub two_way: bool,
+    pub spoiler: bool,
+    /// Where it shows on the linked page: "Children", "Spouse (two-way)", "Chapters (list)".
+    pub shows: Vec<String>,
+    /// What's wrong, if anything.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub problem: Option<String>,
+}
+
+/// A Linked from field reading names that no field on any page has.
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldProblem {
+    pub id: String,
+    pub title: String,
+    pub field: String,
+    pub names: Vec<String>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationsTable {
+    pub rows: Vec<TableRow>,
+    pub field_problems: Vec<FieldProblem>,
+}
+
+/// Every relation stored in the project's infoboxes, where each shows up,
+/// and what doesn't work: links to missing pages, links that no field of the
+/// linked page shows, Linked from fields reading names no field has.
+/// `[[links]]` in text fields are listed only where a Linked from field reads them.
+pub fn table(idx: &ProjectIndex) -> RelationsTable {
+    let mut by_name: HashMap<String, &str> = HashMap::new();
+    for (pid, e) in &idx.pages {
+        for n in names_of(e) {
+            by_name.entry(n).or_insert(pid);
+        }
+    }
+    let labels: std::collections::HashSet<String> =
+        idx.pages.values().flat_map(|e| e.fields.iter().map(|f| norm(&f.label))).collect();
+    let mut out = RelationsTable::default();
+    for (pid, e) in &idx.pages {
+        for l in &e.field_links {
+            let target = by_name.get(&norm(&l.target)).map(|id| (*id, &idx.pages[*id]));
+            let kind = if l.typed { "typed" } else if l.in_text { "text" } else { "link" };
+            let mut shows = Vec::new();
+            if let Some((_, t)) = target.filter(|(tid, _)| *tid != pid.as_str() && !l.typed) {
+                for r in &t.reverse {
+                    let reads = r.from.iter().any(|f| norm(f) == norm(&l.field));
+                    let template_ok = r.templates.is_empty() || e.template.as_ref().is_some_and(|tp| r.templates.contains(tp));
+                    if reads && template_ok {
+                        shows.push(if r.list { format!("{} (list)", r.label) } else { r.label.clone() });
+                    }
+                }
+                if l.two_way && t.fields.iter().any(|f| (f.kind == crate::infobox::LINK || f.kind == crate::infobox::LINKS) && norm(&f.label) == norm(&l.field)) {
+                    shows.push(format!("{} (two-way)", l.field));
+                }
+            }
+            if l.in_text && shows.is_empty() {
+                continue;
+            }
+            let problem = match (&target, kind) {
+                (_, "typed") => None,
+                (None, _) => Some(format!("No page “{}” yet (red link).", l.target)),
+                (Some((tid, _)), _) if *tid == pid.as_str() => Some("Links to its own page.".to_string()),
+                (Some((_, t)), _) if shows.is_empty() => {
+                    Some(format!("Doesn't show on {}: no field there reads “{}”.", t.title, l.field))
+                }
+                _ => None,
+            };
+            out.rows.push(TableRow {
+                id: pid.clone(),
+                title: e.title.clone(),
+                field: l.field.clone(),
+                target: l.target.clone(),
+                target_id: target.map(|(id, _)| id.to_string()),
+                target_title: target.map(|(_, t)| t.title.clone()),
+                kind,
+                two_way: l.two_way,
+                spoiler: l.spoiler,
+                shows: if l.typed { vec![format!("{} (typed in here)", l.field)] } else { shows },
+                problem,
+            });
+        }
+        for r in &e.reverse {
+            let names: Vec<String> = r.from.iter().filter(|n| !labels.contains(&norm(n))).cloned().collect();
+            if !names.is_empty() {
+                out.field_problems.push(FieldProblem { id: pid.clone(), title: e.title.clone(), field: r.label.clone(), names });
+            }
+        }
+    }
+    out.rows.sort_by(|a, b| (a.title.to_lowercase(), a.field.to_lowercase()).cmp(&(b.title.to_lowercase(), b.field.to_lowercase())));
+    out.field_problems.sort_by_key(|p| p.title.to_lowercase());
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,6 +445,43 @@ mod tests {
         assert!(err.to_string().contains("can't be read"), "{err}");
         assert_eq!(read(lib.path(), &p, "Page B.md"), "---\ninfobox: [1, 2]\n---\nBody\n");
         assert!(set_relation(lib.path(), &p, &mut idx, "Page A.md", "Father", "Page A.md", Edit::Add).is_err());
+    }
+
+    #[test]
+    fn relations_table_rows_and_problems() {
+        let person = "  - label: Father\n    type: links\n    value: VALUE\n  - label: Spouse\n    type: links\n    options: { twoWay: true }\n    value: SPOUSE\n  - label: Children\n    type: linkedfrom\n    options: { from: [Father, Mother] }\n    value: TYPED\n  - label: Note\n    type: text\n    value: NOTE\n";
+        let page = |t: &str, father: &str, spouse: &str, typed: &str, note: &str| {
+            child(t, "t-a", &person.replace("VALUE", father).replace("SPOUSE", spouse).replace("TYPED", typed).replace("NOTE", note))
+        };
+        let (_lib, _p, idx) = setup(&[
+            ("Page A.md", &page("Page A", "[]", "[Page B]", "[Page Z]", "''")),
+            ("Page B.md", &page("Page B", "[Page A, Page Missing]", "[]", "[]", "'[[Page A]]'")),
+            ("Page C.md", "---\ntitle: Page C\ninfobox:\n  fields:\n  - label: Owner\n    type: links\n    value: [Page A]\n  - label: Members\n    type: linkedfrom\n    options: { from: [Nowhere] }\n---\n"),
+        ]);
+        let t = table(&idx);
+        let rows: Vec<(&str, &str, &str, Vec<String>, Option<&str>)> =
+            t.rows.iter().map(|r| (r.title.as_str(), r.field.as_str(), r.kind, r.shows.clone(), r.problem.as_deref())).collect();
+        assert_eq!(
+            rows,
+            [
+                ("Page A", "Children", "typed", vec!["Children (typed in here)".to_string()], None),
+                ("Page A", "Spouse", "link", vec!["Spouse (two-way)".to_string()], None),
+                ("Page B", "Father", "link", vec!["Children".to_string()], None),
+                ("Page B", "Father", "link", vec![], Some("No page “Page Missing” yet (red link).")),
+                ("Page C", "Owner", "link", vec![], Some("Doesn't show on Page A: no field there reads “Owner”.")),
+            ]
+        );
+        // The [[link]] in Page B's Note shows nowhere, so it isn't a relation here.
+        // No page has a Mother field, nor a Nowhere field.
+        let problems: Vec<(&str, &str, Vec<String>)> = t.field_problems.iter().map(|p| (p.title.as_str(), p.field.as_str(), p.names.clone())).collect();
+        assert_eq!(
+            problems,
+            [
+                ("Page A", "Children", vec!["Mother".to_string()]),
+                ("Page B", "Children", vec!["Mother".to_string()]),
+                ("Page C", "Members", vec!["Nowhere".to_string()]),
+            ]
+        );
     }
 
     /// Speed check from the M9 spec: a page with 1,000 incoming entries.

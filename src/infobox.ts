@@ -519,6 +519,8 @@ export function infoboxHtml(ib: Infobox | null | undefined, ctx: BoxContext): st
   const ages = agesFor(ib, ctx.presentDay);
   for (const f of ib.fields) {
     if (titlePlace(f) && !alsoInBox(f)) continue;
+    // A Linked from field shown as a list at the bottom of the page (src/pageLists.ts).
+    if (f.type === "linkedfrom" && f.options?.show === "list") continue;
     if (f.type === "heading") {
       rows.push({ heading: true, html: `<tr><th colspan="2" class="infobox-heading">${escapeHtml(f.label)}</th></tr>` });
       continue;

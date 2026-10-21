@@ -193,6 +193,55 @@ pub struct FieldLink {
     /// `||…||` in a text field.
     #[serde(default, skip_serializing_if = "is_false")]
     pub spoiler: bool,
+    /// A `[[link]]` in a text-like field (not a Page link value).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub in_text: bool,
+    /// A name typed into a Linked from field (shows only on its own page).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub typed: bool,
+}
+
+/// A field of a page, as the link index keeps it: its label and type.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FieldName {
+    pub label: String,
+    pub kind: String,
+}
+
+/// A page's Linked from field, as the link index keeps it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReverseDef {
+    pub label: String,
+    /// Names of the fields it reads.
+    #[serde(default)]
+    pub from: Vec<String>,
+    /// Only pages from these templates (ids); empty = any.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub templates: Vec<String>,
+    /// Shown as a list at the bottom of the page.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub list: bool,
+}
+
+fn option_strings(f: &Field, name: &str) -> Vec<String> {
+    f.options.get(name).map(|v| strings(v).into_iter().map(str::to_string).collect()).unwrap_or_default()
+}
+
+/// The page's value fields (label and type) and its Linked from fields.
+pub fn field_infos(ib: &Infobox) -> (Vec<FieldName>, Vec<ReverseDef>) {
+    let fields = ib.fields.iter().filter(|f| f.kind != HEADING && f.kind != DIVIDER);
+    let names = fields.clone().map(|f| FieldName { label: f.label.clone(), kind: f.kind.clone() }).collect();
+    let reverse = fields
+        .filter(|f| f.kind == LINKED_FROM)
+        .map(|f| ReverseDef {
+            label: f.label.clone(),
+            from: option_strings(f, "from"),
+            templates: option_strings(f, "templates"),
+            list: f.options.get("show").and_then(Value::as_str) == Some("list"),
+        })
+        .collect();
+    (names, reverse)
 }
 
 pub(crate) fn strings(v: &Value) -> Vec<&str> {
@@ -225,13 +274,20 @@ pub fn field_links(ib: &Infobox) -> Vec<FieldLink> {
     for f in &ib.fields {
         let Some(v) = &f.value else { continue };
         let spoiler = f.is_spoiler();
-        let link = |target: String, two_way: bool, spoiler: bool| FieldLink { field: f.label.clone(), target, two_way, spoiler };
+        let link = |target: String, two_way: bool, spoiler: bool| FieldLink {
+            field: f.label.clone(),
+            target,
+            two_way,
+            spoiler,
+            in_text: false,
+            typed: f.kind == LINKED_FROM,
+        };
         // [[links]] in text, each a spoiler if it sits inside ||…||.
         let text_links = |s: &str, out: &mut Vec<FieldLink>| {
             let hidden = spoiler_ranges(s);
             for l in parse_links(s).into_iter().filter(|l| !l.page.is_empty()) {
                 let inside = hidden.iter().any(|&(a, b)| a <= l.start && l.end <= b);
-                out.push(link(l.page, false, spoiler || inside));
+                out.push(FieldLink { in_text: true, ..link(l.page, false, spoiler || inside) });
             }
         };
         match f.kind.as_str() {

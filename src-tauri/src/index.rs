@@ -14,14 +14,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AppResult;
 use crate::fsutil::{rel_join, rel_parent, safe_write};
-use crate::infobox::{FieldLink, field_links, first_image, sortable_values};
+use crate::infobox::{FieldLink, FieldName, ReverseDef, field_infos, field_links, first_image, sortable_values};
 use crate::pages::{meta_aliases, meta_categories, meta_infobox, meta_sort, meta_title, parse};
 use crate::projects::{CACHE_DIR, CATEGORIES_DIR, PAGES_DIR};
 use crate::tree::{GroupInfo, PageInfo, is_page_file};
 use crate::wikilinks::{self, Heading};
 
 const CACHE_FILE: &str = "link-index.json";
-const CACHE_VERSION: u32 = 7;
+const CACHE_VERSION: u32 = 8;
 /// The cache is rewritten at most this often for small changes (a stale
 /// cache only costs re-reading the changed files at the next open).
 const CACHE_SAVE_INTERVAL: Duration = Duration::from_secs(10);
@@ -73,6 +73,12 @@ pub struct Entry {
     /// (field label as compared -> key).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub values: BTreeMap<String, Vec<f64>>,
+    /// The infobox's value fields (label, type), for the Relations table.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<FieldName>,
+    /// The infobox's Linked from fields.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reverse: Vec<ReverseDef>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -112,6 +118,7 @@ pub fn read_entry(path: &Path, file_name: &str) -> Option<Entry> {
     // A page whose front matter can't be read still gets indexed by file name.
     let (fm, body) = parse(&text).unwrap_or_else(|_| (Default::default(), text.clone()));
     let infobox = meta_infobox(&fm).ok().flatten();
+    let infos = infobox.as_ref().map(field_infos).unwrap_or_default();
     Some(Entry {
         mtime: stamp(&meta),
         size: meta.len(),
@@ -133,6 +140,8 @@ pub fn read_entry(path: &Path, file_name: &str) -> Option<Entry> {
         categories: meta_categories(&fm),
         sort: meta_sort(&fm),
         values: infobox.as_ref().map(sortable_values).unwrap_or_default(),
+        fields: infos.0,
+        reverse: infos.1,
     })
 }
 

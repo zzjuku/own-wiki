@@ -1,5 +1,5 @@
 // Blocks of the page editor that are edited in a dialog rather than typed:
-// galleries, quote boxes and embeds. The toolbar opens a dialog for a new one;
+// galleries, quote boxes, embeds and page lists. The toolbar opens a dialog for a new one;
 // clicking one in the source opens its dialog (an embed first shows a small
 // popup: Open, Change, Remove).
 import { useState, type RefObject } from "react";
@@ -11,6 +11,8 @@ import { insertBlock } from "./formatting";
 import { GalleryDialog } from "./GalleryDialog";
 import { GALLERY_OPEN, galleryAround, gallerySource, parseGallery, type GalleryItem } from "./images";
 import { QuoteDialog } from "./QuoteDialog";
+import { PageListDialog } from "./PageListDialog";
+import { pageListOnLine, pageListSource, type PageListCall } from "./pageLists";
 import { parseQuote, quoteAround, quoteSource, type Quote } from "./quotes";
 
 /** Lines of the source (0-based, first and last). */
@@ -21,6 +23,7 @@ export function useBlockDialogs(viewRef: RefObject<EditorView | null>, pageId: s
   const [gallery, setGallery] = useState<{ range: Range | null; items: GalleryItem[]; spoiler: boolean } | null>(null);
   const [quote, setQuote] = useState<{ range: Range | null; quote: Quote } | null>(null);
   const [embedDialog, setEmbedDialog] = useState<{ line: number | null; call: EmbedCall | null } | null>(null);
+  const [pageList, setPageList] = useState<{ line: number | null; call: PageListCall | null } | null>(null);
   // The popup after clicking an embed line.
   const [embedPopup, setEmbedPopup] = useState<{ line: number; call: EmbedCall; at: { left: number; top: number } } | null>(null);
 
@@ -55,6 +58,8 @@ export function useBlockDialogs(viewRef: RefObject<EditorView | null>, pageId: s
     }
     const q = quoteAround(lines, n);
     if (q) return setQuote({ range: q, quote: parseQuote(lines.slice(q.start + 1, q.end)) });
+    const list = pageListOnLine(lines[n]);
+    if (list) return setPageList({ line: n, call: list });
     const call = embedOnLine(lines[n]);
     if (call) {
       requestAnimationFrame(() => {
@@ -64,8 +69,9 @@ export function useBlockDialogs(viewRef: RefObject<EditorView | null>, pageId: s
     }
   }
 
-  function open(kind: "gallery" | "embed" | "quotebox") {
+  function open(kind: "gallery" | "embed" | "quotebox" | "pagelist") {
     if (kind === "gallery") setGallery({ range: null, items: [], spoiler: false });
+    else if (kind === "pagelist") setPageList({ line: null, call: null });
     else if (kind === "embed") setEmbedDialog({ line: null, call: null });
     else setQuote({ range: null, quote: { text: "", by: "", source: "" } });
   }
@@ -139,6 +145,28 @@ export function useBlockDialogs(viewRef: RefObject<EditorView | null>, pageId: s
           }}
           close={() => {
             setEmbedPopup(null);
+            focus();
+          }}
+        />
+      )}
+
+      {pageList && (
+        <PageListDialog
+          initial={pageList.call}
+          save={(call) => {
+            setPageList(null);
+            write(pageList.line === null ? null : { start: pageList.line, end: pageList.line }, pageListSource(call));
+          }}
+          remove={
+            pageList.line !== null
+              ? () => {
+                  setPageList(null);
+                  write({ start: pageList.line!, end: pageList.line! }, null);
+                }
+              : undefined
+          }
+          close={() => {
+            setPageList(null);
             focus();
           }}
         />

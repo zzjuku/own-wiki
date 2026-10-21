@@ -5,6 +5,7 @@ import { categoryOf } from "./categories";
 import { FULL_PX, GALLERY, GALLERY_PX, imageAtStart, parseGallery, parseImage, SIZE_PX, type TextImage } from "./images";
 import { EMBED_BLOCK, parseEmbed, type EmbedCall } from "./embedSyntax";
 import { parseQuote, QUOTE_BLOCK } from "./quotes";
+import { PAGELIST_BLOCK, parsePageListAttrs, type PageListCall } from "./pageLists";
 import { SPOILER_AT_START } from "./spoilers";
 import { linkAtStart, shownText, type WikiLink } from "./wikilinks";
 
@@ -34,6 +35,9 @@ export interface Rendered {
   /** Embeds in the text, in order: `<div class="embed-slot" data-slot="N">`
    * marks where embed N goes (filled in by src/embeds.ts). */
   embeds: EmbedCall[];
+  /** Page lists, in order: `<div class="pagelist-slot" data-slot="N">` marks
+   * where list N goes (filled in by src/embeds.ts with src/pageLists.ts). */
+  pageLists: PageListCall[];
 }
 
 /** Markdown of a single paragraph or line (hover cards, "What links here"). */
@@ -88,12 +92,13 @@ interface RenderState {
   /** The heading being rendered: its spoilers share keys with its Contents entry. */
   heading: { id: string; n: number } | null;
   embeds: EmbedCall[];
+  pageLists: PageListCall[];
 }
 
 let state: RenderState = freshState(new Set());
 
 function freshState(defined: Set<string>, links: LinkContext | null = null): RenderState {
-  return { usedIds: new Map(), headings: [], defined, numbers: new Map(), refCount: new Map(), notes: new Map(), links, heading: null, embeds: [] };
+  return { usedIds: new Map(), headings: [], defined, numbers: new Map(), refCount: new Map(), notes: new Map(), links, heading: null, embeds: [], pageLists: [] };
 }
 
 /** Section anchor: lower-case, spaces -> "-", repeats get "-2", "-3"… These
@@ -315,6 +320,21 @@ md.use({
       },
     },
     {
+      // <pagelist from="…" templates="…" sort="…"> on a line of its own
+      name: "pageList",
+      level: "block",
+      start: (src: string) => src.match(/^ {0,3}<pagelist\b/im)?.index,
+      tokenizer(src: string) {
+        const m = PAGELIST_BLOCK.exec(src);
+        if (!m) return undefined;
+        return { type: "pageList", raw: m[0], call: parsePageListAttrs(m[1]) };
+      },
+      renderer(token) {
+        state.pageLists.push(token.call as PageListCall);
+        return `<div class="pagelist-slot" data-slot="${state.pageLists.length - 1}"></div>\n`;
+      },
+    },
+    {
       // ||hidden text||
       name: "spoiler",
       level: "inline",
@@ -462,7 +482,18 @@ export function renderPage(
   const toc = state.headings.length >= TOC_MIN_HEADINGS ? buildToc(state.headings) : [];
   html = html.replace(TOC_MARK, withBox && toc.length ? tocBox(toc) : "");
   // SANITIZE_DOM would drop heading ids such as "title" or "links".
-  return { html: DOMPurify.sanitize(html, PURIFY), toc, embeds: state.embeds };
+  return { html: DOMPurify.sanitize(html, PURIFY), toc, embeds: state.embeds, pageLists: state.pageLists };
+}
+
+/** A link to page `name` (red if it doesn't exist), as links in the text look. */
+export function wikiLinkHtml(name: string, links: LinkContext): string {
+  const before = state.links;
+  state.links = links;
+  try {
+    return renderWikiLink({ page: name, section: null, label: null, suffix: "" }, name);
+  } finally {
+    state.links = before;
+  }
 }
 
 /** One line of Markdown (bold, italic, [[links]]) -> safe inline HTML, for infobox values. */
@@ -521,7 +552,7 @@ export function plainText(source: string): string {
   const parts: string[] = [];
   const walk = (tokens: Token[]) => {
     for (const t of tokens) {
-      if (["html", "space", "hr", "def", "footnoteRef", "wikiImage", "gallery", "embed"].includes(t.type)) continue;
+      if (["html", "space", "hr", "def", "footnoteRef", "wikiImage", "gallery", "embed", "pageList"].includes(t.type)) continue;
       if (t.type === "quoteBox") {
         for (const p of [...(t.paras as Token[][]), t.by as Token[], t.source as Token[]]) {
           walk(p);

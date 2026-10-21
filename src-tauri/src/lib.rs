@@ -218,6 +218,12 @@ fn relations(state: State<'_, AppState>, project: String, id: String, typed: Vec
     state.with_index(&project, false, |_, idx| relations::relations(idx, &id, &typed))
 }
 
+/// Every stored relation, where it shows up, and what doesn't work.
+#[tauri::command(async)]
+fn relations_table(state: State<'_, AppState>, project: String) -> AppResult<relations::RelationsTable> {
+    state.with_index(&project, true, |_, idx| Ok(relations::table(idx)))
+}
+
 /// Writes page `source` into (or out of) field `field` of page `target`.
 #[tauri::command(async)]
 fn set_relation(
@@ -688,6 +694,7 @@ pub fn run() {
             template_pages,
             apply_template,
             relations,
+            relations_table,
             set_relation,
             import_image,
             import_image_data,

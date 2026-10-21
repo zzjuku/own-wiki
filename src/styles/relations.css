@@ -118,3 +118,112 @@
   color: var(--warn);
   font-size: var(--text-sm);
 }
+
+/* Page lists (src/pageLists.ts) */
+.markdown ul.page-list {
+  columns: 3 13em;
+  column-gap: 2em;
+  margin: 0.5em 0 1em;
+  padding-left: 1.4em;
+}
+.markdown ul.page-list li {
+  break-inside: avoid;
+  margin: 0 0 0.2em;
+}
+.markdown .pagelist-empty {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 90%;
+}
+.linked-from-options .list-heading {
+  flex: 1;
+  min-width: 14em;
+  font-size: var(--text-sm);
+  padding: 3px 6px;
+}
+.page-list-dialog .dialog-actions .spacer {
+  flex: 1;
+}
+
+/* The Relations screen */
+.relations-view {
+  overflow: hidden;
+}
+.relations-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 28px 40px;
+}
+.relations-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 12px;
+}
+.relations-filters .check {
+  margin: 0;
+}
+.relations-filters select {
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+}
+.relations-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-md);
+}
+.relations-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+}
+.relations-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.relations-table tr.has-problem td {
+  background: var(--warn-bg);
+}
+.relations-problem {
+  color: var(--warn);
+  font-size: var(--text-sm);
+}
+button.relations-page {
+  padding: 0;
+  color: var(--link);
+  text-align: left;
+}
+button.relations-page:hover {
+  text-decoration: underline;
+}
+.relations-page.missing {
+  color: var(--link-new);
+}
+.relations-field-problems {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: var(--text-sm);
+}
+.relations-field-problems ul {
+  margin: 4px 0 0;
+  padding-left: 1.2em;
+}
+.relations-more {
+  margin-top: 12px;
+}

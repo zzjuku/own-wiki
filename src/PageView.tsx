@@ -147,7 +147,10 @@ export function PageView(props: Props) {
   const onContentClick = useContentClick(pageId);
   // The read view shows the contents in the left panel, not in the text.
   const embedEnv = useEmbedEnv(editing ? "" : body, pageId);
-  const rendered = useMemo(() => renderWithEmbeds(body, { tocBox: false, links }, embedEnv), [body, links, embedEnv]);
+  const rendered = useMemo(
+    () => renderWithEmbeds(body, { tocBox: false, links }, embedEnv, { infobox, relations, templates: wiki.templates }),
+    [body, links, embedEnv, infobox, relations, wiki.templates],
+  );
   const shownTitle = props.title ?? page?.title ?? "";
   const boxHtml = useMemo(
     () => infoboxHtml(infobox, { project, title: shownTitle, links, relations, presentDay: wiki.settings.presentDay, frame: frameFor(wiki, infobox?.template) }),
@@ -312,7 +315,7 @@ export function PageView(props: Props) {
             </span>
           }
         />
-      ) : body.trim() || boxHtml ? (
+      ) : rendered.html.trim() || boxHtml ? (
         <div className="read-view" ref={readRef} onClickCapture={spoilers.onClick}>
           {rendered.toc.length > 0 && (
             <TocPanel toc={rendered.toc} scrollRef={readRef} storageKey={`ownwiki.tocFolded.${project}/${pageId}`} />

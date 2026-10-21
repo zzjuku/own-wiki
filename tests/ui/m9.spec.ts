@@ -270,3 +270,105 @@ test("Father and Children both Linked from: warned in the template and the Infob
   await children.scrollIntoViewIfNeeded();
   await shot(page, "template-circular-warning");
 });
+
+// ---- page lists and the Relations table ----
+
+const PLACE: Template = {
+  id: "template-pl-a1b2",
+  name: "Template Place",
+  fields: [{ key: "f-ch", label: "Chapters", type: "linkedfrom", options: { from: ["Location"], show: "list", listHeading: "Chapters set here", sortBy: "Chapter no." } }],
+};
+const CHAPTER: Template = {
+  id: "template-ch-c3d4",
+  name: "Template Chapter",
+  fields: [
+    { key: "f-lo", label: "Location", type: "links" },
+    { key: "f-no", label: "Chapter no.", type: "number" },
+  ],
+};
+const chapter = (title: string, no: number, location: string): MockPage => ({
+  id: `${title}.md`,
+  title,
+  body: "Chapter text.",
+  infobox: { template: CHAPTER.id, fields: [{ ...CHAPTER.fields[0], value: [location] }, { ...CHAPTER.fields[1], value: no }] },
+});
+const listPages = (): MockPage[] => [
+  { id: "Place A.md", title: "Place A", body: "## Section A\n\nText of the place.\n\n## Section B\n\nMore text.", infobox: { template: PLACE.id, fields: PLACE.fields.map((f) => ({ ...f })) } },
+  chapter("Chapter Two", 2, "Place A"),
+  chapter("Chapter One", 1, "Place A"),
+  chapter("Chapter Three", 3, "Place B"),
+  { id: "Page H.md", title: "Page H", body: "Host text.\n\n{{Place A}}\n" },
+];
+const listData = () => oneProject(listPages(), { templates: [PLACE, CHAPTER], mainPage: "Place A" });
+
+test("page list at the bottom of the page: heading in Contents, sorted, not in the infobox", async ({ page }) => {
+  await openProject(page, listData());
+  const text = page.locator(".read-view .markdown");
+  await expect(text.locator("h2", { hasText: "Chapters set here" })).toBeVisible();
+  await expect(text.locator("ul.page-list li")).toHaveText(["Chapter One", "Chapter Two"]);
+  await expect(page.locator(".toc-left")).toContainText("Chapters set here");
+  await expect(page.locator(".read-view .infobox")).toHaveCount(0);
+  await shot(page, "page-list-bottom");
+  // Embedded: the list belongs to the embedded page.
+  await page.locator(".sidebar .tree-row", { hasText: "Page H" }).locator(".tree-main").click();
+  await expect(page.locator(".read-view .embed ul.page-list li")).toHaveText(["Chapter One", "Chapter Two"]);
+});
+
+test("page list as a line in the text: Page list dialog, reopen by clicking the line, remove", async ({ page }) => {
+  await openProject(page, listData());
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.getByRole("button", { name: /Page list/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Page list" });
+  await dialog.getByRole("group", { name: "Fields that point here" }).getByRole("combobox").fill("Location");
+  await dialog.getByRole("group", { name: "Fields that point here" }).getByRole("combobox").press("Enter");
+  await dialog.getByRole("checkbox", { name: "Template Chapter" }).check();
+  await dialog.getByLabel("Sort by").selectOption("Chapter no.");
+  await shot(page, "page-list-dialog");
+  await dialog.getByRole("button", { name: "Insert" }).click();
+  await expect.poll(async () => (await storedPage(page, "Place A.md"))?.body).toContain('<pagelist from="Location" templates="Template Chapter" sort="Chapter no.">');
+  await expect(page.locator(".split-preview ul.page-list").last().locator("li")).toHaveText(["Chapter One", "Chapter Two"]);
+  // Clicking the line reopens the dialog with its settings.
+  await page.locator(".cm-line", { hasText: "<pagelist" }).click();
+  await expect(dialog.getByLabel("Sort by")).toHaveValue("Chapter no.");
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect.poll(async () => (await storedPage(page, "Place A.md"))?.body).not.toContain("<pagelist");
+});
+
+test("template: Show as a list at the bottom, with a heading", async ({ page }) => {
+  await openProject(page, listData());
+  await page.getByRole("button", { name: "Templates" }).click();
+  await page.getByRole("navigation", { name: "Templates" }).getByRole("button", { name: /Template Place/ }).click();
+  const def = page.locator(".field-defs > li").first();
+  await expect(def.getByLabel("Show")).toHaveValue("list");
+  await expect(def.getByLabel("List heading")).toHaveValue("Chapters set here");
+  await def.getByLabel("Show").selectOption("");
+  await expect(def.getByLabel("List heading")).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate((p) => (window as any).__mock.projects.get(p).templates[0].fields[0].options, PROJECT))
+    .toEqual({ from: ["Location"], listHeading: "Chapters set here", sortBy: "Chapter no." });
+});
+
+test("Relations table: rows, where they show up, problems, filter", async ({ page }) => {
+  const pages = [...listPages(), chapter("Chapter Four", 4, "Place Missing"), { id: "Place B.md", title: "Place B" }];
+  pages.push({ id: "Page Z.md", title: "Page Z", infobox: { fields: [{ label: "Members", type: "linkedfrom", options: { from: ["Nowhere"] } }] } });
+  await openProject(page, oneProject(pages, { templates: [PLACE, CHAPTER], mainPage: "Place A" }));
+  await page.getByRole("button", { name: "Relations" }).click();
+  await expect(page.getByRole("heading", { name: "Relations", level: 1 })).toBeVisible();
+  const table = page.locator(".relations-table");
+  const row = (title: string) => table.locator("tbody tr").filter({ has: page.locator("td:first-child", { hasText: title }) });
+  await expect(row("Chapter One")).toContainText("Place A → Chapters (list)");
+  await expect(row("Chapter Three")).toContainText("Doesn't show on Place B");
+  await expect(row("Chapter Four")).toContainText("No page “Place Missing” yet");
+  await expect(page.locator(".relations-field-problems")).toContainText("Members reads “Nowhere”");
+  await shot(page, "relations-table");
+  await page.getByLabel("Only problems").check();
+  await expect(table.locator("tbody tr")).toHaveCount(2);
+  await expect(table).not.toContainText("Chapter One");
+  await page.getByLabel("Only problems").uncheck();
+  await page.getByLabel("Filter relations").fill("chapter two");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await row("Chapter Two").getByRole("button", { name: "Place A" }).click();
+  await expect(page.getByRole("heading", { name: "Place A", level: 1 })).toBeVisible();
+});

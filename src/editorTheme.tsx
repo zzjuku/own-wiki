@@ -124,6 +124,14 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M4 5.5h8M4 8h8M4 10.5h5" className="stroke thin" />
     </>
   ),
+  pagelist: (
+    <>
+      <path d="M1.5 2.5h13v11h-13z" className="stroke thin" />
+      <circle cx="4.5" cy="6" r="0.9" />
+      <circle cx="4.5" cy="10" r="0.9" />
+      <path d="M6.5 6h5M6.5 10h5" className="stroke thin" />
+    </>
+  ),
   quotebox: (
     <>
       <path d="M1.5 2.5h13v11h-13z" className="stroke thin" />

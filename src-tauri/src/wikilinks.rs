@@ -579,6 +579,7 @@ fn is_prose(line: &str) -> bool {
         || list
         || t.starts_with(['>', '|'])
         || t.starts_with("<!--")
+        || t.starts_with("<pagelist")
         || footnote_def_label(t).is_some()
         || is_hr(t))
 }
@@ -768,6 +769,7 @@ mod tests {
         // Embeds aren't links, and an embed line isn't an opening paragraph.
         assert!(parse_links("{{Page A}}").is_empty());
         assert_eq!(summary("{{Page A}}\n\nFirst text."), "First text.");
+        assert_eq!(summary("<pagelist from=\"Father\">\n\nFirst text."), "First text.");
     }
 
     #[test]

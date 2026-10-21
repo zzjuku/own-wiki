@@ -104,6 +104,7 @@ const TOOLS: (Tool | "|")[] = [
   { id: "footnote", label: <Icon name="footnote" />, title: "Footnote", run: cmd(insertFootnote) },
   { id: "link", label: <Icon name="link" />, title: `Link to a page (${MOD}K)`, run: () => true },
   { id: "embed", label: <Icon name="embed" />, title: "Embed a page (its current content shows here)", run: () => true },
+  { id: "pagelist", label: <Icon name="pagelist" />, title: "Page list (the pages whose fields point here)", run: () => true },
   { id: "image", label: <Icon name="image" />, title: "Insert image (you can also drop or paste images)", run: () => true },
   { id: "gallery", label: <Icon name="gallery" />, title: "Insert gallery", run: () => true },
 ];
@@ -463,7 +464,17 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
   );
 
   const embedEnv = useEmbedEnv(text, currentCategory !== undefined ? `category:${currentCategory}` : pageId);
-  const textHtml = useMemo(() => renderWithEmbeds(text, { lineAnchors: true, links }, embedEnv).html, [text, links, embedEnv]);
+  const textHtml = useMemo(
+    () =>
+      renderWithEmbeds(text, { lineAnchors: true, links }, embedEnv, {
+        infobox,
+        relations,
+        templates: wiki.templates,
+        preview: true,
+        category: currentCategory !== undefined,
+      }).html,
+    [text, links, embedEnv, infobox, relations, wiki.templates, currentCategory],
+  );
   const boxHtml = useMemo(
     () => infoboxHtml(infobox, { project: wiki.project, title, links, relations, presentDay: wiki.settings.presentDay, showEmpty: true, frame: frameFor(wiki, infobox?.template) }),
     [infobox, wiki, title, links, relations],
@@ -596,7 +607,7 @@ export function SplitEditor({ pageId, title, initial, onChange, infobox, infobox
                     ? openLinkPickerRef.current()
                     : tool.id === "image"
                       ? void chooseImages()
-                      : tool.id === "gallery" || tool.id === "embed" || tool.id === "quotebox"
+                      : tool.id === "gallery" || tool.id === "embed" || tool.id === "quotebox" || tool.id === "pagelist"
                         ? blocks.open(tool.id)
                         : run(tool.run)
               }

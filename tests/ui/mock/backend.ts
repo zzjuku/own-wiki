@@ -301,6 +301,44 @@ export function createBackend(fixture: Fixture) {
       [...proj(project).pages.values()].filter((pg) => pg.infobox?.template === id).map(info),
     apply_template: () => ({ changes: [], failed: [] }),
     relations: ({ project, id, typed }) => relations(proj(project), id, typed ?? []),
+    // A simple copy of src-tauri/src/relations.rs (table): Page link and typed-in rows, problems.
+    relations_table: ({ project }) => {
+      const p = proj(project);
+      const all = [...p.pages.values()];
+      const labels = new Set(all.flatMap((pg) => (pg.infobox?.fields ?? []).filter((f) => f.type !== "heading" && f.type !== "divider").map((f) => lc(f.label))));
+      const rows: any[] = [];
+      const fieldProblems: any[] = [];
+      for (const pg of all) {
+        for (const l of fieldLinks(pg.infobox)) {
+          const typed = (pg.infobox?.fields ?? []).some((f) => f.label === l.field && f.type === "linkedfrom");
+          const inText = (pg.infobox?.fields ?? []).some((f) => f.label === l.field && ["text", "longtext", "list"].includes(f.type));
+          const t = findTitle(p, l.target);
+          const shows: string[] = [];
+          if (t && t.id !== pg.id && !typed) {
+            for (const f of t.infobox?.fields ?? []) {
+              if (f.type !== "linkedfrom" || !(f.options?.from ?? []).some((x) => lc(x) === lc(l.field))) continue;
+              const tpl = f.options?.templates ?? [];
+              if (tpl.length && !tpl.includes(pg.infobox?.template ?? "")) continue;
+              shows.push(f.options?.show === "list" ? `${f.label} (list)` : f.label);
+            }
+            if (l.twoWay && (t.infobox?.fields ?? []).some((f) => (f.type === "link" || f.type === "links") && lc(f.label) === lc(l.field))) shows.push(`${l.field} (two-way)`);
+          }
+          if (inText && !shows.length) continue;
+          const problem = typed ? undefined : !t ? `No page “${l.target}” yet (red link).` : !shows.length ? `Doesn't show on ${t.title}: no field there reads “${l.field}”.` : undefined;
+          rows.push({
+            id: pg.id, title: pg.title, field: l.field, target: l.target, targetId: t?.id, targetTitle: t?.title,
+            kind: typed ? "typed" : inText ? "text" : "link", twoWay: l.twoWay, spoiler: l.spoiler,
+            shows: typed ? [`${l.field} (typed in here)`] : shows, problem,
+          });
+        }
+        for (const f of pg.infobox?.fields ?? []) {
+          const names = f.type === "linkedfrom" ? (f.options?.from ?? []).filter((n) => !labels.has(lc(n))) : [];
+          if (names.length) fieldProblems.push({ id: pg.id, title: pg.title, field: f.label, names });
+        }
+      }
+      rows.sort((a, b) => lc(a.title).localeCompare(lc(b.title)) || lc(a.field).localeCompare(lc(b.field)));
+      return { rows, fieldProblems };
+    },
     set_relation: ({ project, target, field, source, edit }) => {
       const p = proj(project);
       const src = page(p, source);

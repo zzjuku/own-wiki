@@ -11,6 +11,7 @@ import type { EmbedCall } from "./embedSyntax";
 import { embedTargets } from "./embedSyntax";
 import { infoboxHtml } from "./infobox";
 import { renderPage, sectionSource, type LinkContext, type Rendered } from "./markdown";
+import { bottomListsSource, pageListHtml, type ListEnv } from "./pageLists";
 import { frameFor, useWiki } from "./wiki";
 
 /** Embeds go this many levels deep (as EMBED_DEPTH in src-tauri/src/relink.rs). */
@@ -35,6 +36,8 @@ export interface EmbedEnv {
   frame: (templateId: string | null | undefined) => Frame;
   /** The project's present day (ages in embedded infoboxes). */
   presentDay?: unknown;
+  /** The project's templates (page lists in embedded pages). */
+  templates?: import("./api").Template[];
 }
 
 function escapeHtml(s: string) {
@@ -43,15 +46,20 @@ function escapeHtml(s: string) {
 
 const SLOT = /<div class="embed-slot" data-slot="(\d+)"><\/div>/g;
 
-/** renderPage, with each embed's content put in its place. */
+/** renderPage, with each embed's content and each page list put in its
+ * place. `lists`: the page's infobox and relations, for its page lists (the
+ * lists at the bottom are added to the text, so their headings are in Contents). */
 export function renderWithEmbeds(
   source: string,
   opts: { lineAnchors?: boolean; tocBox?: boolean; links: LinkContext },
   env: EmbedEnv | null,
+  lists: ListEnv | null = null,
 ): Rendered {
   const counter = { n: 0 };
-  return render(source, opts, env, env ? [env.hostId] : [], counter);
+  return render(source + bottomListsSource(lists, opts.links), opts, env, env ? [env.hostId] : [], counter, lists);
 }
+
+const LIST_SLOT = /<div class="pagelist-slot" data-slot="(\d+)"><\/div>/g;
 
 function render(
   source: string,
@@ -59,11 +67,12 @@ function render(
   env: EmbedEnv | null,
   stack: string[],
   counter: { n: number },
+  lists: ListEnv | null,
 ): Rendered {
   const r = renderPage(source, opts);
-  if (!r.embeds.length) return r;
-  const calls = r.embeds;
-  const html = r.html.replace(SLOT, (_, n: string) => embedHtml(calls[Number(n)], opts.links, env, stack, counter));
+  let html = r.html;
+  if (r.pageLists.length) html = html.replace(LIST_SLOT, (_, n: string) => pageListHtml(r.pageLists[Number(n)], lists, opts.links));
+  if (r.embeds.length) html = html.replace(SLOT, (_, n: string) => embedHtml(r.embeds[Number(n)], opts.links, env, stack, counter));
   return { ...r, html };
 }
 
@@ -88,6 +97,8 @@ function embedHtml(call: EmbedCall, links: LinkContext, env: EmbedEnv | null, st
   if (!src) return `<div class="embed embed-loading" aria-busy="true"></div>`;
 
   const inner = [...stack, id];
+  // Page lists in an embedded page list what points to that page.
+  const lists: ListEnv = { infobox: src.infobox, relations: src.relations, templates: env?.templates ?? [] };
   const box = (ib: Infobox | null) =>
     infoboxHtml(ib, { project: env!.project, title: src.title, links, relations: src.relations, presentDay: env!.presentDay, frame: env!.frame(ib?.template) });
   let content: string;
@@ -95,9 +106,9 @@ function embedHtml(call: EmbedCall, links: LinkContext, env: EmbedEnv | null, st
     content = box(src.infobox) || warning(`${title} has no infobox to show.`);
   } else if (call.section) {
     const text = sectionSource(src.body, call.section);
-    content = text === null ? warning(`${title} has no section “${call.section}”.`) : render(text, { tocBox: false, links }, env, inner, counter).html;
+    content = text === null ? warning(`${title} has no section “${call.section}”.`) : render(text, { tocBox: false, links }, env, inner, counter, lists).html;
   } else {
-    content = box(src.infobox) + render(src.body, { tocBox: false, links }, env, inner, counter).html;
+    content = box(src.infobox) + render(src.body + bottomListsSource(lists, links), { tocBox: false, links }, env, inner, counter, lists).html;
   }
   const link = (cls: string, text: string) =>
     `<a class="wikilink ${cls}" href="#" data-page="${escapeHtml(id)}" data-target="${escapeHtml(title)}"${call.section ? ` data-section="${escapeHtml(call.section)}"` : ""}>${text}</a>`;
@@ -148,7 +159,7 @@ export function useEmbedEnv(text: string, hostId: string): EmbedEnv | null {
     };
   }, [ids, wiki.project, wiki.names]);
   return useMemo(
-    () => (ids ? { project: wiki.project, sources: sources ?? new Map(), hostId, frame: (t) => frameFor(wiki, t), presentDay: wiki.settings.presentDay } : null),
+    () => (ids ? { project: wiki.project, sources: sources ?? new Map(), hostId, frame: (t) => frameFor(wiki, t), presentDay: wiki.settings.presentDay, templates: wiki.templates } : null),
     [ids, sources, wiki, hostId],
   );
 }

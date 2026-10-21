@@ -17,6 +17,7 @@ import { Sidebar, type MenuItem } from "./Sidebar";
 import { SidebarHeader, SidebarIcon } from "./SidebarHeader";
 import { TemplatesView, useTemplates } from "./TemplatesView";
 import { ProjectSettingsDialog } from "./ProjectSettings";
+import { RelationsView } from "./RelationsView";
 import { useThemes } from "./themes/runtime";
 import { ThemesView } from "./themes/ThemesView";
 import {
@@ -108,7 +109,7 @@ export function ProjectView({ project, onBack }: Props) {
   // A category page, or the list of all categories, shown instead of a page.
   const [category, setCategory] = useState<string | null>(null);
   // A screen shown instead of a page: the categories list, Templates or Themes.
-  const [panel, setPanel] = useState<"categories" | "templates" | "themes" | null>(null);
+  const [panel, setPanel] = useState<"categories" | "templates" | "themes" | "relations" | null>(null);
   const [imageFrame, setImageFrameState] = useState<Frame>(DEFAULT_FRAME);
   const [settings, setSettings] = useState<ProjectSettings>({ hideCategoryBox: false });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -268,7 +269,7 @@ export function ProjectView({ project, onBack }: Props) {
   }
 
   /** Shows the categories list, Templates or Themes instead of a page. */
-  async function openPanel(which: "categories" | "templates" | "themes") {
+  async function openPanel(which: "categories" | "templates" | "themes" | "relations") {
     await flushAll();
     if (which === "categories") remember("");
     setCategory(null);
@@ -890,6 +891,9 @@ export function ProjectView({ project, onBack }: Props) {
           Categories
           {categories.list.length > 0 && <span className="count">{categories.list.length}</span>}
         </button>
+        <button className={`plain templates-button ${panel === "relations" ? "selected" : ""}`} onClick={() => void openPanel("relations")}>
+          Relations
+        </button>
         <button className={`plain templates-button ${panel === "themes" ? "selected" : ""}`} onClick={() => void openPanel("themes")}>
           Themes
         </button>
@@ -955,6 +959,8 @@ export function ProjectView({ project, onBack }: Props) {
               void reload();
             }}
           />
+        ) : panel === "relations" ? (
+          <RelationsView openPage={(id) => void openPage(id)} />
         ) : panel === "themes" ? (
           <ThemesView
             project={project.id}
