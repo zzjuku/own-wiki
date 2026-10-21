@@ -247,3 +247,26 @@ test("a page's Page link field changed to Linked from keeps its values as typed-
   await expect(row.locator(".relation-list li")).toHaveText([/Page B.*typed in/, /Page Q.*typed in/]);
   await expect.poll(async () => (await storedPage(page, "Page K.md")).infobox.fields[0]).toMatchObject({ type: "linkedfrom", value: ["Page B", "Page Q"] });
 });
+
+test("Father and Children both Linked from: warned in the template and the Infobox tab, greyed out in Add", async ({ page }) => {
+  const circular: Template = {
+    ...PERSON,
+    fields: PERSON.fields.map((f) => (f.label === "Father" ? { ...f, type: "linkedfrom" as const, options: { from: ["Children"] } } : f)),
+  };
+  const pages: MockPage[] = [
+    { id: "Page A.md", title: "Page A", infobox: { template: PERSON.id, fields: circular.fields.map((f) => ({ ...f })) } },
+    { id: "Page E.md", title: "Page E", infobox: { template: PERSON.id, fields: circular.fields.map((f) => ({ ...f })) } },
+  ];
+  await openProject(page, oneProject(pages, { templates: [circular], mainPage: "Page A" }));
+  await infoboxTab(page);
+  await expect(formRow(page, "Children").locator(".field-warning")).toContainText("“Father” is a Linked from field too");
+  const dialog = await addDialog(page, "Children", "Page E");
+  await expect(dialog.getByRole("radio", { name: "Father" })).toBeDisabled();
+  await expect(dialog).toContainText("a Linked from field (it fills itself)");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Templates" }).click();
+  const children = page.locator(".field-defs > li").filter({ has: page.locator('input[aria-label="Field label"][value="Children"]') });
+  await expect(children.locator(".field-warning")).toContainText("Make “Father” a Page link field");
+  await children.scrollIntoViewIfNeeded();
+  await shot(page, "template-circular-warning");
+});

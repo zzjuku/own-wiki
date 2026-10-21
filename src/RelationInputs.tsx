@@ -9,7 +9,7 @@ import { useDialogs } from "./dialogs";
 import { PageNameInput } from "./FieldInputs";
 import { isLayout, kindLabel } from "./infobox";
 import { useReportError } from "./notify";
-import { reverseEntries, twoWayExtras, type RelationEntry } from "./relations";
+import { fromProblems, reverseEntries, twoWayExtras, type RelationEntry } from "./relations";
 import { useWiki } from "./wiki";
 import { norm } from "./wikilinks";
 
@@ -138,6 +138,13 @@ export function ReverseFieldInput({ field, onChange, ...rel }: RelationProps & {
           ))}
         </ul>
       )}
+      {fromProblems(wiki.templates, from)
+        .filter((p) => p.problem === "reverse")
+        .map((p) => (
+          <p key={p.name} className="field-warning" role="alert">
+            ⚠ “{p.name}” is a Linked from field too, so nothing stores this relation. In the template, make “{p.name}” a Page link field.
+          </p>
+        ))}
       {!entries.length && (
         <span className="muted small">
           {from.length ? `No page points here yet.` : "Choose which fields point here in the field settings (⚙)."}
@@ -284,7 +291,9 @@ function AddRelationDialog({
       case "here":
         return `already ${pageTitle}`;
       case "wrongType":
-        return `a ${kindLabel(s.kind ?? "")} field; change it to Page link to use it here`;
+        return s.kind === "linkedfrom"
+          ? "a Linked from field (it fills itself); make it a Page link field in the template to add here"
+          : `a ${kindLabel(s.kind ?? "")} field; change it to Page link to use it here`;
     }
   };
 

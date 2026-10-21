@@ -9,7 +9,7 @@ import { Chips, ColorPicker, DragHandle, moveItem, useReorder } from "./controls
 import { useDialogs } from "./dialogs";
 import { infoboxHtml, instantiate, isLayout, KINDS, newFieldKey, newFieldLabel, newTemplateId, PLACES } from "./infobox";
 import { MiniEditor } from "./MiniEditor";
-import { renameFieldInTemplates } from "./relations";
+import { fromProblems, renameFieldInTemplates } from "./relations";
 import { ApplyDialog, CopyTemplatesDialog } from "./TemplateDialogs";
 import { useReportError } from "./notify";
 import { displayGroup } from "./tree";
@@ -622,7 +622,8 @@ function LinkedFromOptions({
   templates: Template[];
 }) {
   const filter = options.templates ?? [];
-  const sortable = labelsOf(templates, ["number", "date"]);
+  const sortable = labelsOf(templates, ["number", "date", "dateplace", "datetext"]);
+  const problems = fromProblems(templates, options.from ?? []);
   const sortBy = options.sortBy ?? "";
   if (sortBy && !sortable.some((l) => norm(l) === norm(sortBy))) sortable.push(sortBy);
   const sortedTemplates = [...templates].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
@@ -640,6 +641,19 @@ function LinkedFromOptions({
         />
         <span className="muted">points to this page</span>
       </label>
+      {problems.map((p) => (
+        <p key={p.name} className="field-warning" role="alert">
+          {p.problem === "reverse" ? (
+            <>
+              ⚠ “{p.name}” is a Linked from field too: it fills itself and stores nothing, so nothing can show here and Add can't write anything.
+              Make “{p.name}” a <strong>Page link</strong> field (usually the parent fields such as Father and Mother are Page links, and
+              Children is Linked from).
+            </>
+          ) : (
+            <>⚠ No template has a field named “{p.name}” yet.</>
+          )}
+        </p>
+      ))}
       <div className="field-option template-filter" role="group" aria-label="Only pages using these templates">
         <span>Only pages from</span>
         <span className="template-checks">

@@ -146,3 +146,18 @@ export function renameFieldInTemplates(templates: Template[], old: string, next:
   });
   return changed ? out : templates;
 }
+
+/**
+ * Names in a Linked from field's `from` that can't bring any page: no
+ * template has a field with that name ("missing"), or every such field is a
+ * Linked from field itself ("reverse"), which fills itself and stores nothing.
+ */
+export function fromProblems(templates: Template[], from: string[]): { name: string; problem: "missing" | "reverse" }[] {
+  const out: { name: string; problem: "missing" | "reverse" }[] = [];
+  for (const name of from) {
+    const kinds = templates.flatMap((t) => t.fields.filter((f) => norm(f.label) === norm(name) && f.type !== "heading" && f.type !== "divider").map((f) => f.type));
+    if (!kinds.length) out.push({ name, problem: "missing" });
+    else if (kinds.every((k) => k === "linkedfrom")) out.push({ name, problem: "reverse" });
+  }
+  return out;
+}

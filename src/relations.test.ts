@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 import type { Field, IncomingField, PageInfo, Relations, Template } from "./api";
 import { infoboxHtml } from "./infobox";
 import { NameIndex } from "./names";
-import { renameFieldInTemplates, reverseEntries, sortEntries, twoWayExtras, typedNames } from "./relations";
+import { fromProblems, renameFieldInTemplates, reverseEntries, sortEntries, twoWayExtras, typedNames } from "./relations";
 
 const pages: PageInfo[] = ["Page A", "Page B", "Page C", "Page D", "Page 10", "Page 9"].map((t) => ({ id: `${t}.md`, title: t, group: "", aliases: [] }));
 pages[1].aliases = ["Alias B"];
@@ -127,5 +127,23 @@ describe("renameFieldInTemplates", () => {
     expect(renameFieldInTemplates(list, "Mother", " mother ")).toBe(list);
     expect(renameFieldInTemplates(list, "Mother", "")).toBe(list);
     expect(renameFieldInTemplates(list, "Nothing", "Else")).toBe(list);
+  });
+});
+
+describe("fromProblems", () => {
+  it("flags names no field has, and names only Linked from fields have", () => {
+    const t: Template = {
+      id: "t",
+      name: "T",
+      fields: [
+        { label: "Father", type: "linkedfrom", options: { from: ["Children"] } },
+        { label: "Children", type: "linkedfrom", options: { from: ["Father", "Mother"] } },
+        { label: "Spouse", type: "links" },
+      ],
+    };
+    expect(fromProblems([t], ["father", "Mother", "Spouse"])).toEqual([
+      { name: "father", problem: "reverse" },
+      { name: "Mother", problem: "missing" },
+    ]);
   });
 });
