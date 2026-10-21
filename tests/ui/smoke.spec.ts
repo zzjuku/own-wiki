@@ -47,8 +47,11 @@ test("links: autocomplete, follow, red link", async ({ page }) => {
   await openProject(page, data());
   await newPage(page, "Page D");
   await typeInEditor(page, "See [[Page C");
-  await expect(page.getByRole("option", { name: /Page C/ }).first()).toBeVisible();
+  await expect(page.getByRole("option", { name: /Page C/, selected: true })).toBeVisible();
+  // CodeMirror ignores Enter for a moment after the list changes (its interactionDelay).
+  await page.waitForTimeout(150);
   await page.keyboard.press("Enter");
+  await expect(page.locator(".cm-content")).toContainText("See [[Page C]]");
   await typeInEditor(page, " and [[Page E]].");
   await expect.poll(async () => (await storedPage(page, "Page D.md"))?.body).toBe("See [[Page C]] and [[Page E]].");
   await page.getByRole("button", { name: "View", exact: true }).click();

@@ -3,16 +3,16 @@
 // to pan, drag a node to move it; resting on a node highlights it and its
 // neighbours and shows the hover card; a click opens the page. Where the
 // nodes sit is remembered per project on this computer, so the graph looks
-// the same next time; Re-arrange lays it out anew.
+// the same next time; Re-arrange lays it out anew. The graph moves all the
+// time, Obsidian-style (controller.ts).
 import { useEffect, useRef, useState } from "react";
-import type { CameraState } from "sigma/types";
 import { api } from "../api";
 import { showCardFor } from "../HoverCard";
 import { useReportError } from "../notify";
 import { IS_MAC } from "../QuickOpen";
 import { useWiki } from "../wiki";
 import { useGraphColors } from "./colors";
-import { GraphController, type SavedLayout } from "./controller";
+import { GraphController, type SavedLayout, type ViewState } from "./controller";
 import { buildModel, DEFAULT_FILTERS, type GraphData, type Model, type ModelNode } from "./model";
 
 export const GRAPH_KEYS = IS_MAC ? "⌘⌥G" : "Ctrl+Alt+G";
@@ -24,7 +24,7 @@ export function isGraphKey(e: KeyboardEvent): boolean {
 
 // Kept while the app runs, per project: where the view was (Back returns
 // there) and the positions last saved (read from disk only once).
-const cameras = new Map<string, CameraState>();
+const views = new Map<string, ViewState>();
 const layouts = new Map<string, SavedLayout | null>();
 const SAVE_DELAY_MS = 800;
 
@@ -56,7 +56,6 @@ export function GraphView({ revealAll, dataKey, onOpenPage }: {
   const box = useRef<HTMLDivElement>(null);
   const ctrl = useRef<GraphController | null>(null);
   const [model, setModel] = useState<Model | null>(null);
-  const [arranging, setArranging] = useState(false);
   const actions = useRef({ onOpenPage, wiki });
   actions.current = { onOpenPage, wiki };
 
@@ -95,14 +94,13 @@ export function GraphView({ revealAll, dataKey, onOpenPage }: {
         pending = layout;
         clearTimeout(saveTimer);
         saveTimer = setTimeout(flush, SAVE_DELAY_MS);
-        setArranging(false);
       },
     });
     ctrl.current = c;
     if (import.meta.env.MODE !== "production") window.__graph = c;
     return () => {
       // (Only a graph that was shown: React mounts screens twice while developing.)
-      if (c.graph.order) cameras.set(project, c.getCamera());
+      if (c.graph.order) views.set(project, c.getView());
       c.destroy();
       flush();
       showCardFor(null);
@@ -129,11 +127,10 @@ export function GraphView({ revealAll, dataKey, onOpenPage }: {
         c.setModel(m, saved);
         if (first.current) {
           first.current = false;
-          const cam = cameras.get(project);
-          if (cam) c.setCamera(cam);
-          else if (!c.layoutRunning) c.fitView();
+          const view = views.get(project);
+          if (view) c.setView(view);
+          else c.fitView();
         }
-        setArranging(c.layoutRunning);
         setModel(m);
       },
       report,
@@ -156,16 +153,12 @@ export function GraphView({ revealAll, dataKey, onOpenPage }: {
         {model && (
           <span className="muted small graph-count">
             {pages === 1 ? "1 page" : `${pages.toLocaleString("en")} pages`} · {lines === 1 ? "1 link" : `${lines.toLocaleString("en")} links`}
-            {arranging && " · arranging…"}
           </span>
         )}
         <button
           title="Lay out every node anew (positions you dragged are lost)"
           disabled={!model?.nodes.length}
-          onClick={() => {
-            ctrl.current?.rearrange();
-            setArranging(true);
-          }}
+          onClick={() => ctrl.current?.rearrange()}
         >
           Re-arrange
         </button>

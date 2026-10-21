@@ -43,7 +43,7 @@ test("5,000 pages, 25,000 links", async ({ page }) => {
   await page.getByRole("button", { name: "Graph", exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__graph?.graph.order ?? 0), { intervals: [20] }).toBeGreaterThan(4000);
   const shown = Date.now() - t0;
-  await expect.poll(() => page.evaluate(() => window.__graph?.layoutRunning), { timeout: 120_000, intervals: [100] }).toBe(false);
+  await expect.poll(() => page.evaluate(() => window.__graph?.settled), { timeout: 120_000, intervals: [100] }).toBe(true);
   const settled = Date.now() - t0;
   const stats = await page.evaluate(() => {
     const gl = document.createElement("canvas").getContext("webgl");
@@ -100,7 +100,7 @@ test("5,000 pages, 25,000 links", async ({ page }) => {
   await page.getByRole("button", { name: "Graph", exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__graph?.graph.order ?? 0), { intervals: [20] }).toBeGreaterThan(4000);
   const again = Date.now() - t1;
-  const relayout = await page.evaluate(() => window.__graph!.layoutRunning);
+  const relayout = !(await page.evaluate(() => window.__graph!.settled));
   await page.screenshot({ path: "test-results/graph-speed.png" });
 
   console.log(JSON.stringify({ reopenMs: again, relayout }));

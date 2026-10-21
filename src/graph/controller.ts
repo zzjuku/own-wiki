@@ -1,13 +1,17 @@
-// Draws the graph with sigma.js (WebGL) and handles the mouse: zoom, pan,
-// dragging nodes, hover highlight (the node and its neighbours; the rest
-// fades) and clicks. Node positions come from the remembered layout, and
-// otherwise from the force layout in a worker (layout.ts).
+// Draws the graph with sigma.js (WebGL) and makes it feel alive, Obsidian-
+// style: the physics (physics.ts) runs all the time, so dragging a node pulls
+// its neighbours along and it springs back when let go; settled, the graph
+// keeps drifting gently. Resting on a node fades the rest of the graph out
+// smoothly and brings the node and its neighbours forward; names fade in as
+// you zoom in. Where the nodes sit is remembered (saved when the graph comes
+// to rest), so opening the graph again shows the same picture.
 import Graph from "graphology";
 import Sigma from "sigma";
 import { EdgeArrowProgram, EdgeDoubleArrowProgram, EdgeRectangleProgram } from "sigma/rendering";
 import type { CameraState } from "sigma/types";
-import { Layout } from "./layout";
+import { NodeGlowProgram } from "./glow";
 import { edgeLabel, type Model, type ModelEdge, type ModelNode } from "./model";
+import { LINK_DISTANCE, Physics } from "./physics";
 
 export interface GraphColors {
   bg: string;
@@ -23,12 +27,15 @@ export interface GraphColors {
   font: string;
 }
 
-/** Remembered node positions (graph coordinates) and the area they span. */
+/** Where the view was: the camera and the frame it's measured in. */
+export interface ViewState {
+  camera: CameraState;
+  bbox: { x: [number, number]; y: [number, number] } | null;
+}
+
+/** Remembered node positions (graph coordinates). */
 export interface SavedLayout {
   positions: Record<string, [number, number]>;
-  bbox?: { x: [number, number]; y: [number, number] };
-  /** Left before the layout finished: it goes on from here next time. */
-  unsettled?: boolean;
 }
 
 interface NodeAttrs {
@@ -49,62 +56,93 @@ export interface ControllerEvents {
   open(node: ModelNode): void;
   /** The mouse rests on a node (null: left it); `rect` is where it is on screen. */
   hover(node: ModelNode | null, rect: DOMRect | null): void;
-  /** Positions changed and should be remembered (layout finished, node dragged). */
+  /** Positions worth remembering (the graph came to rest, or the screen closes). */
   save(layout: SavedLayout): void;
 }
 
-/** Most rounds a full layout runs, by size (it usually settles sooner). */
-const fullRounds = (n: number) => (n > 2000 ? 700 : n > 300 ? 1000 : 1500);
-/** Rounds for placing new nodes among fixed old ones. */
-const PLACE_ROUNDS = 150;
 const HOVER_DELAY_MS = 400;
+/** How long the fade in and out around a hovered node takes. */
+const FADE_MS = 220;
+/** Names fade in while linked pages get from this far apart on screen to the next (bigger pages earlier). */
+const LABEL_FROM_PX = 80;
+const LABEL_TO_PX = 130;
 
-const nodeSize = (degree: number) => Math.min(4 + 1.8 * Math.sqrt(degree), 18);
-/** Names show when linked pages are about this far apart on screen (big pages from half of it). */
-const LABEL_SPACING_PX = 90;
-/** A newly laid out graph starts zoomed out until linked pages are about this far apart. */
-const START_SPACING_PX = 70;
+const nodeSize = (degree: number) => Math.min(3 + 1.4 * Math.sqrt(degree), 14);
+
+type Rgb = [number, number, number];
+const parseRgb = (c: string): Rgb => {
+  const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c);
+  return m ? [+m[1], +m[2], +m[3]] : [128, 128, 128];
+};
+/** `a` moved `t` of the way to `b`, in a few steps (sigma keeps every colour string it sees). */
+function mix(a: string, b: string, t: number): string {
+  if (t <= 0) return a;
+  if (t >= 1) return b;
+  const q = Math.round(t * 12) / 12;
+  const x = parseRgb(a);
+  const y = parseRgb(b);
+  return `rgba(${x.map((v, i) => Math.round(v + (y[i] - v) * q)).join(",")},1)`;
+}
 
 export class GraphController {
   readonly graph = new Graph<NodeAttrs, EdgeAttrs>({ type: "undirected", allowSelfLoops: false });
   readonly sigma: Sigma<NodeAttrs, EdgeAttrs>;
-  private layout: Layout;
-  /** The node order of the running layout. */
-  private layoutKeys: string[] = [];
-  private hovered: string | null = null;
-  private neighbours = new Set<string>();
-  private hoverTimer: ReturnType<typeof setTimeout> | undefined;
-  private dragged: string | null = null;
-  private dragMoved = false;
+  private physics: Physics;
+  /** The node order the physics knows. */
+  private order: string[] = [];
+  private index = new Map<string, number>();
   private colors: GraphColors;
   private arrows = false;
   private spoilers = false;
   /** Search matches: drawn highlighted. */
   private marked = new Set<string>();
+  // Hover: the node, its neighbours, and how far the fade has got (0–1).
+  private hovered: string | null = null;
+  private focusSet = new Set<string>();
+  private fade = 0;
+  private fadeFrom = 0;
+  private fadeStart = 0;
+  private fadeTo = 0;
+  private fadeFrame = 0;
+  private hoverTimer: ReturnType<typeof setTimeout> | undefined;
+  private dragged: string | null = null;
+  private dragMoved = false;
+  /** Labels' fade by zoom: how far apart linked pages are on screen. */
+  private spacingPx = 0;
+  private everSettled = false;
+  /** Show the whole graph once a new layout has settled. */
+  private fitWhenSettled = false;
+  private onVisibility = () => this.physics.pause(document.hidden);
 
   constructor(container: HTMLElement, colors: GraphColors, private events: ControllerEvents) {
     this.colors = colors;
-    this.layout = new Layout((positions, done) => this.applyLayout(positions, done));
+    this.physics = new Physics((positions, settled) => this.frame(positions, settled));
     this.sigma = new Sigma<NodeAttrs, EdgeAttrs>(this.graph, container, {
       allowInvalidContainer: true,
       renderEdgeLabels: true,
-      labelRenderedSizeThreshold: Infinity,
+      labelRenderedSizeThreshold: 0,
+      labelDensity: 0.9,
+      labelGridCellSize: 110,
       // Nodes grow a little when zooming in, and don't shrink when zooming out.
-      zoomToSizeRatioFunction: (r) => (r < 1 ? Math.sqrt(r) : 1),
-      labelDensity: 0.8,
-      labelGridCellSize: 120,
+      zoomToSizeRatioFunction: (r) => (r < 1 ? r ** 0.35 : 1),
       zIndex: true,
-      minCameraRatio: 0.02,
-      maxCameraRatio: 8,
-      stagePadding: 40,
+      minCameraRatio: 0.03,
+      maxCameraRatio: 6,
+      stagePadding: 30,
+      zoomDuration: 220,
+      inertiaDuration: 400,
+      defaultNodeType: "glow",
+      nodeProgramClasses: { glow: NodeGlowProgram },
       defaultEdgeType: "line",
       edgeProgramClasses: { line: EdgeRectangleProgram, arrow: EdgeArrowProgram, both: EdgeDoubleArrowProgram },
       nodeReducer: (key, attrs) => this.nodeLook(key, attrs),
       edgeReducer: (key, attrs) => this.edgeLook(key, attrs),
-      defaultDrawNodeHover: (ctx, data, settings) => this.drawHover(ctx, data, settings),
+      defaultDrawNodeLabel: (ctx, data, settings) => this.drawLabel(ctx, data, settings, false),
+      defaultDrawNodeHover: (ctx, data, settings) => this.drawLabel(ctx, data, settings, true),
     });
     this.applyColors();
     this.bindEvents();
+    document.addEventListener("visibilitychange", this.onVisibility);
   }
 
   // ---- looks ----
@@ -152,42 +190,75 @@ export class GraphController {
 
   private nodeLook(key: string, a: NodeAttrs) {
     const base = { x: a.x, y: a.y, size: a.size, label: a.label, color: this.kindColor(a.node) };
-    if (this.hovered) {
-      if (key === this.hovered) return { ...base, color: this.colors.active, forceLabel: true, zIndex: 2, highlighted: true };
-      if (this.neighbours.has(key)) return { ...base, forceLabel: true, zIndex: 1 };
-      return { ...base, color: this.colors.faded, label: "", zIndex: 0 };
+    const f = this.fade;
+    if (f > 0 && this.hovered) {
+      if (key === this.hovered) return { ...base, size: a.size * (1 + 0.3 * f), color: mix(base.color, this.colors.active, f), forceLabel: true, zIndex: 3 };
+      if (this.focusSet.has(key)) return { ...base, size: a.size * (1 + 0.1 * f), forceLabel: f > 0.5, zIndex: 2 };
+      // The rest steps back: paler and a little smaller, names gone.
+      return { ...base, size: a.size * (1 - 0.25 * f), color: mix(base.color, this.colors.faded, f), label: f > 0.3 ? "" : a.label, zIndex: 0 };
     }
     if (this.marked.has(key)) return { ...base, color: this.colors.active, forceLabel: true, zIndex: 2 };
     if (key === this.dragged) return { ...base, forceLabel: true, zIndex: 2 };
-    return base;
+    return { ...base, zIndex: 1 };
   }
 
   private edgeLook(key: string, a: EdgeAttrs) {
     const e = a.edge;
     const type = this.arrows && e.kind === "link" ? (e.forward && e.backward ? "both" : "arrow") : "line";
-    if (this.hovered) {
+    const f = this.fade;
+    if (f > 0 && this.hovered) {
       const [s, t] = this.graph.extremities(key);
-      if (s !== this.hovered && t !== this.hovered) return { size: a.size, color: this.colors.faded, type, zIndex: 0, label: "" };
-      return { size: a.size * 1.6, color: this.colors.lineActive, type, zIndex: 1, label: edgeLabel(e, this.spoilers), forceLabel: true };
+      if (s !== this.hovered && t !== this.hovered) return { size: a.size, color: mix(this.colors.line, this.colors.faded, f), type, zIndex: 0, label: "" };
+      return {
+        size: a.size * (1 + 0.8 * f),
+        color: mix(this.colors.line, this.colors.lineActive, f),
+        type,
+        zIndex: 2,
+        label: f > 0.5 ? edgeLabel(e, this.spoilers) : "",
+        forceLabel: true,
+      };
     }
-    return { size: a.size, color: this.colors.line, type, label: "" };
+    return { size: a.size, color: this.colors.line, type, label: "", zIndex: 1 };
   }
 
-  /** The hovered node's label on a small box in the graph's colours. */
-  private drawHover(ctx: CanvasRenderingContext2D, data: { x: number; y: number; size: number; label: string | null }, settings: { labelSize: number; labelFont: string; labelWeight: string }) {
+  /** How strongly a node's name shows at this zoom (bigger nodes earlier). */
+  private labelAlpha(size: number): number {
+    const px = this.spacingPx * (0.55 + size / 14);
+    return Math.max(0, Math.min(1, (px - LABEL_FROM_PX) / (LABEL_TO_PX - LABEL_FROM_PX)));
+  }
+
+  /** A name beside its node, with a soft outline in the background colour; the hovered one on a small box. */
+  private drawLabel(
+    ctx: CanvasRenderingContext2D,
+    data: { x: number; y: number; size: number; label: string | null; forceLabel?: boolean },
+    settings: { labelSize: number; labelFont: string; labelWeight: string },
+    hovered: boolean,
+  ) {
     if (!data.label) return;
+    const alpha = hovered || data.forceLabel ? 1 : this.labelAlpha(data.size);
+    if (alpha <= 0.02) return;
     const size = settings.labelSize;
-    ctx.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`;
-    const w = ctx.measureText(data.label).width;
-    const x = data.x + data.size + 3;
-    ctx.fillStyle = this.colors.bg;
-    ctx.globalAlpha = 0.9;
-    ctx.beginPath();
-    ctx.roundRect(x - 3, data.y - size / 2 - 3, w + 6, size + 6, 3);
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.font = `${hovered ? "600" : settings.labelWeight} ${size}px ${settings.labelFont}`;
+    const x = data.x + data.size + 4;
+    const y = data.y + size / 3;
+    ctx.globalAlpha = alpha;
+    if (hovered) {
+      const w = ctx.measureText(data.label).width;
+      ctx.fillStyle = this.colors.bg;
+      ctx.globalAlpha = 0.92;
+      ctx.beginPath();
+      ctx.roundRect(x - 4, data.y - size / 2 - 4, w + 8, size + 8, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.lineWidth = 3;
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = this.colors.bg;
+      ctx.strokeText(data.label, x, y);
+    }
     ctx.fillStyle = this.colors.label;
-    ctx.fillText(data.label, x, data.y + size / 3);
+    ctx.fillText(data.label, x, y);
+    ctx.globalAlpha = 1;
   }
 
   // ---- contents ----
@@ -195,68 +266,69 @@ export class GraphController {
   /**
    * Shows `model`. Nodes already shown keep their place; others take their
    * remembered place from `saved`, else start next to their neighbours (or
-   * anywhere, the first time) and the layout places them.
+   * anywhere, the first time). Then the physics settles them in.
    */
   setModel(model: Model, saved: SavedLayout | null) {
     const g = this.graph;
-    const wanted = new Map(model.nodes.map((n) => [n.key, n]));
+    const wanted = new Set(model.nodes.map((n) => n.key));
     g.forEachNode((key) => {
       if (!wanted.has(key)) g.dropNode(key);
     });
     const fresh: string[] = [];
+    let known = 0;
     for (const n of model.nodes) {
       const size = nodeSize(n.degree);
       if (g.hasNode(n.key)) {
         g.mergeNodeAttributes(n.key, { size, label: n.label, node: n });
+        known++;
         continue;
       }
       const p = saved?.positions[n.key];
       g.addNode(n.key, { x: p ? p[0] : 0, y: p ? p[1] : 0, size, label: n.label, node: n });
-      if (!p) fresh.push(n.key);
+      if (p) known++;
+      else fresh.push(n.key);
     }
     const edges = new Set(model.edges.map((e) => e.key));
     g.forEachEdge((key) => {
       if (!edges.has(key)) g.dropEdge(key);
     });
     for (const e of model.edges) {
-      const size = e.kind === "link" ? 1 : 0.6;
+      const size = e.kind === "link" ? 0.9 : 0.6;
       if (g.hasEdge(e.key)) g.mergeEdgeAttributes(e.key, { edge: e, size });
       else if (!g.hasEdge(e.source, e.target)) g.addEdgeWithKey(e.key, e.source, e.target, { edge: e, size });
     }
-    if (fresh.length === g.order && g.order > 0) this.rearrange();
-    else if (saved?.unsettled && fresh.length < g.order) this.runLayout(new Set(), fullRounds(g.order));
-    else {
-      if (saved?.bbox && !this.sigma.getCustomBBox()) this.sigma.setCustomBBox(saved.bbox);
-      if (fresh.length) this.place(fresh);
-      else this.sigma.refresh();
-      this.measure();
-    }
+    if (!known) this.scatter(g.nodes());
+    else this.placeNear(fresh);
+    this.fitWhenSettled = !known;
+    // Nothing new: only a little settling. New pages: more. Everything new: a whole layout.
+    this.startPhysics(!known ? 1 : fresh.length ? 0.3 : 0.08);
   }
 
   /** Lays everything out anew. */
   rearrange() {
-    const n = this.graph.order;
-    const r = 10 * Math.sqrt(n + 1);
-    this.graph.updateEachNodeAttributes(
-      (_, a) => {
-        // Random spot in a disc: a neutral start for the layout.
-        const t = Math.random() * 2 * Math.PI;
-        const d = r * Math.sqrt(Math.random());
-        a.x = d * Math.cos(t);
-        a.y = d * Math.sin(t);
-        return a;
-      },
-      { attributes: ["x", "y"] },
-    );
-    this.sigma.setCustomBBox(null);
-    this.runLayout(new Set(), fullRounds(n));
+    this.scatter(this.graph.nodes());
+    this.startPhysics(1);
+    this.fitWhenSettled = true;
   }
 
-  /** Puts new nodes next to their placed neighbours and lets the layout fit them in. */
-  private place(fresh: string[]) {
+  /** Random spots in a disc: a neutral start. */
+  private scatter(keys: string[]) {
+    const r = 12 * Math.sqrt(keys.length + 1);
+    for (const key of keys) {
+      const t = Math.random() * 2 * Math.PI;
+      const d = r * Math.sqrt(Math.random());
+      this.graph.mergeNodeAttributes(key, { x: d * Math.cos(t), y: d * Math.sin(t) });
+    }
+  }
+
+  /** New nodes next to their placed neighbours (else at the edge of the graph). */
+  private placeNear(fresh: string[]) {
     const g = this.graph;
     const isFresh = new Set(fresh);
-    const spread = this.spread();
+    let reach = 50;
+    g.forEachNode((key, a) => {
+      if (!isFresh.has(key)) reach = Math.max(reach, Math.hypot(a.x, a.y));
+    });
     for (const key of fresh) {
       let x = 0, y = 0, k = 0;
       g.forEachNeighbor(key, (nb, a) => {
@@ -265,60 +337,40 @@ export class GraphController {
         y += a.y;
         k++;
       });
-      const jitter = spread * 0.03;
-      const a = g.getNodeAttributes(key);
-      if (k) {
-        a.x = x / k + (Math.random() - 0.5) * jitter;
-        a.y = y / k + (Math.random() - 0.5) * jitter;
-      } else {
-        // No placed neighbour: at the edge of the graph.
-        const t = Math.random() * 2 * Math.PI;
-        a.x = Math.cos(t) * spread * 0.5;
-        a.y = Math.sin(t) * spread * 0.5;
-      }
+      const t = Math.random() * 2 * Math.PI;
+      const near = k ? [x / k + Math.cos(t) * LINK_DISTANCE * 0.5, y / k + Math.sin(t) * LINK_DISTANCE * 0.5] : [Math.cos(t) * reach, Math.sin(t) * reach];
+      g.mergeNodeAttributes(key, { x: near[0], y: near[1] });
     }
-    const fixed = new Set<string>();
-    g.forEachNode((key) => {
-      if (!isFresh.has(key)) fixed.add(key);
-    });
-    this.runLayout(fixed, PLACE_ROUNDS);
   }
 
-  private spread(): number {
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    this.graph.forEachNode((_, a) => {
-      minX = Math.min(minX, a.x);
-      maxX = Math.max(maxX, a.x);
-      minY = Math.min(minY, a.y);
-      maxY = Math.max(maxY, a.y);
-    });
-    return Number.isFinite(minX) ? Math.max(maxX - minX, maxY - minY, 10) : 100;
-  }
-
-  private runLayout(fixed: Set<string>, rounds: number) {
+  private startPhysics(alpha: number) {
     const g = this.graph;
-    this.layoutKeys = g.nodes();
-    const at = new Map(this.layoutKeys.map((k, i) => [k, i]));
-    const positions = new Float32Array(this.layoutKeys.length * 2);
-    const fixedFlags = new Uint8Array(this.layoutKeys.length);
-    this.layoutKeys.forEach((k, i) => {
+    this.order = g.nodes();
+    this.index = new Map(this.order.map((k, i) => [k, i]));
+    const positions = new Float32Array(this.order.length * 2);
+    const radius = new Float32Array(this.order.length);
+    this.order.forEach((k, i) => {
       const a = g.getNodeAttributes(k);
       positions[i * 2] = a.x;
       positions[i * 2 + 1] = a.y;
-      fixedFlags[i] = fixed.has(k) || k === this.dragged ? 1 : 0;
+      radius[i] = a.size * 0.6;
     });
     const edges = new Uint32Array(g.size * 2);
     let j = 0;
     g.forEachEdge((_, __, s, t) => {
-      edges[j++] = at.get(s)!;
-      edges[j++] = at.get(t)!;
+      edges[j++] = this.index.get(s)!;
+      edges[j++] = this.index.get(t)!;
     });
-    this.layout.start(positions, fixedFlags, edges, rounds, fixed.size ? 20 : 60);
+    this.everSettled = alpha < 0.1;
+    this.physics.start(positions, radius, edges, alpha, true);
     this.sigma.refresh();
+    this.measure();
   }
 
-  private applyLayout(positions: Float32Array, done: boolean) {
-    const keys = this.layoutKeys;
+  /** One frame of the physics. */
+  private frame(positions: Float32Array, settled: boolean) {
+    const keys = this.order;
+    if (positions.length !== keys.length * 2) return;
     const g = this.graph;
     for (let i = 0; i < keys.length; i++) {
       if (keys[i] === this.dragged || !g.hasNode(keys[i])) continue;
@@ -328,84 +380,93 @@ export class GraphController {
     }
     // Tell sigma the positions changed (one event for all nodes).
     g.updateEachNodeAttributes((_, a) => a, { attributes: ["x", "y"] });
-    if (done) {
-      const fresh = !this.sigma.getCustomBBox();
-      if (fresh) this.sigma.setCustomBBox(this.sigma.getBBox());
-      this.measure();
-      if (fresh) void this.sigma.getCamera().animate({ x: 0.5, y: 0.5, ratio: this.startRatio(), angle: 0 }, { duration: 300 });
+    if (settled) {
+      // A new layout ends with a smooth move to show all of it.
+      if (!this.everSettled && this.fitWhenSettled) void this.fitNodes(700);
+      this.fitWhenSettled = false;
+      this.everSettled = true;
       this.save();
     }
   }
 
-  get layoutRunning(): boolean {
-    return this.layout.running;
+  /** The graph has come to rest at least once (positions saved). */
+  get settled(): boolean {
+    return this.everSettled;
   }
 
-  private save(unsettled = false) {
+  private save() {
     const positions: SavedLayout["positions"] = {};
     this.graph.forEachNode((key, a) => {
-      positions[key] = [Math.round(a.x * 100) / 100, Math.round(a.y * 100) / 100];
+      positions[key] = [Math.round(a.x * 10) / 10, Math.round(a.y * 10) / 10];
     });
-    const bbox = this.sigma.getCustomBBox() ?? this.sigma.getBBox();
-    this.events.save(unsettled ? { positions, bbox, unsettled } : { positions, bbox });
+    this.events.save({ positions });
   }
 
   // ---- camera ----
 
-  /** Median length of a line on screen at the full view (ratio 1), names show by it; -1: not measured yet. */
-  private spacing = -1;
-
-  /** Measures how far apart linked nodes are drawn (after the layout or loading positions). */
-  private measure() {
-    const g = this.graph;
-    const full = { x: 0.5, y: 0.5, ratio: 1, angle: 0 };
-    const lengths: number[] = [];
-    const step = Math.max(1, Math.floor(g.size / 2000));
-    let i = 0;
-    g.forEachEdge((_, __, s, t) => {
-      if (i++ % step) return;
-      const a = this.sigma.getNodeDisplayData(s);
-      const b = this.sigma.getNodeDisplayData(t);
-      if (!a || !b) return;
-      const pa = this.sigma.framedGraphToViewport(a, { cameraState: full });
-      const pb = this.sigma.framedGraphToViewport(b, { cameraState: full });
-      lengths.push(Math.hypot(pa.x - pb.x, pa.y - pb.y));
+  /**
+   * The view frame stays put while nodes move (sigma would otherwise refit the
+   * graph every frame): a square around the middle, big enough for the graph.
+   */
+  private frameBox() {
+    // A new layout spreads out as it settles: room for about that much.
+    let reach = this.fitWhenSettled ? 18 * Math.sqrt(this.graph.order) + 60 : 60;
+    this.graph.forEachNode((_, a) => {
+      reach = Math.max(reach, Math.abs(a.x), Math.abs(a.y));
     });
-    lengths.sort((x, y) => x - y);
-    this.spacing = lengths.length ? lengths[lengths.length >> 1] : 0;
-    this.updateLabels();
+    const r = Math.max(reach * 1.1, 200);
+    this.sigma.setCustomBBox({ x: [-r, r], y: [-r, r] });
   }
 
-  /** The zoom a new layout starts at: the whole graph, but not spread out more than needed. */
-  private startRatio(): number {
-    return this.spacing > 0 ? Math.min(Math.max(1, this.spacing / START_SPACING_PX), 6) : 1;
-  }
-
-  /** Names show once zoomed in far enough (bigger nodes earlier). */
-  private updateLabels() {
-    const onScreen = this.spacing / this.sigma.getCamera().ratio;
-    const threshold = this.spacing < 0 ? Infinity : !this.spacing ? 0 : onScreen >= LABEL_SPACING_PX ? 0 : onScreen >= LABEL_SPACING_PX / 2 ? 10 : Infinity;
-    if (this.sigma.getSetting("labelRenderedSizeThreshold") !== threshold) this.sigma.setSetting("labelRenderedSizeThreshold", threshold);
+  /** How far apart linked pages are drawn now; names fade by it. */
+  private measure() {
+    const a = this.sigma.graphToViewport({ x: 0, y: 0 });
+    const b = this.sigma.graphToViewport({ x: LINK_DISTANCE, y: 0 });
+    this.spacingPx = Math.hypot(b.x - a.x, b.y - a.y);
   }
 
   getCamera(): CameraState {
     return this.sigma.getCamera().getState();
   }
 
-  setCamera(state: CameraState) {
-    this.sigma.getCamera().setState(state);
+  getView(): ViewState {
+    return { camera: this.getCamera(), bbox: this.sigma.getCustomBBox() };
   }
 
-  /** The whole graph, as a new layout starts. */
+  setView(view: ViewState) {
+    this.sigma.setCustomBBox(view.bbox);
+    this.sigma.getCamera().setState(view.camera);
+    this.measure();
+  }
+
+  /** The whole graph (a new layout: the space it will need). */
   fitView() {
-    this.sigma.getCamera().setState({ x: 0.5, y: 0.5, ratio: this.startRatio(), angle: 0 });
+    this.frameBox();
+    this.sigma.getCamera().setState({ x: 0.5, y: 0.5, ratio: 1, angle: 0 });
+    this.measure();
+  }
+
+  /** Moves the view so every node shows. */
+  private fitNodes(duration: number) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    this.graph.forEachNode((key) => {
+      const d = this.sigma.getNodeDisplayData(key);
+      if (!d) return;
+      minX = Math.min(minX, d.x);
+      maxX = Math.max(maxX, d.x);
+      minY = Math.min(minY, d.y);
+      maxY = Math.max(maxY, d.y);
+    });
+    if (!Number.isFinite(minX)) return;
+    const ratio = Math.min(Math.max(Math.max(maxX - minX, maxY - minY) * 1.15, 0.15), 1.5);
+    return this.sigma.getCamera().animate({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, ratio, angle: 0 }, { duration });
   }
 
   /** Moves the view to a node (search). */
   focus(key: string) {
     const d = this.sigma.getNodeDisplayData(key);
     if (!d) return;
-    void this.sigma.getCamera().animate({ x: d.x, y: d.y, ratio: Math.min(this.sigma.getCamera().ratio, 0.4) }, { duration: 400 });
+    void this.sigma.getCamera().animate({ x: d.x, y: d.y, ratio: Math.min(this.sigma.getCamera().ratio, 0.4) }, { duration: 500 });
   }
 
   /** Where a node is on screen. */
@@ -414,16 +475,31 @@ export class GraphController {
     const a = this.graph.getNodeAttributes(key);
     const p = this.sigma.graphToViewport({ x: a.x, y: a.y });
     const box = this.sigma.getContainer().getBoundingClientRect();
-    const r = this.sigma.scaleSize(this.sigma.getNodeDisplayData(key)?.size ?? a.size);
+    const r = this.sigma.scaleSize(a.size);
     return new DOMRect(box.left + p.x - r, box.top + p.y - r, r * 2, r * 2);
   }
 
   // ---- mouse ----
 
+  /** Starts fading towards `key` highlighted (or back, with null). */
   private setHovered(key: string | null) {
-    this.hovered = key;
-    this.neighbours = new Set(key ? this.graph.neighbors(key) : []);
-    this.sigma.refresh({ skipIndexation: true });
+    if (key) {
+      this.hovered = key;
+      this.focusSet = new Set(this.graph.neighbors(key));
+    }
+    this.fadeFrom = this.fade;
+    this.fadeTo = key ? 1 : 0;
+    this.fadeStart = performance.now();
+    cancelAnimationFrame(this.fadeFrame);
+    const step = (now: number) => {
+      const t = Math.min(1, (now - this.fadeStart) / FADE_MS);
+      const eased = 1 - (1 - t) ** 3;
+      this.fade = this.fadeFrom + (this.fadeTo - this.fadeFrom) * eased;
+      if (t >= 1 && !this.fadeTo) this.hovered = null;
+      this.sigma.refresh({ skipIndexation: true });
+      if (t < 1) this.fadeFrame = requestAnimationFrame(step);
+    };
+    this.fadeFrame = requestAnimationFrame(step);
   }
 
   private bindEvents() {
@@ -434,7 +510,7 @@ export class GraphController {
       this.setHovered(node);
       clearTimeout(this.hoverTimer);
       this.hoverTimer = setTimeout(() => {
-        if (this.hovered === node && !this.dragged) this.events.hover(g.getNodeAttribute(node, "node"), this.nodeRect(node));
+        if (this.hovered === node && this.fadeTo && !this.dragged) this.events.hover(g.getNodeAttribute(node, "node"), this.nodeRect(node));
       }, HOVER_DELAY_MS);
     });
     s.on("leaveNode", () => {
@@ -448,7 +524,6 @@ export class GraphController {
       this.dragMoved = false;
       clearTimeout(this.hoverTimer);
       this.events.hover(null, null);
-      if (!s.getCustomBBox()) s.setCustomBBox(s.getBBox());
       event.preventSigmaDefault();
     });
     s.on("moveBody", ({ event }) => {
@@ -456,8 +531,8 @@ export class GraphController {
       const p = s.viewportToGraph(event);
       g.mergeNodeAttributes(this.dragged, { x: p.x, y: p.y });
       this.dragMoved = true;
-      const i = this.layout.running ? this.layoutKeys.indexOf(this.dragged) : -1;
-      if (i >= 0) this.layout.move(i, p.x, p.y, true);
+      const i = this.index.get(this.dragged);
+      if (i !== undefined) this.physics.drag(i, p.x, p.y);
       event.preventSigmaDefault();
       event.original.preventDefault();
       event.original.stopPropagation();
@@ -466,33 +541,25 @@ export class GraphController {
       const node = this.dragged;
       if (!node) return;
       this.dragged = null;
-      if (this.dragMoved) {
-        const a = g.getNodeAttributes(node);
-        const i = this.layout.running ? this.layoutKeys.indexOf(node) : -1;
-        if (i >= 0) this.layout.move(i, a.x, a.y, false);
-        if (!this.layout.running) this.save();
-      } else {
-        this.events.open(g.getNodeAttribute(node, "node"));
-      }
-      s.refresh({ skipIndexation: true });
+      const i = this.index.get(node);
+      if (i !== undefined) this.physics.release(i);
+      if (!this.dragMoved) this.events.open(g.getNodeAttribute(node, "node"));
     };
     s.on("upNode", up);
     s.on("upStage", up);
-    // Moving the view hides the hover card.
+    // Moving the view hides the hover card; names fade by the zoom.
     s.getCamera().on("updated", () => {
       if (!this.dragged) this.events.hover(null, null);
-      this.updateLabels();
+      this.measure();
     });
   }
 
   destroy() {
     clearTimeout(this.hoverTimer);
-    // Positions found by a layout that didn't finish are kept too, so it doesn't start over next time.
-    if (this.layout.running && this.graph.order) {
-      this.layout.stop();
-      this.save(true);
-    }
-    this.layout.destroy();
+    cancelAnimationFrame(this.fadeFrame);
+    document.removeEventListener("visibilitychange", this.onVisibility);
+    if (this.graph.order) this.save();
+    this.physics.destroy();
     this.sigma.kill();
   }
 }
