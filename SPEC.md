@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.16, 2026-10-21)
+# Own WIKI — Spec (v0.17, 2026-10-21)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes. Detailed scopes and decisions of finished milestones are in `docs/history.md`.
 
-Status: M1–M10 done (M10 on 2026-10-21); next: define M11 Health reports; roadmap M11–M17 drafted.
+Status: M1–M10 done (M10 on 2026-10-21); next: define M11 Graph view; roadmap M11–M17 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -114,8 +114,8 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M8 Themes** (done 2026-10-20), plus app-styled tooltips: built-in, app-wide and project themes; colours, a font for every part of the page, sizes and shapes (title position, heading lines, box frames, ornaments, shadows); AWOIAF built-in with its own fonts.
 - **M9 Relations** (done 2026-10-21): Linked from fields that fill themselves, two-way fields, entering and removing relations from either side (writes the other page), sort orders, page lists (bottom of the page and `<pagelist>` lines), the Relations table; plus checkpoint additions: Create page… from fields, Add several… / picking several pages, Date, place and Date, text fields, ages, words around links, AWOIAF infobox look, hide sidebar, draggable page width.
 - **M10 Search & sync safety** (done 2026-10-21): Search screen (word starts, filters, spoilers follow the eye switch), find on page; no blind overwrites, live reload, edit clash bar, conflict copies (also edits Drive silently overwrote) and the Conflicts screen, open-on-another-computer warning; easier field moving in the infobox editors; plus Move library…, a synced page edge, What links here listing relations, caches out of the Drive folder. Mac and Windows can now both be used with the library in Drive.
-- **M11 Health reports.**
-- **M12 Graph view.**
+- **M11 Graph view.**
+- **M12 Health reports.**
 - **M13 Interactive maps.**
 - **M14 Calendars & timelines.**
 - **M15 Family trees** (builds on M9 Relations).
@@ -235,9 +235,9 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - One Enter = new line in the preview; an empty line = new paragraph.
 
 **Promised to later milestones (from M1–M9 scopes)**
-- M11: health reports link to the Conflicts screen (conflict copies).
+- M12: health reports link to the Conflicts screen (conflict copies).
 - M17: exports leave out `_open/` (open-on-another-computer markers) and the `edits` counts in front matter.
-- M11: unlinked mentions, broken section links (incl. renamed headings), unused images, hidden template values.
+- M12: unlinked mentions, broken section links (incl. renamed headings), unused images, hidden template values.
 - M13: map location fields; SVG maps.
 - M14: eras and month numbers mapped to real calendars without a data migration; ages then also across eras (today only within one era name).
 - M15: family-tree edits write relations through the same write-back as M9 (`set_relation`).
@@ -257,3 +257,4 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - 2026-10-19 (planning): Juku's list of small additions placed. M7 gains an AWOIAF-style quote box (inserted by hand), a separator line in text + Divider infobox field (optional label), a thinner Contents box, and the app is always light on Mac and Windows (replaces "follows the system"). Automatic relation fields pulled forward from Family trees into a new **M8 Relations** (calculated from the link index, never written into other files; parents → children, two-way for spouse), together with automatic page lists such as "Chapters that take place at …". Themes (now M12) also set fonts (body, headings), text size, line spacing and page width; fonts are copied into the project. Later milestones renumbered +1 (old M8 → M9 … M16 → M17); `docs/history.md` keeps the old numbers. Edit/read hotkey already exists (Cmd+E).
 - 2026-10-20 (planning): AWOIAF-style rework of the hover cards moved to a later version (listed under "Later / undecided"); the current M4/M6 hover cards stay as they are.
 - 2026-10-20 (planning): embed boxes get their own look per theme (frame/box appearance, background, colours), added to M12 Themes.
+- 2026-10-21 (planning): Graph view moved ahead of Health reports (Juku). Renumbered: Graph view M12 → M11, Health reports M11 → M12; M13–M17 unchanged. No dependency between the two; `docs/history.md` keeps the old numbers.
