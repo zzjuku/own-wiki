@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.17, 2026-10-21)
+# Own WIKI — Spec (v0.18, 2026-10-22)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes. Detailed scopes and decisions of finished milestones are in `docs/history.md`.
 
-Status: M1–M11 done (M11 on 2026-10-22); next: define M12 Health reports; roadmap M12–M17 drafted.
+Status: M1–M11 done (M11 on 2026-10-22); next: build M12 Family trees (defined 2026-10-22); roadmap M13–M17 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -74,7 +74,7 @@ Inspiration: Wikipedia, A Wiki of Ice and Fire (AWOIAF), Chronicler.
 - **Templates and infoboxes:** user-defined templates per project (characters, locations, items… — defined by the user, never shipped). New pages are pre-filled. AWOIAF-style infobox with images and captions. Fields are **typed** (text, link to page, date, image, list…) so maps, timelines and family trees can read them.
   - (Changed 2026-10-18.) A template is a **starting point**: a new page gets its own copy of the template's fields. Changing a template never changes existing pages on its own; **Apply to existing pages…** pushes a change to the chosen pages when Juku wants it.
   - Values are never lost silently: a field removed by Apply **hides** its values on those pages instead of deleting them.
-  - Relations are entered once: reverse fields fill themselves (M9 Relations, 2026-10-19). Example: John's *Father* field links Alex → Alex's *Children* shows John. Shown from the link index. Stored from the specific to the general only: the relation lives in the child's parent field (*Father*, *Mother*), never in a *Children* list. Entered from either side (2026-10-20): adding a child on Alex's page asks which of the child's parent fields Alex fills ("Alex is John's: Father / Mother"), writes Alex into that field on John's page and stores nothing on Alex's page — the only case where the app writes into another page's file; the same write-back is reused by family-tree edits (M15). Two-way fields (e.g. *Spouse*) work both ways. Children typed in by hand still work; duplicates are merged. A child without a page can be created from the parent's page; a parent field already holding another page asks Replace / Add (2026-10-20).
+  - Relations are entered once: reverse fields fill themselves (M9 Relations, 2026-10-19). Example: John's *Father* field links Alex → Alex's *Children* shows John. Shown from the link index. Stored from the specific to the general only: the relation lives in the child's parent field (*Father*, *Mother*), never in a *Children* list. Entered from either side (2026-10-20): adding a child on Alex's page asks which of the child's parent fields Alex fills ("Alex is John's: Father / Mother"), writes Alex into that field on John's page and stores nothing on Alex's page — the only case where the app writes into another page's file; the same write-back is reused by family-tree edits (M12). Two-way fields (e.g. *Spouse*) work both ways. Children typed in by hand still work; duplicates are merged. A child without a page can be created from the parent's page; a parent field already holding another page asks Replace / Add (2026-10-20).
   - **Divider** field type: a thin separating line in the infobox, with an optional label.
 - **Categories:** easy to add per page, AWOIAF-style list at the bottom of the page, automatic category pages with optional own text, subcategories, and default categories from templates.
 - **Embeds:** insert the content of one page into another (navboxes, item cards, stat blocks). Plain embeds first; embeds with parameters only if needed later. Embed loops are detected and blocked.
@@ -115,12 +115,57 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M9 Relations** (done 2026-10-21): Linked from fields that fill themselves, two-way fields, entering and removing relations from either side (writes the other page), sort orders, page lists (bottom of the page and `<pagelist>` lines), the Relations table; plus checkpoint additions: Create page… from fields, Add several… / picking several pages, Date, place and Date, text fields, ages, words around links, AWOIAF infobox look, hide sidebar, draggable page width.
 - **M10 Search & sync safety** (done 2026-10-21): Search screen (word starts, filters, spoilers follow the eye switch), find on page; no blind overwrites, live reload, edit clash bar, conflict copies (also edits Drive silently overwrote) and the Conflicts screen, open-on-another-computer warning; easier field moving in the infobox editors; plus Move library…, a synced page edge, What links here listing relations, caches out of the Drive folder. Mac and Windows can now both be used with the library in Drive.
 - **M11 Graph view** (done 2026-10-22): Graph screen with live Obsidian-style physics (drag pulls neighbours, springs back, gentle drift, glow, smooth hover fades), hover card, search, Filters & colours panel (filters, red-link/category/group nodes, arrows, colour rules), remembered layout, local graph beside pages with depth and Open in Graph, live updates, graph theme colours.
-- **M12 Health reports.**
-- **M13 Interactive maps.**
-- **M14 Calendars & timelines.**
-- **M15 Family trees** (builds on M9 Relations).
+- **M12 Family trees** (builds on M9 Relations; moved up 2026-10-22, scope below).
+- **M13 Health reports.**
+- **M14 Interactive maps.**
+- **M15 Calendars & timelines.**
 - **M16 Solar system map** (later version, scope to be defined).
 - **M17 Export:** zip, static HTML site.
+
+### M12 — Family trees (defined 2026-10-22)
+Draws family trees from the relations already stored in infobox fields (M9). Editing in the tree writes back into those fields (`set_relation`). Only the settings are new data; no tree files.
+
+**Which fields make a family** (Project settings → Family tree)
+- **Parent fields:** Page link fields that point from a child to a parent (e.g. *Father*, *Mother*), chosen by field name (case-insensitive, any template, like Linked from's `from`) from the project's Page link field names. Their order sets the parents' left-to-right order. Each can be ticked **Dashed line** (e.g. *Adoptive father*, *Presumed father*) (Juku).
+- **Partner fields:** Page link fields linking partners (e.g. *Spouse*); a link entered on either side counts, two-way or not.
+- Children are never stored: they come from the parent fields, plus names typed into a Linked from field that reads a parent field (M9 typed-in entries).
+- Saved in `project.json` (`familyTree: {parents: [{field, dashed}], partners: [field]}`, unknown keys kept), synced. Renaming a template field renames it here too (like Linked from `from` lists). Nothing set: the Family tree screen says so and opens the settings.
+
+**People and boxes**
+- A person = a page or a red-link name reached through these fields. Box: name, small picture (the hover card's image), years from the page's Date fields set to Age: Birth / Death ("c. 250 – 300", "b. 283"). Hover shows the usual hover card; click opens the page.
+- **Placeholders** (Juku: red-link names only): a name without a page, in a parent or partner field or typed in as a child. Drawn as a dashed red-link box; click creates the page (like a red link, template preselected), and the existing relations then point to it. A placeholder can't get its own parents or partners; adding one first offers **Create page…** (as in M9).
+- **Unknown parent:** a child with only one known parent hangs from that parent alone. Where that parent also has children with a partner, those without a second parent are grouped under a "?" partner. Nothing is stored for it.
+- Children sorted by birth date (the Age: Birth field), else natural title order; partners in the order of the field's entries.
+- More than two parents (a parent field with several pages, or *Father* plus *Adoptive father*) are all drawn; dashed fields as dashed lines.
+- **Marriage labels** (Juku): words around a partner link (`[[Bea]] (m. 283)`, the Aa button) show on that couple's line; different words on both pages show both.
+
+**Layout**
+- Generations in rows, parents above children. Partners sit side by side, joined by a marriage line; children hang from their couple's line. Several partners: one line per couple, each couple's children under it.
+- **Intermarriage, incest, loops** (Juku: once + stubs): each person's full box appears once, at the place nearest the centre person. Every other place they belong gets a small stub "↪ Name"; hovering a stub highlights the real box, and clicking it moves there. Bad data that makes someone their own ancestor is drawn with a stub too, never hangs, and is flagged on the Relations screen.
+
+**Where trees show**
+- **Family tree screen:** button in the sidebar header and Cmd+Alt+T (Ctrl+Alt+T). Centred on a person (a picker; opens on the open page if it's in a family, else the last person). Generations up and down (0–10 each, default 2 / 3) and a switch **Partners' parents** (off). Zoom, pan, Fit. Back returns to the same view.
+- **Family tree** button in the page header of every page that has a parent, child or partner: opens the screen centred on it.
+- **In page text:** a `<familytree root="Page" up="1" down="3">` line (e.g. on a house page), written by a Family tree dialog; clicking the line in the source reopens it. Drawn inside the page in a box you can pan and zoom, with **Open in Family tree**. Works in embeds; a missing root page shows a red notice. Read-only (editing happens on the screen).
+
+**Editing on the Family tree screen**
+- Select a person: **Add parent**, **Add child**, **Add partner**, **Create page** (placeholders). Select a line: **Remove** (with confirmation). Same dialogs and write-back as M9: "Alex is John's: Father / Mother", Replace / Add, Create page…; only the child's page (parents) or the selected person's page (partners) is written; a missing field is added as that page's own Page link field.
+- **New person…** creates a page (title, group, template) and centres the tree on it, so a family can be built from nothing in the tree.
+
+**Spoilers** (rule 6)
+- A relation from a spoiler field shows its person as a "▒▒▒" box (click reveals, the eye switch reveals all); everyone reached only through hidden relations stays hidden with it, so grandparents can't give the person away. Spoiler dates and marriage labels from spoiler fields are hidden too; stubs of hidden people show "↪ ▒▒▒".
+
+**Save as image** (Juku)
+- PNG or SVG of the whole current tree (not only the visible part), spoilers as currently shown; saved through a file dialog.
+
+**Look**
+- New theme variables (theme contract: `src/theme.css`, `docs/theme-variables.md`, `src/themes/vars.ts`): tree background, box background, box border, box text, line, highlighted line, placeholder, stub, marriage label, tree font; boxes follow `--box-radius`. The built-in themes get values.
+
+**Not in M12:** saved trees with hand-picked members, placeholders with their own relations (both not chosen); graph colour rules on boxes (not chosen); editing in page-text trees; drag-to-connect.
+
+**Checkpoint for Juku:** the settings and the Family tree screen with real layouts: several partners, unknown parents, stubs, placeholders, dashed lines, marriage labels, spoilers; speed targets met. After it: editing, the page button, the `<familytree>` line, Save as image, theme variables, final review.
+
+- **Done when:** the points above work; new features have Playwright UI tests (settings, screen from button and shortcut, generations up/down, several partners, unknown parent, stub hover and jump, placeholder click creates the page, dashed line, marriage label, spoiler person hidden until revealed incl. their branch, each edit writes the right page, New person…, page button, `<familytree>` line and its dialog, Save as image) and pass with the Rust and unit tests (family built from the link index, unions and children, placement of stubs, loop detection, spoiler hiding of branches, field rename in the settings); screenshots check the Family tree screen, the settings, the edit dialogs, a tree in page text and the built-in themes; a family of 500 people opens within about 1 s and pans/zooms smoothly in a 5,000-page project, which still reopens in under 1 s if the index changes; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
 
 ### How every milestone is written
 - **Done when** always includes: new features have automated UI tests (Playwright smoke tests in `tests/ui/`) and pass with the Rust and unit tests; screenshots check how new or changed screens look; speed targets only if the milestone touches loading, the index, search or big lists; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
@@ -173,7 +218,7 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - A Page link entry is a page name (`Page A`, `Page A#Section`) or words around a link (`Lord [[Page A]] (supposedly)`, the Aa button): the words show only in that infobox; everything else goes by the link.
 - `options.place`: Text, Choice and List fields can show `above` or `below` the infobox title (titles, nicknames; smaller), Image fields `beside` it (small pictures left and right; one picture shows on both sides, two go one each side). They aren't repeated as rows unless `options.inBox` ("Also show it in the box", above/below only).
 - `options.age` on Date and Date, place fields: `birth` shows "(age N)" counted to the project's `presentDay` while no death field has anything in it; `death` shows "(aged N)". Whole years (one less before the birthday when months/days are known), "c." when either date is approximate, nothing across different era names; an age from a spoiler birth date is hidden too.
-- Date value: `{year, era, month, day, qualifier: c|before|after}`, or with ranges `{start: {…}, end: {…} | "present"}`. Shown day.month.year until M13 maps eras and months to calendars.
+- Date value: `{year, era, month, day, qualifier: c|before|after}`, or with ranges `{start: {…}, end: {…} | "present"}`. Shown day.month.year until M15 maps eras and months to calendars.
 - Image value: `{file, caption, crop: {x, y, zoom, aspect}}` (x/y in percent, zoom 1 = fills the frame, aspect = width/height; no zoom = simply fills). Every infobox image sits in one frame size: the template's `imageFrame`, else the project's `infoboxImage`; never copied into pages.
 - Text fields allow bold, italic, `[[links]]`, `||spoilers||`.
 - Template field keys are random ("f-k2j4") and never reused; template ids are readable + random ("template-a-54px").
@@ -244,12 +289,12 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - One Enter = new line in the preview; an empty line = new paragraph.
 
 **Promised to later milestones (from M1–M9 scopes)**
-- M12: health reports link to the Conflicts screen (conflict copies).
+- M13: health reports link to the Conflicts screen (conflict copies).
 - M17: exports leave out `_open/` (open-on-another-computer markers) and the `edits` counts in front matter.
-- M12: unlinked mentions, broken section links (incl. renamed headings), unused images, hidden template values.
-- M13: map location fields; SVG maps.
-- M14: eras and month numbers mapped to real calendars without a data migration; ages then also across eras (today only within one era name).
-- M15: family-tree edits write relations through the same write-back as M9 (`set_relation`).
+- M13: unlinked mentions, broken section links (incl. renamed headings), unused images, hidden template values.
+- M14: map location fields; SVG maps.
+- M15: eras and month numbers mapped to real calendars without a data migration; ages then also across eras (today only within one era name).
+- M12: family-tree edits write relations through the same write-back as M9 (`set_relation`).
 - Later / undecided: a frame option per theme for plain (seamless) embeds (asked in M8, not answered); hover card rework to look more like AWOIAF's (e.g. bigger picture, wider card; details to define), Obsidian-style inline live preview, page history/undo of edits, replace across pages (offered for M10, not now; Search screen could host it), image file pages ("File:" pages with description), group overview pages (Open items). Not planned: categories driven by field values, automatic linking of plain words.
 
 ## Open items (from Juku)
@@ -267,3 +312,5 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - 2026-10-20 (planning): AWOIAF-style rework of the hover cards moved to a later version (listed under "Later / undecided"); the current M4/M6 hover cards stay as they are.
 - 2026-10-20 (planning): embed boxes get their own look per theme (frame/box appearance, background, colours), added to M12 Themes.
 - 2026-10-21 (planning): Graph view moved ahead of Health reports (Juku). Renumbered: Graph view M12 → M11, Health reports M11 → M12; M13–M17 unchanged. No dependency between the two; `docs/history.md` keeps the old numbers.
+- 2026-10-22 (planning, Juku): **Family trees moved up to M12**, ahead of Health reports. Renumbered: Family trees M15 → M12, Health reports M12 → M13, Interactive maps M13 → M14, Calendars & timelines M14 → M15; M16–M17 unchanged. Family trees only need M9; dates show as today until calendars (M15). `docs/history.md` keeps the old numbers.
+- 2026-10-22 (planning, Juku): **M12 Family trees defined** (scope above). Juku chose: live trees from any person (screen, page button, `<familytree>` line in page text), no saved trees; placeholders are red-link names only (a placeholder's own relations need its page); a person in two places is drawn once with small stubs elsewhere; extras: Save as image (PNG/SVG), marriage labels from the words around partner links, dashed lines for chosen parent fields. Not chosen: graph colour rules on boxes. Claude's defaults, open to review: family fields chosen by name in Project settings (`familyTree` in project.json); a hidden spoiler relation hides the whole branch behind it; children sorted by birth date; trees in page text are read-only; Cmd+Alt+T; generations default 2 up / 3 down.
