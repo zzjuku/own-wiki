@@ -2,7 +2,7 @@
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes. Detailed scopes and decisions of finished milestones are in `docs/history.md`.
 
-Status: M1–M11 done (M11 on 2026-10-22); next: build M12 Family trees (defined 2026-10-22); roadmap M13–M17 drafted.
+Status: M1–M11 done (M11 on 2026-10-22); next: build M12 Family trees (defined 2026-10-22); roadmap M13–M18 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -116,11 +116,12 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M10 Search & sync safety** (done 2026-10-21): Search screen (word starts, filters, spoilers follow the eye switch), find on page; no blind overwrites, live reload, edit clash bar, conflict copies (also edits Drive silently overwrote) and the Conflicts screen, open-on-another-computer warning; easier field moving in the infobox editors; plus Move library…, a synced page edge, What links here listing relations, caches out of the Drive folder. Mac and Windows can now both be used with the library in Drive.
 - **M11 Graph view** (done 2026-10-22): Graph screen with live Obsidian-style physics (drag pulls neighbours, springs back, gentle drift, glow, smooth hover fades), hover card, search, Filters & colours panel (filters, red-link/category/group nodes, arrows, colour rules), remembered layout, local graph beside pages with depth and Open in Graph, live updates, graph theme colours.
 - **M12 Family trees** (builds on M9 Relations; moved up 2026-10-22, scope below).
-- **M13 Health reports.**
-- **M14 Interactive maps.**
-- **M15 Calendars & timelines.**
-- **M16 Solar system map** (later version, scope to be defined).
-- **M17 Export:** zip, static HTML site.
+- **M13 Field notes & zoom** (Juku, 2026-10-23; scope to be defined): a small note before or after any infobox field value, one per entry (each page of a Page link field, each list item; like the note of Date, text), apart from the words around links (Aa), which stay; Cmd/Ctrl+scroll makes the whole app bigger or smaller, remembered on this computer (not synced).
+- **M14 Health reports.**
+- **M15 Interactive maps.**
+- **M16 Calendars & timelines.**
+- **M17 Solar system map** (later version, scope to be defined).
+- **M18 Export:** zip, static HTML site.
 
 ### M12 — Family trees (defined 2026-10-22)
 Draws family trees from the relations already stored in infobox fields (M9). Editing in the tree writes back into those fields (`set_relation`). Only the settings are new data; no tree files.
@@ -132,7 +133,7 @@ Draws family trees from the relations already stored in infobox fields (M9). Edi
 - Saved in `project.json` (`familyTree: {parents: [{field, line}], partners: [{field, line}]}`, `line` = `solid` / `dashed` / `dotted`, unknown keys kept), synced. Renaming a template field renames it here too (like Linked from `from` lists). Nothing set: the Family tree screen says so and opens the settings.
 
 **People and boxes**
-- A person = a page or a red-link name reached through these fields. Box: name, small picture (the hover card's image), years from the page's Date fields set to Age: Birth / Death ("c. 250 – 300", "b. 283"). Hover shows the usual hover card; click opens the page.
+- A person = a page or a red-link name reached through these fields. Box (Juku, checkpoint): the picture big on top (the hover card's image), name and years below it; people without a picture get a smaller box with name and years only. Years from the page's Date fields set to Age: Birth / Death ("c. 250 – 300", "b. 283"). Hover shows the usual hover card; click opens the page.
 - **Placeholders** (Juku: red-link names only): a name without a page, in a parent or partner field or typed in as a child. Drawn as a dashed red-link box; click creates the page (like a red link, template preselected), and the existing relations then point to it. A placeholder can't get its own parents or partners; adding one first offers **Create page…** (as in M9).
 - **Unknown parent:** a child with only one known parent hangs from that parent alone. Where that parent also has children with a partner, those without a second parent are grouped under a "?" partner. Nothing is stored for it.
 - Children sorted by birth date (the Age: Birth field), else natural title order; partners in the order of the field's entries.
@@ -144,7 +145,7 @@ Draws family trees from the relations already stored in infobox fields (M9). Edi
 - **Intermarriage, incest, loops** (Juku: once + stubs): each person's full box appears once, at the place nearest the centre person. Every other place they belong gets a small stub "↪ Name"; hovering a stub highlights the real box, and clicking it moves there. Bad data that makes someone their own ancestor is drawn with a stub too, never hangs, and is flagged on the Relations screen.
 
 **Where trees show**
-- **Family tree screen:** button in the sidebar header and Cmd+Alt+T (Ctrl+Alt+T). Centred on a person (a picker; opens on the open page if it's in a family, else the last person). Generations up and down (0–10 each, default 2 / 3) and a switch **Partners' parents** (off). Zoom, pan, Fit. Back returns to the same view.
+- **Family tree screen:** button in the sidebar header and Cmd+Alt+T (Ctrl+Alt+T). Centred on a person (a picker; opens on the open page if it's in a family, else the last person). **All families** (Juku, checkpoint): a choice in the picker that draws every family of the project on the screen, one tree after another (biggest first), each person once (stubs across trees), without generation limits. Generations up and down (0–10 each, default 2 / 3) and a switch **Partners' parents** (off). Zoom, pan, Fit. Back returns to the same view.
 - **Family tree** button in the page header of every page that has a parent, child or partner: opens the screen centred on it.
 - **In page text:** a `<familytree root="Page" up="1" down="3">` line (e.g. on a house page), written by a Family tree dialog; clicking the line in the source reopens it. Drawn inside the page in a box you can pan and zoom, with **Open in Family tree**. Works in embeds; a missing root page shows a red notice. Read-only (editing happens on the screen).
 
@@ -220,7 +221,7 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - A Page link entry is a page name (`Page A`, `Page A#Section`) or words around a link (`Lord [[Page A]] (supposedly)`, the Aa button): the words show only in that infobox; everything else goes by the link.
 - `options.place`: Text, Choice and List fields can show `above` or `below` the infobox title (titles, nicknames; smaller), Image fields `beside` it (small pictures left and right; one picture shows on both sides, two go one each side). They aren't repeated as rows unless `options.inBox` ("Also show it in the box", above/below only).
 - `options.age` on Date and Date, place fields: `birth` shows "(age N)" counted to the project's `presentDay` while no death field has anything in it; `death` shows "(aged N)". Whole years (one less before the birthday when months/days are known), "c." when either date is approximate, nothing across different era names; an age from a spoiler birth date is hidden too.
-- Date value: `{year, era, month, day, qualifier: c|before|after}`, or with ranges `{start: {…}, end: {…} | "present"}`. Shown day.month.year until M15 maps eras and months to calendars.
+- Date value: `{year, era, month, day, qualifier: c|before|after}`, or with ranges `{start: {…}, end: {…} | "present"}`. Shown day.month.year until M16 maps eras and months to calendars.
 - Image value: `{file, caption, crop: {x, y, zoom, aspect}}` (x/y in percent, zoom 1 = fills the frame, aspect = width/height; no zoom = simply fills). Every infobox image sits in one frame size: the template's `imageFrame`, else the project's `infoboxImage`; never copied into pages.
 - Text fields allow bold, italic, `[[links]]`, `||spoilers||`.
 - Template field keys are random ("f-k2j4") and never reused; template ids are readable + random ("template-a-54px").
@@ -291,11 +292,11 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - One Enter = new line in the preview; an empty line = new paragraph.
 
 **Promised to later milestones (from M1–M9 scopes)**
-- M13: health reports link to the Conflicts screen (conflict copies).
-- M17: exports leave out `_open/` (open-on-another-computer markers) and the `edits` counts in front matter.
-- M13: unlinked mentions, broken section links (incl. renamed headings), unused images, hidden template values.
-- M14: map location fields; SVG maps.
-- M15: eras and month numbers mapped to real calendars without a data migration; ages then also across eras (today only within one era name).
+- M14: health reports link to the Conflicts screen (conflict copies).
+- M18: exports leave out `_open/` (open-on-another-computer markers) and the `edits` counts in front matter.
+- M14: unlinked mentions, broken section links (incl. renamed headings), unused images, hidden template values.
+- M15: map location fields; SVG maps.
+- M16: eras and month numbers mapped to real calendars without a data migration; ages then also across eras (today only within one era name).
 - M12: family-tree edits write relations through the same write-back as M9 (`set_relation`).
 - Later / undecided: a frame option per theme for plain (seamless) embeds (asked in M8, not answered); hover card rework to look more like AWOIAF's (e.g. bigger picture, wider card; details to define), Obsidian-style inline live preview, page history/undo of edits, replace across pages (offered for M10, not now; Search screen could host it), image file pages ("File:" pages with description), group overview pages (Open items). Not planned: categories driven by field values, automatic linking of plain words.
 
@@ -319,3 +320,5 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - 2026-10-22 (planning, Juku asked for lovers / unmarried couples): every parent and partner field in the Family tree settings gets a line style (solid / dashed / dotted) instead of a dashed tick on parent fields only; a *Lover* partner field drawn dashed covers unmarried couples, and other kinds (betrothed, consorts) need no new setting. Several partner fields between the same two people make one line, styled by the first in the list. "Marriage labels" renamed couple labels.
 - 2026-10-23 technical (M12): family data comes from Rust like the graph (fingerprinted, re-read after changes; `set_project_settings` now also counts as a change); who is shown and where is worked out in the window (`src/family/model.ts`, `layout.ts`, unit-tested). Shared helpers: `src/indexStore.ts` (graph and family data), `src/localPrefs.ts`, `src/projectKeys.ts` (window shortcuts, moved out of ProjectView). Link index cache version 9.
 - 2026-10-23 (M12, Claude's defaults, open to review at the checkpoint): partners who married in bring nothing else into the tree (only their parents with "Partners' parents"); a person's first partner goes right (left if they're the earlier parent field, e.g. the father), further partners take turns; two parents of a child without a partner field between them get a plain solid couple line; a child whose two parent fields differ in style gets the less certain line (dotted over dashed over solid); people beyond a hidden spoiler relation aren't drawn at all until revealed, and a secret child sits under the parent alone; years show "c./bef./aft.", a hidden death date is left out ("b. 283"); the wheel zooms and dragging pans (as in the Graph); clicking a box opens the page, the picker changes the person in the middle.
+- 2026-10-23 (Juku, M12 checkpoint): boxes show the picture big with name and years below; people without a picture get a smaller box (name and years only). New "All families" choice on the Family tree screen (every family, one tree after another). The page header button and the tree in page text (with up/down choice) stay as planned in M12.
+- 2026-10-23 (Juku): new **M13 Field notes & zoom** after M12: a small note before/after any infobox field value, one per entry, besides the words around links; Cmd/Ctrl+scroll zoom of the whole app, remembered per computer. Renumbered: Health reports M13 → M14, Interactive maps M14 → M15, Calendars & timelines M15 → M16, Solar system map M16 → M17, Export M17 → M18. `docs/history.md` keeps the old numbers.
