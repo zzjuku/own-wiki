@@ -258,18 +258,24 @@ pub fn parse_links(body: &str) -> Vec<Link> {
 /// `|infobox`) is kept. Returns the new body and how many changed.
 pub fn rewrite_links(body: &str, old: &str, new: &str) -> (String, usize) {
     let old = norm(old);
-    let mut spans: Vec<(usize, usize)> = parse_links(body)
+    // (start, end, in a family tree line: `"` written as &quot;)
+    let mut spans: Vec<(usize, usize, bool)> = parse_links(body)
         .into_iter()
         .filter(|l| !l.page.is_empty() && norm(&l.page) == old)
-        .map(|l| (l.page_start, l.page_end))
-        .chain(parse_embeds(body).into_iter().filter(|e| norm(&e.page) == old).map(|e| (e.page_start, e.page_end)))
+        .map(|l| (l.page_start, l.page_end, false))
+        .chain(parse_embeds(body).into_iter().filter(|e| norm(&e.page) == old).map(|e| (e.page_start, e.page_end, false)))
+        .chain(parse_tree_roots(body).into_iter().filter(|e| norm(&e.page) == old).map(|e| (e.page_start, e.page_end, true)))
         .collect();
     spans.sort_unstable();
     let mut out = String::with_capacity(body.len() + 64);
     let mut last = 0;
-    for &(start, end) in &spans {
+    for &(start, end, quoted) in &spans {
         out.push_str(&body[last..start]);
-        out.push_str(new);
+        if quoted {
+            out.push_str(&new.replace('"', "&quot;"));
+        } else {
+            out.push_str(new);
+        }
         last = end;
     }
     out.push_str(&body[last..]);
@@ -334,6 +340,35 @@ pub(crate) fn embed_line(line: &str, base: usize, line_no: usize) -> Option<Embe
 pub fn parse_embeds(body: &str) -> Vec<Embed> {
     let mut out = Vec::new();
     text_lines(body, |n, off, line| out.extend(embed_line(line, off, n)));
+    out
+}
+
+// ---- family trees in page text: <familytree root="Page" up="1" down="3"> (src/family/treeLine.ts) ----
+
+/// The root page of a family tree line, if the line is one (`page`: as
+/// written, `&quot;` read as `"`; the span is the attribute's raw value).
+pub(crate) fn tree_line(line: &str, base: usize, line_no: usize) -> Option<Embed> {
+    let indent = line.len() - line.trim_start_matches(' ').len();
+    let t = line[indent..].trim_end();
+    if indent > 3 || !t.get(..11).is_some_and(|p| p.eq_ignore_ascii_case("<familytree")) || !t.ends_with('>') {
+        return None;
+    }
+    let lower = t.to_ascii_lowercase();
+    let at = lower.find("root=\"")? + 6;
+    let len = t[at..].find('"')?;
+    let raw = &t[at..at + len];
+    let page = raw.replace("&quot;", "\"").trim().to_string();
+    if page.is_empty() {
+        return None;
+    }
+    let start = base + indent + at;
+    Some(Embed { page_start: start, page_end: start + len, page, section: None, infobox: false, line: line_no })
+}
+
+/// The root pages of every family tree line in a body, in order. Code is skipped.
+pub fn parse_tree_roots(body: &str) -> Vec<Embed> {
+    let mut out = Vec::new();
+    text_lines(body, |n, off, line| out.extend(tree_line(line, off, n)));
     out
 }
 
@@ -772,6 +807,19 @@ mod tests {
         assert_eq!(summary("{{Page A}}\n\nFirst text."), "First text.");
         assert_eq!(summary("<pagelist from=\"Father\">\n\nFirst text."), "First text.");
         assert_eq!(summary("<familytree root=\"Page A\" up=\"1\" down=\"3\">\n\nFirst text."), "First text.");
+    }
+
+    #[test]
+    fn family_tree_lines_follow_renames() {
+        let body = "<familytree root=\"Page A\" up=\"1\" down=\"3\">\n```\n<familytree root=\"Page A\">\n```\n<FamilyTree root=\"page a\">\n";
+        assert_eq!(parse_tree_roots(body).len(), 2);
+        let (out, n) = rewrite_links(body, "Page A", "Page \"B\"");
+        assert_eq!(n, 2);
+        assert_eq!(
+            out,
+            "<familytree root=\"Page &quot;B&quot;\" up=\"1\" down=\"3\">\n```\n<familytree root=\"Page A\">\n```\n<FamilyTree root=\"Page &quot;B&quot;\">\n"
+        );
+        assert_eq!(parse_tree_roots(&out)[0].page, "Page \"B\"");
     }
 
     #[test]

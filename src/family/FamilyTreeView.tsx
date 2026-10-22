@@ -10,8 +10,8 @@ import { matchesAll, parseQuery } from "../search";
 import { compareNames } from "../tree";
 import { useWiki } from "../wiki";
 import { Family, type FamilyData } from "./data";
-import { layoutTree, type Metrics, stackLayouts } from "./layout";
-import { buildAllTrees, buildTree } from "./model";
+import { layoutTree, type Metrics, sideBySide } from "./layout";
+import { alignTrees, buildAllTrees, buildTree } from "./model";
 import { MAX_GENERATIONS, useTreePrefs } from "./prefs";
 import { hasPicture, measureText, TEXT_H, TreeCanvas, type TreeFonts, type TreeHandle, type View } from "./TreeCanvas";
 
@@ -49,7 +49,7 @@ const views = new Map<string, View>();
 
 // Boxes with a picture: 150 × 170 picture, name and years below.
 /** Space between the trees of All families. */
-const ALL_GAP = 140;
+const ALL_GAP = 120;
 const BOX = { boxW: 160, boxH: 62, cardH: 175 + TEXT_H, unknownW: 40, stubH: 26, gap: 22, coupleGap: 30, rowGap: 72 };
 
 /** The tree's fonts, read from the theme. */
@@ -137,7 +137,13 @@ export function FamilyTreeView({
   const layout = useMemo(() => {
     if (!fam) return null;
     const opts = { ...prefs, revealAll, revealed };
-    if (all) return stackLayouts(buildAllTrees(fam, opts).map((t) => layoutTree(t, metrics)), ALL_GAP);
+    if (all) {
+      // Side by side, one row height for all, generations lined up.
+      const trees = buildAllTrees(fam, opts);
+      const rowH = trees.some((t) => t.boxes.some(metrics.tall)) ? metrics.cardH : metrics.boxH;
+      const shifts = alignTrees(fam, trees, revealAll);
+      return sideBySide(trees.map((t, i) => ({ layout: layoutTree(t, metrics, rowH), shift: shifts[i] * (rowH + metrics.rowGap) })), ALL_GAP);
+    }
     if (centreIndex === undefined) return null;
     return layoutTree(buildTree(fam, centreIndex, opts), metrics);
   }, [fam, all, centreIndex, prefs, revealAll, revealed, metrics]);

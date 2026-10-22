@@ -25,7 +25,7 @@ fn linking(idx: &ProjectIndex, name: &str) -> (Vec<String>, usize) {
     let mut ids = Vec::new();
     let mut count = 0;
     for (id, e) in &idx.pages {
-        let here = e.links.iter().chain(&e.embeds).filter(|l| !l.target.is_empty() && norm(&l.target) == n).count()
+        let here = e.links.iter().chain(&e.embeds).chain(&e.trees).filter(|l| !l.target.is_empty() && norm(&l.target) == n).count()
             + e.field_links.iter().filter(|l| norm(&l.target) == n).count();
         if here > 0 {
             ids.push(id.clone());
@@ -378,6 +378,14 @@ mod tests {
         assert_eq!(link_count(&idx, "Old").links, 0);
         assert_eq!(link_count(&idx, "New Name").links, 5);
         assert_eq!(backlinks(lib.path(), &p, &idx, "New Name.md", false).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn rename_rewrites_family_tree_lines() {
+        let (lib, p, mut idx) = setup(&[("Old.md", ""), ("A.md", "Text.\n\n<familytree root=\"Old\" up=\"1\" down=\"3\">\n")]);
+        let r = rename_with_links(lib.path(), &p, &mut idx, "Old.md", "New Name", false, false).unwrap();
+        assert_eq!((r.links, r.pages), (1, 1));
+        assert_eq!(read(lib.path(), &p, "A.md"), "Text.\n\n<familytree root=\"New Name\" up=\"1\" down=\"3\">\n");
     }
 
     #[test]

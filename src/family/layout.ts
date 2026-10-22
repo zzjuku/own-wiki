@@ -146,7 +146,8 @@ type Spec =
   | { t: "descent"; from: string; kids: { key: string; drop: LineStyle }[]; people: string[] }
   | { t: "connector"; from: string; to: string; style: LineStyle };
 
-export function layoutTree(spec: TreeSpec, m: Metrics): TreeLayout {
+/** `rowH`: every row's height (else the tallest box's in this tree). */
+export function layoutTree(spec: TreeSpec, m: Metrics, rowH?: number): TreeLayout {
   const specs: Spec[] = [];
   const size = (b: TBox) =>
     b.kind === "stub"
@@ -336,7 +337,7 @@ export function layoutTree(spec: TreeSpec, m: Metrics): TreeLayout {
   const root = spec.lineage ? lineageBlock(spec.lineage, centreBlock, spec.centre.box.key, null) : centreBlock;
   for (const c of spec.connectors) specs.push({ t: "connector", ...c });
   // Every row is as tall as the tallest box (boxes sit in the middle of their row).
-  return resolve(root, specs, m, spec.boxes.some(m.tall) ? m.cardH : m.boxH);
+  return resolve(root, specs, m, rowH ?? (spec.boxes.some(m.tall) ? m.cardH : m.boxH));
 }
 
 /**
@@ -436,14 +437,18 @@ function resolve(root: Block, specs: Spec[], m: Metrics, rowH: number): TreeLayo
   return { boxes, lines, labels, bounds };
 }
 
-/** Trees one below another, left-aligned, `gap` apart ("All families"). */
-export function stackLayouts(layouts: TreeLayout[], gap: number): TreeLayout {
+/**
+ * Trees side by side, `gap` apart ("All families"), each moved down by its
+ * `shift` (in pixels) so generations line up. Rows are generations, so the
+ * trees must share one row height.
+ */
+export function sideBySide(trees: { layout: TreeLayout; shift: number }[], gap: number): TreeLayout {
   const out: TreeLayout = { boxes: [], lines: [], labels: [], bounds: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity } };
-  let top = 0;
-  for (const l of layouts) {
+  let left = 0;
+  for (const { layout: l, shift } of trees) {
     if (!l.boxes.length) continue;
-    const dx = -l.bounds.minX;
-    const dy = top - l.bounds.minY;
+    const dx = left - l.bounds.minX;
+    const dy = shift;
     // Paths are written as M x,y / H x / V y only.
     const move = (d: string) =>
       d.replace(/([MHV])(-?[\d.]+)(?:,(-?[\d.]+))?/g, (_, c: string, a: string, b?: string) =>
@@ -452,11 +457,11 @@ export function stackLayouts(layouts: TreeLayout[], gap: number): TreeLayout {
     out.boxes.push(...l.boxes.map((b) => ({ ...b, x: b.x + dx, y: b.y + dy })));
     out.lines.push(...l.lines.map((x) => ({ ...x, d: move(x.d) })));
     out.labels.push(...l.labels.map((x) => ({ ...x, x: x.x + dx, y: x.y + dy })));
-    out.bounds.minX = Math.min(out.bounds.minX, 0);
-    out.bounds.minY = Math.min(out.bounds.minY, top);
+    out.bounds.minX = Math.min(out.bounds.minX, left);
+    out.bounds.minY = Math.min(out.bounds.minY, l.bounds.minY + dy);
     out.bounds.maxX = Math.max(out.bounds.maxX, l.bounds.maxX + dx);
-    out.bounds.maxY = top + l.bounds.maxY - l.bounds.minY;
-    top = out.bounds.maxY + gap;
+    out.bounds.maxY = Math.max(out.bounds.maxY, l.bounds.maxY + dy);
+    left = l.bounds.maxX + dx + gap;
   }
   return out;
 }

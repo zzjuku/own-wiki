@@ -628,7 +628,7 @@ pub fn rewrite_page_links_in_cats(idx: &ProjectIndex, old: &str, new: &str) -> u
     let n = norm(old);
     let mut count = 0;
     for (file, e) in &idx.cats {
-        if !e.links.iter().chain(&e.embeds).any(|l| norm(&l.target) == n) {
+        if !e.links.iter().chain(&e.embeds).chain(&e.trees).any(|l| norm(&l.target) == n) {
             continue;
         }
         let path = dir.join(file);

@@ -21,7 +21,7 @@ use crate::tree::{GroupInfo, PageInfo, is_page_file};
 use crate::wikilinks::{self, Heading};
 
 const CACHE_FILE: &str = "link-index.json";
-const CACHE_VERSION: u32 = 9;
+const CACHE_VERSION: u32 = 10;
 /// The cache is rewritten at most this often for small changes (a stale
 /// cache only costs re-reading the changed files at the next open).
 const CACHE_SAVE_INTERVAL: Duration = Duration::from_secs(10);
@@ -56,6 +56,9 @@ pub struct Entry {
     /// Embedded pages (`{{Page}}` lines); `section` unused.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub embeds: Vec<LinkRef>,
+    /// Root pages of family tree lines (`<familytree root="…">`), which a rename rewrites.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trees: Vec<LinkRef>,
     /// Links in infobox fields.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub field_links: Vec<FieldLink>,
@@ -140,6 +143,10 @@ pub fn read_entry(path: &Path, file_name: &str) -> Option<Entry> {
             .collect(),
         summary: wikilinks::summary(&body),
         embeds: wikilinks::parse_embeds(&body)
+            .into_iter()
+            .map(|e| LinkRef { target: e.page, section: None, line: e.line as u32 })
+            .collect(),
+        trees: wikilinks::parse_tree_roots(&body)
             .into_iter()
             .map(|e| LinkRef { target: e.page, section: None, line: e.line as u32 })
             .collect(),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Family, type FamilyData, labelText, lifeYears, parentKey } from "./data";
-import { layoutTree, type Metrics, stackLayouts, type TreeLayout } from "./layout";
-import { buildAllTrees, buildTree, type TBox, type TreeOptions, type TreeSpec, type Unit } from "./model";
+import { layoutTree, type Metrics, sideBySide, type TreeLayout } from "./layout";
+import { alignTrees, buildAllTrees, buildTree, generationYears, type TBox, type TreeOptions, type TreeSpec, type Unit } from "./model";
 import { renameFieldInFamily } from "./settings";
 
 /** A family from names: parents as [child, parent, field], partners as [a, b, field, words]. */
@@ -263,9 +263,31 @@ describe("all families", () => {
     expect(trees.length).toBe(2);
     // The in-law is drawn beside B; in their father's tree they're a stub.
     expect(stubs(trees[1], fam)).toEqual(["In-law"]);
-    const l = stackLayouts(trees.map((t) => layoutTree(t, METRICS)), 100);
+    // Lined up through the in-law: their father one row above them.
+    expect(alignTrees(fam, trees, false)).toEqual([0, 0]);
+    const l = sideBySide(trees.map((t) => ({ layout: layoutTree(t, METRICS, 200), shift: 0 })), 100);
     expectNoOverlap(l);
     expect(l.boxes.length).toBe(trees.reduce((n, t) => n + t.boxes.length, 0));
+    // Side by side: the second tree starts right of the first.
+    const firstRight = Math.max(...l.boxes.slice(0, trees[0].boxes.length).map((b) => b.x + b.w));
+    expect(Math.min(...l.boxes.slice(trees[0].boxes.length).map((b) => b.x))).toBeGreaterThanOrEqual(firstRight + 100);
+  });
+
+  it("lines up generations by birth dates, else by the newest generation", () => {
+    // Family 1: three generations born 200, 225, 250. Family 2: two generations born 225, 250.
+    // Family 3: no dates, two generations.
+    const { fam } = family(
+      ["A1", "A2", "A3", "B1", "B2", "C1", "C2"],
+      [["A2", "A1"], ["A3", "A2"], ["B2", "B1"], ["C2", "C1"]],
+      [],
+      { births: { A1: 200, A2: 226, A3: 250, B1: 225, B2: 251 } },
+    );
+    expect(generationYears(fam, false)).toBe(26);
+    const trees = buildAllTrees(fam, OPTS);
+    const roots = trees.map((t) => fam.people[t.centre.box.person!].title);
+    expect(roots).toEqual(["A1", "B1", "C1"]);
+    // B's top generation lines up with A's second; C's newest with the newest (A3, B2).
+    expect(alignTrees(fam, trees, false)).toEqual([0, 1, 1]);
   });
 });
 

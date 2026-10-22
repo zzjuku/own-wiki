@@ -457,3 +457,62 @@ export function buildAllTrees(fam: Family, opts: TreeOptions): TreeSpec[] {
   }
   return trees;
 }
+
+/** Typical years between a parent's birth and a child's (from the dates there are; else 25). */
+export function generationYears(fam: Family, spoilers: boolean): number {
+  const year = (i: number) => {
+    const b = fam.people[i].birth;
+    return b && (!b.spoiler || spoilers) ? b.year : null;
+  };
+  const gaps: number[] = [];
+  fam.parentsOf.forEach((links, child) =>
+    links.forEach((l) => {
+      const c = year(child);
+      const p = year(l.parent);
+      if (c !== null && p !== null && c - p >= 12 && c - p <= 70) gaps.push(c - p);
+    }),
+  );
+  gaps.sort((a, b) => a - b);
+  return gaps.length ? gaps[Math.floor(gaps.length / 2)] : 25;
+}
+
+/**
+ * How many generations to move each tree of All families down, so they line
+ * up side by side: a tree with a stub of someone drawn in an earlier tree
+ * lines up with them (in-laws' families); else, with birth dates, by when its
+ * generations were born; else its newest generation is level with the newest.
+ */
+export function alignTrees(fam: Family, trees: TreeSpec[], spoilers: boolean): number[] {
+  const g = generationYears(fam, spoilers);
+  const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+  const full = (t: TreeSpec) => t.boxes.filter((b) => (b.kind === "person" || b.kind === "placeholder") && b.key === `n${b.person}`);
+  // Year the tree's top generation (gen 0) was born, estimated from everyone with a date.
+  const start = trees.map((t) => {
+    const est = full(t).flatMap((b) => {
+      const birth = fam.people[b.person!].birth;
+      return birth && (!birth.spoiler || spoilers) ? [birth.year - b.gen * g] : [];
+    });
+    return est.length ? median(est) : null;
+  });
+  const newest = trees.map((t) => Math.max(0, ...full(t).map((b) => b.gen)));
+  // Where each person's full box is: tree and generation.
+  const placed = new Map<number, { tree: number; gen: number }>();
+  trees.forEach((t, i) => full(t).forEach((b) => placed.set(b.person!, { tree: i, gen: b.gen })));
+  const shifts: (number | null)[] = [];
+  trees.forEach((t, i) => {
+    const anchor = t.boxes.find((b) => b.kind === "stub" && (placed.get(b.person!)?.tree ?? i) < i && shifts[placed.get(b.person!)!.tree] !== null);
+    if (anchor) {
+      const p = placed.get(anchor.person!)!;
+      return shifts.push(p.gen + shifts[p.tree]! - anchor.gen);
+    }
+    const ref = start.findIndex((y, r) => r < i && y !== null && shifts[r] !== null);
+    if (start[i] !== null && ref >= 0) return shifts.push(shifts[ref]! + Math.round((start[i]! - start[ref]!) / g));
+    shifts.push(i === 0 || start[i] !== null ? 0 : null);
+  });
+  // The rest: their newest generation level with the newest one.
+  const known = shifts.flatMap((s, i) => (s === null ? [] : [newest[i] + s]));
+  const bottom = known.length ? Math.max(...known) : 0;
+  const out = shifts.map((s, i) => s ?? bottom - newest[i]);
+  const top = Math.min(...out);
+  return out.map((s) => s - top);
+}
