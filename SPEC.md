@@ -2,7 +2,7 @@
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes. Detailed scopes and decisions of finished milestones are in `docs/history.md`.
 
-Status: M1–M12 done (M12 on 2026-10-23); next: define M13 Field notes & zoom; roadmap M13–M18 drafted.
+Status: M1–M12 done (M12 on 2026-10-23); next: build M13 Field notes & zoom (defined 2026-10-23); roadmap M13–M18 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -116,12 +116,36 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M10 Search & sync safety** (done 2026-10-21): Search screen (word starts, filters, spoilers follow the eye switch), find on page; no blind overwrites, live reload, edit clash bar, conflict copies (also edits Drive silently overwrote) and the Conflicts screen, open-on-another-computer warning; easier field moving in the infobox editors; plus Move library…, a synced page edge, What links here listing relations, caches out of the Drive folder. Mac and Windows can now both be used with the library in Drive.
 - **M11 Graph view** (done 2026-10-22): Graph screen with live Obsidian-style physics (drag pulls neighbours, springs back, gentle drift, glow, smooth hover fades), hover card, search, Filters & colours panel (filters, red-link/category/group nodes, arrows, colour rules), remembered layout, local graph beside pages with depth and Open in Graph, live updates, graph theme colours.
 - **M12 Family trees** (done 2026-10-23): Family tree screen centred on anyone (generations up/down, partners' parents, All families side by side with generations lined up, one house's trees), picture boxes, several partners with line styles and couple labels, "?" parents, stubs, placeholders, spoilers; editing in the tree (Add parent/child/partner with the other parent, Remove, New person…), the page header button, trees in page text, Save image (PNG/SVG); loops flagged on the Relations screen.
-- **M13 Field notes & zoom** (Juku, 2026-10-23; scope to be defined): a small note before or after any infobox field value, one per entry (each page of a Page link field, each list item; like the note of Date, text), apart from the words around links (Aa), which stay; Cmd/Ctrl+scroll makes the whole app bigger or smaller, remembered on this computer (not synced).
+- **M13 Field notes & zoom** (Juku, 2026-10-23; scope below): a small note before or after any infobox value, Cmd/Ctrl+scroll zoom of the whole app.
 - **M14 Health reports.**
 - **M15 Interactive maps.**
 - **M16 Calendars & timelines.**
 - **M17 Solar system map** (later version, scope to be defined).
 - **M18 Export:** zip, static HTML site.
+
+### M13 — Field notes & zoom (defined 2026-10-23)
+Two small additions from Juku's M12 review: a short note next to any infobox value, and making the whole app bigger or smaller.
+
+**Field notes**
+- A **note** is a short text before or after one entry's value, on the same line and smaller, exactly like the note of Date, text today ("[[House A]] *(by marriage)*", "*(claimed)* Lord of X"). Each note has its own **before / after** switch (Juku). It's separate from the words around links (the Aa button, M9), which stay as they are.
+- **Any field, any time** (Juku): no template setting. In the Infobox tab every entry gets a small **Note** button; it opens a one-line input with the before/after switch; emptying it removes the note.
+- **One note per entry** (Juku): each page of a Page link field, each item of a List, each name typed into a Linked from field, each entry of a Date, place / Date, text field with several entries; Text, Long text, Number, Yes/no, Choice and Date fields have one entry. Not for Image (it has its caption), Heading and Divider, nor for entries a page doesn't store itself (Linked from entries from other pages, two-way extras). Date, text keeps its own note; a field note can be added there too.
+- Notes allow bold, italic, `[[links]]` and `||spoilers||` like text fields. Their links count like links in text fields (red links, hover cards, What links here "via infobox: field", rename rewrite, graph lines). A note in a spoiler field is hidden with the value.
+- Shown wherever the infobox shows (pages, editor preview, embeds with `|infobox`); searched like the values (Search screen, find on page).
+- Notes stay with their entries: moving an entry in the Infobox tab moves its note; removing an entry (also by write-back from another page, M9 Remove / Replace, M12 Remove) removes its note. Apply / Change template keep notes with their values (also when a value becomes a hidden value). Templates don't hold notes.
+- Stored on the page's field next to its value; the values themselves keep their format (older copies of the app still read the page, ignoring the notes).
+
+**Zoom**
+- **Cmd + scroll** (Mac) / **Ctrl + scroll** (Windows) makes the whole app bigger or smaller (text stays sharp), 50–200 % in 10 % steps; also **Cmd/Ctrl + =**, **Cmd/Ctrl + −** and **Cmd/Ctrl + 0** (back to 100 %) (Juku). Everywhere: library, pages, screens, dialogs.
+- **Settings → Zoom**: the same level as a choice (Juku).
+- Remembered on this computer only (local storage, never synced), also after quitting.
+- The Graph and Family tree canvases keep their own zoom: on the Mac the trackpad pinch and the wheel there zoom the canvas, Cmd + scroll zooms the app; on Windows Ctrl + scroll over a canvas zooms the canvas (a trackpad pinch sends the same), the keyboard keys zoom the app (Claude's default, open to review).
+
+**Not in M13:** notes set in templates; notes as family-tree couple labels (the words around partner links stay that); zoom per project.
+
+**Checkpoint for Juku:** notes on every field type in the Infobox tab and the infobox (before and after, formatting, spoilers). After it: links in notes counting everywhere (red links, rename, What links here, graph, search), notes following moves, write-back and templates, zoom, final review.
+
+- **Done when:** the points above work; new features have Playwright UI tests (a note before and one after on a Page link entry, a List item, a Text and a Date field; formatting, a link and a spoiler in a note; moving an entry moves its note; removing a relation from another page removes its note; Apply template keeps notes; a red link in a note creates its page; search finds a note; zoom with Cmd/Ctrl + scroll, the keys and Settings, remembered after a reload; the canvases still zoom themselves) and pass with the Rust and unit tests (notes read and written with their entries, links in notes in the link index and rename rewrite, write-back keeping notes in step, search text including notes); screenshots check the Infobox tab with the note input, an infobox with notes before and after in the built-in themes, Settings → Zoom and the app at 150 %; a 5,000-page project still reopens in under 1 s and search answers as fast as before; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
 
 ### How every milestone is written
 - **Done when** always includes: new features have automated UI tests (Playwright smoke tests in `tests/ui/`) and pass with the Rust and unit tests; screenshots check how new or changed screens look; speed targets only if the milestone touches loading, the index, search or big lists; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
@@ -280,3 +304,4 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - 2026-10-20 (planning): embed boxes get their own look per theme (frame/box appearance, background, colours), added to M12 Themes.
 - 2026-10-21 (planning): Graph view moved ahead of Health reports (Juku). Renumbered: Graph view M12 → M11, Health reports M11 → M12; M13–M17 unchanged. No dependency between the two; `docs/history.md` keeps the old numbers.
 - 2026-10-23 (Juku): new **M13 Field notes & zoom** after M12: a small note before/after any infobox field value, one per entry, besides the words around links; Cmd/Ctrl+scroll zoom of the whole app, remembered per computer. Renumbered: Health reports M13 → M14, Interactive maps M14 → M15, Calendars & timelines M15 → M16, Solar system map M16 → M17, Export M17 → M18. `docs/history.md` keeps the old numbers.
+- 2026-10-23 (planning, Juku): **M13 Field notes & zoom defined** (scope above). Juku chose: a before/after switch per note; any field, any time (no template setting); same line, smaller, like Date, text; zoom also with Cmd/Ctrl + = − 0 and in Settings. Claude's defaults, open to review: notes stored next to the value without changing value formats; canvases keep their own wheel/pinch zoom (on Windows Ctrl + scroll over a canvas zooms the canvas).
