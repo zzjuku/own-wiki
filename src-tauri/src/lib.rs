@@ -820,6 +820,8 @@ pub fn run() {
                     Ok((data, path)) => tauri::http::Response::builder()
                         .header("Content-Type", assets::mime_type(&path.to_string_lossy()))
                         .header("Cache-Control", "no-cache")
+                        // The window may draw them on a canvas and read it back (Save image, M12).
+                        .header("Access-Control-Allow-Origin", "*")
                         // SVGs are pictures only: nothing inside them runs.
                         .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:")
                         .body(data),

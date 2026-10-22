@@ -366,6 +366,8 @@ test("Save image writes the whole tree as PNG or SVG", async ({ page }) => {
   for (const t of ["Person GA", "Person X", "Person MZ"]) expect(svg).toContain(t);
   expect(svg).not.toContain("data-line");
   expect(svg).toContain("stroke:rgb(");
+  // Pictures are in the file itself.
+  expect(svg).toContain('href="data:image/png');
   await page.evaluate(() => (window as any).__mock.setNextSave("/Out/Tree"));
   await page.getByRole("button", { name: "Save image…" }).click();
   await expect.poll(saved).toHaveLength(2);

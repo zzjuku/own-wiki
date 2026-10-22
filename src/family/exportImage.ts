@@ -29,16 +29,16 @@ function background(svg: SVGSVGElement): string {
   return "#ffffff";
 }
 
-/** A picture as a data URL (so the file holds it). */
+/** A picture as a data URL (so the file holds it), drawn through a canvas:
+ * the app's pictures can be loaded as images but not fetched. */
 async function dataUrl(url: string): Promise<string | null> {
+  const img = await loadImage(url);
+  if (!img) return null;
   try {
-    const blob = await (await fetch(url)).blob();
-    return await new Promise((resolve) => {
-      const r = new FileReader();
-      r.onload = () => resolve(typeof r.result === "string" ? r.result : null);
-      r.onerror = () => resolve(null);
-      r.readAsDataURL(blob);
-    });
+    const c = document.createElement("canvas");
+    [c.width, c.height] = [img.naturalWidth, img.naturalHeight];
+    c.getContext("2d")!.drawImage(img, 0, 0);
+    return c.toDataURL("image/png");
   } catch {
     return null;
   }
@@ -142,8 +142,7 @@ async function draw(ctx: CanvasRenderingContext2D, el: Element): Promise<void> {
       break;
     case "image": {
       const [ix, iy, iw, ih] = ["x", "y", "width", "height"].map((a) => num(el.getAttribute(a)));
-      const src = await dataUrl(el.getAttribute("href") ?? "");
-      const img = src ? await loadImage(src) : null;
+      const img = await loadImage(el.getAttribute("href") ?? "");
       if (img) {
         // preserveAspectRatio "xMidYMin slice": fill the frame, cut the sides or the bottom.
         const k = Math.max(iw / img.width, ih / img.height);
@@ -182,6 +181,8 @@ async function draw(ctx: CanvasRenderingContext2D, el: Element): Promise<void> {
 function loadImage(src: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image();
+    // (Pictures come from the app's own scheme, which allows this: the canvas stays readable.)
+    img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
     img.src = src;
