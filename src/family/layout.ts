@@ -46,6 +46,10 @@ export interface TreeLine {
   kind: "couple" | "descent" | "connector";
   /** Box keys the line belongs to (highlighted with them). */
   people: string[];
+  /** A line standing for relations that can be removed on the Family tree
+   * screen: a couple (`people`: the two), or a child's line to their parents
+   * (`people`: the parents, then the child). */
+  select?: "couple" | "child";
 }
 
 export interface TreeLabel {
@@ -399,12 +403,12 @@ function resolve(root: Block, specs: Spec[], m: Metrics, rowH: number): TreeLayo
       let y: number;
       if (s.level === 0) {
         y = mid(a.row);
-        lines.push({ d: `M${r(l.x + l.w)},${r(y)}H${r(rt.x)}`, style: s.style, kind: "couple", people: [s.a, s.b] });
+        lines.push({ d: `M${r(l.x + l.w)},${r(y)}H${r(rt.x)}`, style: s.style, kind: "couple", people: [s.a, s.b], select: "couple" });
       } else {
         // Not side by side: the line runs under the boxes between them.
         y = below(a.row, s.level);
         const from = a.x < b.x ? a.x + a.w * 0.75 : a.x + a.w * 0.25;
-        lines.push({ d: `M${r(from)},${r(a.y + a.h)}V${r(y)}H${r(cx(b))}V${r(b.y + b.h)}`, style: s.style, kind: "couple", people: [s.a, s.b] });
+        lines.push({ d: `M${r(from)},${r(a.y + a.h)}V${r(y)}H${r(cx(b))}V${r(b.y + b.h)}`, style: s.style, kind: "couple", people: [s.a, s.b], select: "couple" });
       }
       s.labels.forEach((lab, i) => labels.push({ x: j.x, y: i === 0 ? y - 4 : y + 12, text: lab.text, spoiler: lab.spoiler }));
     } else if (s.t === "descent") {
@@ -418,13 +422,13 @@ function resolve(root: Block, specs: Spec[], m: Metrics, rowH: number): TreeLayo
       const hi = Math.max(j.x, ...xs);
       const people = [...s.people, ...s.kids.map((k) => k.key)];
       lines.push({ d: `M${r(j.x)},${r(jy(j))}V${r(bar)}${hi - lo > 0.5 ? `M${r(lo)},${r(bar)}H${r(hi)}` : ""}`, style, kind: "descent", people });
-      kids.forEach((k, i) => lines.push({ d: `M${r(xs[i])},${r(bar)}V${r(k.it!.y)}`, style: k.drop, kind: "descent", people: [...s.people, s.kids[i].key] }));
+      kids.forEach((k, i) => lines.push({ d: `M${r(xs[i])},${r(bar)}V${r(k.it!.y)}`, style: k.drop, kind: "descent", people: [...s.people, s.kids[i].key], select: "child" }));
     } else {
       const a = pos.get(s.from);
       const b = pos.get(s.to);
       if (!a || !b) continue;
       const turn = b.y - m.rowGap / 3;
-      lines.push({ d: `M${r(cx(a))},${r(a.y + a.h)}V${r(turn)}H${r(cx(b))}V${r(b.y)}`, style: s.style, kind: "connector", people: [s.from, s.to] });
+      lines.push({ d: `M${r(cx(a))},${r(a.y + a.h)}V${r(turn)}H${r(cx(b))}V${r(b.y)}`, style: s.style, kind: "connector", people: [s.from, s.to], select: "child" });
     }
   }
   const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };

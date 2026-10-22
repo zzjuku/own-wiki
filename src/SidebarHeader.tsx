@@ -13,6 +13,16 @@ const BACK_KEYS = IS_MAC ? "⌘[" : "Alt+←";
 const FORWARD_KEYS = IS_MAC ? "⌘]" : "Alt+→";
 const HIDE_KEYS = IS_MAC ? "⌘\\" : "Ctrl+\\";
 
+/** A gear (settings). */
+export function GearIcon() {
+  return (
+    <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <circle cx="8" cy="8" r="2.2" className="stroke" />
+      <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" className="stroke" />
+    </svg>
+  );
+}
+
 /** A window with a side panel (hide or show the sidebar). */
 export function SidebarIcon() {
   return (
@@ -134,13 +144,7 @@ export function SidebarHeader({
           <Icon name={revealAll ? "eye" : "spoiler"} />
         </button>
         <button className="plain nav" title="Project settings" aria-label="Project settings" onClick={onSettings}>
-          <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-            <circle cx="8" cy="8" r="2.2" className="stroke" />
-            <path
-              d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"
-              className="stroke"
-            />
-          </svg>
+          <GearIcon />
         </button>
         <button className="plain nav" title={`Hide the sidebar (${HIDE_KEYS})`} aria-label="Hide the sidebar" onClick={onHideSidebar}>
           <SidebarIcon />

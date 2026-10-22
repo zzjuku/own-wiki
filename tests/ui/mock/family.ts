@@ -133,3 +133,26 @@ export function fieldNames(pages: Page[], kinds: string[]): string[] {
   for (const p of pages) for (const f of p.infobox?.fields ?? []) if (kinds.includes(f.type) && !out.has(lc(f.label))) out.set(lc(f.label), f.label);
   return [...out.values()];
 }
+
+/** Images saved with Save as image: the path and the bytes (for the tests to check). */
+export const savedImages: { path: string; bytes: number[] }[] = [];
+let nextSave: string | null = null;
+
+/** The family tree commands of the in-memory backend. */
+export function familyCommands(
+  proj: (id: string) => { pages: Map<string, Page>; settings: ProjectSettings },
+  fingerprinted: <T>(data: T, known: string | null) => unknown,
+): Record<string, (a: any, options?: { headers?: Record<string, string> }) => unknown> {
+  return {
+    family_data: ({ project, known }) => fingerprinted(familyData([...proj(project).pages.values()], proj(project).settings), known),
+    field_names: ({ project, kinds }) => fieldNames([...proj(project).pages.values()], kinds),
+    "plugin:dialog|save": () => nextSave,
+    save_image_file: (body, options) => {
+      const bytes = body instanceof Uint8Array ? [...body] : Array.isArray(body) ? body : Object.values(body ?? {});
+      savedImages.push({ path: decodeURIComponent(options?.headers?.path ?? ""), bytes: bytes as number[] });
+    },
+  };
+}
+
+/** The path the next save dialog answers with. */
+export const setNextSave = (path: string | null) => void (nextSave = path);

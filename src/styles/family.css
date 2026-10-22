@@ -41,12 +41,22 @@
   font-size: var(--text-sm);
   white-space: nowrap;
 }
+/* Zoom and Fit in the tree's top right corner */
 .family-zoom {
+  position: absolute;
+  top: 12px;
+  right: 16px;
   display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 .family-zoom button {
-  font-size: 16px;
-  width: 26px;
+  min-width: 28px;
+  font-size: var(--text-sm);
 }
 
 /* Person picker */
@@ -118,11 +128,31 @@
   stroke-linecap: round;
   stroke-width: 2;
 }
+.tree-line-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  cursor: pointer;
+}
+.tree-line-hit:hover {
+  stroke: var(--tree-line-active);
+  stroke-opacity: 0.25;
+}
+.tree-line.selected {
+  stroke: var(--tree-line-active);
+  stroke-width: 3.5;
+}
+.tree-box.selected rect:first-of-type {
+  stroke: var(--tree-line-active);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 6px var(--tree-line-active));
+}
 .tree-line.lit {
   stroke: var(--tree-line-active);
   stroke-width: 2.4;
 }
 .tree-couple-label {
+  pointer-events: none;
   fill: var(--tree-label);
   font-size: 11px;
   font-style: italic;
@@ -311,4 +341,31 @@
   margin-left: 8px;
   font-size: var(--text-xs);
   opacity: 0.7;
+}
+
+/* The bar for the selected person or line */
+.family-bar {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-size: var(--text-sm);
+}
+.family-bar .spacer {
+  flex: 1;
+}
+.family-bar-name {
+  margin-right: 4px;
+}
+.family-bar-gap {
+  width: 8px;
 }

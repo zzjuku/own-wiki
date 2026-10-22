@@ -3,7 +3,7 @@
 // pinch zooms, dragging pans (a click on a box still opens it). Resting on a
 // box shows the hover card and highlights its lines; resting on a stub
 // highlights the full box, and clicking the stub moves there.
-import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, type Ref } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, type Ref, type RefObject } from "react";
 import { HOVER_DELAY_MS, showCardFor } from "../HoverCard";
 import { imageUrl } from "../infobox";
 import { type Family, labelText, lifeYears } from "./data";
@@ -23,6 +23,8 @@ export interface TreeHandle {
   zoom: (factor: number) => void;
   getView: () => View;
   setView: (v: View) => void;
+  /** The drawing (Save as image). */
+  svg: () => SVGSVGElement | null;
 }
 
 const MIN_ZOOM = 0.05;
@@ -70,6 +72,26 @@ export function wrapName(name: string, width: number, font: string): string[] {
   });
 }
 
+/** Zoom out, zoom in and Fit for a tree (the screen's corner, a page tree's bar). */
+export function ZoomButtons({ handle }: { handle: RefObject<TreeHandle | null> }) {
+  return (
+    <>
+      <button className="plain" title="Zoom out" aria-label="Zoom out" onClick={() => handle.current?.zoom(1 / 1.25)}>
+        −
+      </button>
+      <button className="plain" title="Zoom in" aria-label="Zoom in" onClick={() => handle.current?.zoom(1.25)}>
+        +
+      </button>
+      <button className="plain" title="Show the whole tree" onClick={() => handle.current?.fit(true)}>
+        Fit
+      </button>
+    </>
+  );
+}
+
+/** What is selected on the Family tree screen: a box, or a line (its place in the layout's lines). */
+export type Selection = { kind: "box"; key: string } | { kind: "line"; index: number };
+
 export interface TreeFonts {
   name: string;
   years: string;
@@ -88,6 +110,7 @@ export function TreeCanvas({
   onCreate,
   label,
   wheelZoom = true,
+  selection,
 }: {
   layout: TreeLayout;
   fam: Family;
@@ -102,6 +125,8 @@ export function TreeCanvas({
   label: string;
   /** The wheel zooms (the Family tree screen); off in page text, where it scrolls the page. */
   wheelZoom?: boolean;
+  /** Selecting (the Family tree screen): a click selects a person or a line, a double-click opens. */
+  selection?: { selected: Selection | null; onSelect: (s: Selection | null) => void };
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const group = useRef<SVGGElement>(null);
@@ -166,6 +191,7 @@ export function TreeCanvas({
       },
       getView: () => ({ ...view.current }),
       setView: (v) => animateTo(v, false),
+      svg: () => svg.current,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [layout, byKey, animateTo],
@@ -232,15 +258,26 @@ export function TreeCanvas({
   };
   const onClick = (e: React.MouseEvent) => {
     if (dragged.current) return void (dragged.current = false);
-    const el = (e.target as Element).closest<SVGGElement>("[data-key]");
-    if (!el) return;
-    const b = byKey.get(el.dataset.key!);
-    if (!b) return;
+    const target = e.target as Element;
+    const el = target.closest<SVGGElement>("[data-key]");
+    const b = el ? byKey.get(el.dataset.key!) : undefined;
+    if (!b) {
+      const line = target.closest<SVGPathElement>("[data-line]");
+      return selection?.onSelect(line ? { kind: "line", index: Number(line.dataset.line) } : null);
+    }
     hover(null);
     if (b.box.kind === "stub") api.centreOn(b.box.target!);
     else if (b.box.kind === "hidden") onReveal(b.box.reveal ?? []);
+    else if (selection) selection.onSelect(b.box.kind === "person" || b.box.kind === "placeholder" ? { kind: "box", key: b.key } : null);
     else if (b.box.kind === "placeholder") onCreate(b.box.person!);
     else if (b.box.kind === "person") onOpen(b.box.person!);
+  };
+  // While selecting, a double-click opens (a placeholder: creates its page).
+  const onDoubleClick = (e: React.MouseEvent) => {
+    if (!selection) return;
+    const b = byKey.get((e.target as Element).closest<SVGGElement>("[data-key]")?.dataset.key ?? "");
+    if (b?.box.kind === "placeholder") onCreate(b.box.person!);
+    else if (b?.box.kind === "person") onOpen(b.box.person!);
   };
 
   // Hover: lines of the box light up (stubs: their full box); the card after a moment.
@@ -280,17 +317,38 @@ export function TreeCanvas({
   };
 
   const ids = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const selecting = !!selection;
+  const selectedBox = selection?.selected?.kind === "box" ? selection.selected.key : null;
+  const selectedLine = selection?.selected?.kind === "line" ? selection.selected.index : null;
   const boxes = useMemo(
     () =>
       layout.boxes.map((b) => (
-        <BoxView key={b.key} b={b} fam={fam} project={project} centre={b.key === centreKey} spoilers={spoilers} fonts={fonts} clip={`${ids}${b.key}`} />
+        <BoxView
+          key={b.key}
+          b={b}
+          fam={fam}
+          project={project}
+          centre={b.key === centreKey}
+          selected={selectedBox === b.key}
+          spoilers={spoilers}
+          fonts={fonts}
+          clip={`${ids}${b.key}`}
+        />
       )),
-    [layout, fam, project, centreKey, spoilers, fonts, ids],
+    [layout, fam, project, centreKey, selectedBox, spoilers, fonts, ids],
   );
   const lines = useMemo(
-    () =>
-      layout.lines.map((l, i) => <path key={i} d={l.d} className={`tree-line ${l.style} ${l.kind}`} data-p={l.people.join(" ")} />),
-    [layout],
+    () => (
+      <>
+        {layout.lines.map((l, i) => (
+          <path key={i} d={l.d} className={`tree-line ${l.style} ${l.kind}${selectedLine === i ? " selected" : ""}`} data-p={l.people.join(" ")} />
+        ))}
+        {/* Wider invisible lines, easier to click. */}
+        {selecting &&
+          layout.lines.map((l, i) => (l.select ? <path key={`hit${i}`} d={l.d} className="tree-line-hit" data-line={i} /> : null))}
+      </>
+    ),
+    [layout, selectedLine, selecting],
   );
   const labels = useMemo(
     () =>
@@ -314,6 +372,7 @@ export function TreeCanvas({
       onPointerOver={onPointerOver}
       onPointerLeave={() => hover(null)}
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
     >
       <g ref={group}>
         <g className="tree-lines">{lines}</g>
@@ -329,6 +388,7 @@ function BoxView({
   fam,
   project,
   centre,
+  selected,
   spoilers,
   fonts,
   clip,
@@ -337,6 +397,7 @@ function BoxView({
   fam: Family;
   project: string;
   centre: boolean;
+  selected: boolean;
   spoilers: boolean;
   fonts: TreeFonts;
   /** Id for the picture's clip path (unique in the window). */
@@ -346,7 +407,7 @@ function BoxView({
   const common = {
     "data-key": b.key,
     "data-name": b.box.kind === "hidden" ? undefined : p?.title,
-    className: `tree-box ${b.box.kind}${centre ? " centre" : ""}`,
+    className: `tree-box ${b.box.kind}${centre ? " centre" : ""}${selected ? " selected" : ""}`,
     transform: `translate(${b.x},${b.y})`,
   };
   if (b.box.kind === "stub") {

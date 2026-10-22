@@ -249,19 +249,65 @@ function AddRelationDialog({
   addTyped,
   onRelationsChanged,
 }: RelationProps & { field: Field; close: () => void; addTyped: (name: string) => void }) {
+  return (
+    <RelationDialog
+      title={`Add to ${field.label}`}
+      fixed={{ id: pageId, title: pageTitle }}
+      fixedIs="source"
+      fields={field.options?.from ?? []}
+      close={close}
+      onDone={onRelationsChanged}
+      keepName={addTyped}
+    />
+  );
+}
+
+/**
+ * Writes one page into a field of another ("Alex is John's: Father /
+ * Mother"): the Add… dialog of Linked from fields, and Add parent / child /
+ * partner on the Family tree screen. One page is given (`fixed`, the page
+ * written into the other's field, or the page whose field is written); the
+ * other is chosen here (a missing one: Create page… first). The choice of
+ * field shows what each holds now; a taken field asks Replace or Add.
+ */
+export function RelationDialog({
+  title,
+  fixed,
+  fixedIs,
+  fields: from,
+  close,
+  onDone,
+  keepName,
+  pickLabel = "Page",
+}: {
+  title: string;
+  fixed: { id: string; title: string };
+  /** "source": the given page is written into the chosen page's field; "target": the chosen page goes into the given page's field. */
+  fixedIs: "source" | "target";
+  /** The fields to choose from, in order. */
+  fields: string[];
+  close: () => void;
+  /** Something was written. */
+  onDone: () => void;
+  /** A name without a page can be kept as a name only (typed in on the given page). */
+  keepName?: (name: string) => void;
+  pickLabel?: string;
+}) {
   const wiki = useWiki();
-  const from = field.options?.from ?? [];
   const [name, setName] = useState("");
-  const target = name.trim() ? wiki.names.resolve(name) : null;
-  const targetId = target?.page.id ?? null;
-  // The other page as it is now (to see what its fields hold).
+  const chosen = name.trim() ? wiki.names.resolve(name) : null;
+  const chosenId = chosen?.page.id ?? null;
+  const chosenTitle = chosen?.page.title ?? name.trim();
+  const [sourceId, sourceTitle] = fixedIs === "source" ? [fixed.id, fixed.title] : [chosenId, chosenTitle];
+  const [targetId, targetTitle] = fixedIs === "source" ? [chosenId, chosenTitle] : [fixed.id, fixed.title];
+  // The target page as it is now (to see what its fields hold).
   const [page, setPage] = useState<{ id: string; page: Page | null; error: string | null } | null>(null);
   const [choice, setChoice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!targetId) return;
+    if (!targetId || !sourceId) return;
     let live = true;
     api.readPage(wiki.project, targetId).then(
       (p) => live && setPage({ id: targetId, page: p, error: p.infoboxError ? `${p.title}'s infobox can't be read, so it can't be changed here.` : null }),
@@ -270,29 +316,28 @@ function AddRelationDialog({
     return () => {
       live = false;
     };
-  }, [targetId, wiki.project]);
+  }, [targetId, sourceId, wiki.project]);
 
   const loaded = targetId && page?.id === targetId ? page : null;
-  const missing = !!name.trim() && !target;
-  const otherTitle = target?.page.title ?? name.trim();
-  const thisPage = (n: string) => wiki.names.resolve(n)?.page.id === pageId;
+  const missing = !!name.trim() && !chosen;
+  const isSource = (n: string) => wiki.names.resolve(n)?.page.id === sourceId;
   const slots = useMemo(
-    () => (loaded?.page && !loaded.error ? slotsFor(loaded.page.infobox, from, thisPage) : []),
+    () => (loaded?.page && !loaded.error && sourceId ? slotsFor(loaded.page.infobox, from, isSource) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loaded, from.join("\n"), wiki.names],
+    [loaded, from.join("\n"), wiki.names, sourceId],
   );
   // The one picked, else the first usable field in `from` order (a taken one
   // shows its warning rather than quietly picking another field).
   const picked = slots.find((s) => s.label === choice && selectable(s)) ?? slots.find(selectable) ?? null;
-  const self = targetId === pageId;
+  const self = !!chosenId && chosenId === fixed.id;
 
   async function write(edit: RelationEdit) {
-    if (!picked) return;
+    if (!picked || !targetId || !sourceId) return;
     setBusy(true);
     setError(null);
     try {
-      await api.setRelation(wiki.project, targetId!, picked.label, pageId, edit);
-      onRelationsChanged();
+      await api.setRelation(wiki.project, targetId, picked.label, sourceId, edit);
+      onDone();
       close();
     } catch (e) {
       setError(errorText(e));
@@ -306,11 +351,11 @@ function AddRelationDialog({
       case "empty":
         return "empty now";
       case "missing":
-        return `added to ${otherTitle}'s page as a new field`;
+        return `added to ${targetTitle}'s page as a new field`;
       case "taken":
         return `now: ${s.current.join(", ")}`;
       case "here":
-        return `already ${pageTitle}`;
+        return `already ${sourceTitle}`;
       case "wrongType":
         return s.kind === "linkedfrom"
           ? "a Linked from field (it fills itself); make it a Page link field in the template to add here"
@@ -328,7 +373,7 @@ function AddRelationDialog({
           </button>
           {picked.kind === "links" && (
             <button type="button" className="primary" onClick={() => void write("add")}>
-              Add {pageTitle} too
+              Add {sourceTitle} too
             </button>
           )}
         </>
@@ -343,33 +388,28 @@ function AddRelationDialog({
 
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div
-        className="dialog relation-dialog"
-        role="dialog"
-        aria-label={`Add to ${field.label}`}
-        onKeyDown={(e) => e.key === "Escape" && close()}
-      >
-        <h2>Add to {field.label}</h2>
+      <div className="dialog relation-dialog" role="dialog" aria-label={title} onKeyDown={(e) => e.key === "Escape" && close()}>
+        <h2>{title}</h2>
         <label className="field">
-          <span>Page</span>
-          {/* A missing page gets "Create page…" (the open page's template suggested); then the choice below. */}
-          <PageNameInput label="Page" value={name} autoFocus fromPage={pageId} onChange={setName} />
+          <span>{pickLabel}</span>
+          {/* A missing page gets "Create page…" (the given page's template suggested); then the choice below. */}
+          <PageNameInput label={pickLabel} value={name} autoFocus fromPage={fixed.id} onChange={setName} />
         </label>
 
         {self && <p className="dialog-error">A page can't be listed in its own field.</p>}
-        {target && !self && loaded?.error && <p className="dialog-error">{loaded.error}</p>}
+        {chosen && !self && loaded?.error && <p className="dialog-error">{loaded.error}</p>}
 
         {missing && (
           <p className="dialog-note relation-missing">
-            Create the page with <strong>Create page…</strong> under the name, then choose where {pageTitle} goes. Or keep the name only (typed in on{" "}
-            {pageTitle}'s page).
+            Create the page with <strong>Create page…</strong> under the name, then choose the field.
+            {keepName && <> Or keep the name only (typed in on {fixed.title}'s page).</>}
           </p>
         )}
 
         {slots.length > 0 && !self && (
           <fieldset className="relation-slots">
             <legend>
-              {pageTitle} is {otherTitle}'s:
+              {sourceTitle} is {targetTitle}'s:
             </legend>
             {slots.map((s) => (
               <label key={s.label} className={`check ${selectable(s) ? "" : "disabled"}`}>
@@ -389,24 +429,24 @@ function AddRelationDialog({
 
         {picked?.status === "taken" && !self && (
           <p className="dialog-warning">
-            {otherTitle}'s {picked.label} is already {picked.current.join(", ")}.
+            {targetTitle}'s {picked.label} is already {picked.current.join(", ")}.
             {picked.kind === "link" && " It holds one page only."}
           </p>
         )}
         {picked && !self && (
           <p className="dialog-note relation-writes">
-            Writes {pageTitle} into {otherTitle}'s page. Nothing is stored on {pageTitle}'s page.
+            Writes {sourceTitle} into {targetTitle}'s page. Nothing is stored on {sourceTitle}'s page.
           </p>
         )}
         {error && <p className="dialog-error">{error}</p>}
 
         <div className="dialog-actions">
-          {missing && (
+          {missing && keepName && (
             <button
               type="button"
               className="relation-typed"
               onClick={() => {
-                addTyped(name.trim());
+                keepName(name.trim());
                 close();
               }}
             >

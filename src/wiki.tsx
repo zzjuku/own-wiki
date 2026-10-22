@@ -24,6 +24,9 @@ export interface CreateOptions {
   onCreated?: (page: PageInfo) => void;
   /** Template suggested for the new page (else the one of the page the link is on). */
   template?: string | null;
+  /** The dialog's title (default "Create page") and note (default: the page doesn't exist yet). */
+  heading?: string;
+  note?: string;
 }
 
 export interface Wiki {

@@ -2,7 +2,8 @@
 // shortcut), generations, several partners with a dashed lover line, an
 // unknown parent, stubs, placeholders, line styles, couple labels, spoilers.
 import { expect, test, type Page } from "@playwright/test";
-import { oneProject, openProject } from "./fixtures";
+import type { Field } from "../../src/api";
+import { oneProject, openProject, storedPage } from "./fixtures";
 import { FAMILY, SETTINGS } from "./familyData";
 
 const data = (extra = {}) => oneProject(FAMILY, { settings: SETTINGS, mainPage: "Person C", ...extra });
@@ -97,7 +98,10 @@ test("a placeholder (no page yet) is a dashed box; clicking it creates the page"
   await openTree(page);
   const ph = page.locator(".tree-box.placeholder");
   await expect(ph).toContainText("Person MZ");
+  // A click selects it (the bar offers Create page…); a double-click creates it straight away.
   await ph.click();
+  await expect(page.getByRole("toolbar", { name: "Selected" })).toContainText("has no page yet");
+  await ph.dblclick();
   await expect(page.getByRole("dialog")).toContainText("Create page");
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page.locator(".tree-box.placeholder")).toHaveCount(0);
@@ -244,4 +248,129 @@ test("Project settings: the house field", async ({ page }) => {
   await page.getByRole("button", { name: "Done" }).click();
   const stored = await page.evaluate(() => (window as any).__mock.projects.get("Project A").settings.familyTree);
   expect(stored.house).toBe("Dynasty");
+});
+
+
+/** The index of the line between two boxes (a couple, or a child's line). */
+async function lineBetween(page: Page, a: string, b: string, kind: "couple" | "child") {
+  return page.evaluate(
+    ([a, b, kind]) => {
+      const l = (window as any).__familyTree.layout;
+      const key = (t: string) => l.boxes.find((x: any) => x.box.kind !== "stub" && x.key === `n${x.box.person}` && document.querySelector(`[data-key="${x.key}"]`)?.getAttribute("data-name") === t)?.key;
+      return l.lines.findIndex((x: any) => x.select === kind && x.people.includes(key(a)) && x.people.includes(key(b)));
+    },
+    [a, b, kind] as const,
+  );
+}
+
+/** Clicks a line where it is (a straight line's box has no height, which Playwright counts as hidden). */
+async function clickLine(page: Page, index: number) {
+  const r = await page.locator(`[data-line="${index}"]`).evaluate((el) => {
+    const path = el as SVGPathElement;
+    const p = path.getPointAtLength(path.getTotalLength() * 0.75);
+    const m = path.getScreenCTM()!;
+    return { x: p.x * m.a + p.y * m.c + m.e, y: p.x * m.b + p.y * m.d + m.f };
+  });
+  await page.mouse.click(r.x, r.y);
+}
+
+test("a click selects a person; the bar opens the page, shows their tree, and a double-click opens", async ({ page }) => {
+  await openProject(page, data());
+  await openTree(page);
+  await box(page, "Person H").click();
+  const bar = page.getByRole("toolbar", { name: "Selected" });
+  await expect(bar).toContainText("Person H");
+  await expect(box(page, "Person H")).toHaveClass(/selected/);
+  await shot(page, "selected");
+  await bar.getByRole("button", { name: "Show their tree" }).click();
+  await expect(page.locator(".tree-box.centre")).toContainText("Person H");
+  await expect(bar).toHaveCount(0);
+  await box(page, "Person U").dblclick();
+  await expect(page.locator(".page-head h1")).toHaveText("Person U");
+});
+
+test("Add parent, child and partner write the right pages", async ({ page }) => {
+  await openProject(page, data());
+  await openTree(page);
+  const bar = page.getByRole("toolbar", { name: "Selected" });
+  const dialog = page.getByRole("dialog");
+  // A child: Page A gets Person F as its Father (a new field on Page A).
+  await box(page, "Person F").click();
+  await bar.getByRole("button", { name: "Add child…" }).click();
+  await dialog.getByLabel("Child").fill("Page A");
+  await expect(dialog).toContainText("Person F is Page A's:");
+  await shot(page, "add-child");
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  expect((await storedPage(page, "Page A.md")).infobox.fields).toEqual([{ label: "Father", type: "links", value: ["Person F"] }]);
+  await expect(box(page, "Page A")).toHaveCount(1);
+  // A parent: into Person W's own page.
+  await box(page, "Person W").click();
+  await bar.getByRole("button", { name: "Add parent…" }).click();
+  await dialog.getByLabel("Parent").fill("Page A");
+  await expect(dialog).toContainText("Page A is Person W's:");
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  expect((await storedPage(page, "Person W.md")).infobox.fields).toContainEqual({ label: "Father", type: "links", value: ["Page A"] });
+  // A partner: into Person K's page, as Lover.
+  await box(page, "Person K").click();
+  await bar.getByRole("button", { name: "Add partner…" }).click();
+  await dialog.getByLabel("Partner").fill("Person I");
+  await dialog.getByLabel("Lover").check();
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  expect((await storedPage(page, "Person K.md")).infobox.fields).toContainEqual({ label: "Lover", type: "links", value: ["Person I"] });
+});
+
+test("selecting a line removes the relations behind it (after asking)", async ({ page }) => {
+  await openProject(page, data());
+  await openTree(page);
+  const bar = page.getByRole("toolbar", { name: "Selected" });
+  // The couple Person F and Person M: the link is on both pages.
+  const couple = await lineBetween(page, "Person F", "Person M", "couple");
+  await clickLine(page, couple);
+  await expect(bar).toContainText("Person F and Person M");
+  await expect(page.locator(".tree-line.selected")).toHaveCount(1);
+  await bar.getByRole("button", { name: "Remove…" }).click();
+  await expect(page.getByRole("dialog")).toContainText("This changes Person F, Person M's page");
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  const spouse = async (id: string) => (await storedPage(page, id)).infobox.fields.find((f: Field) => f.label === "Spouse")?.value;
+  await expect.poll(() => spouse("Person F.md")).toBeUndefined();
+  expect(await spouse("Person M.md")).toBeUndefined();
+  // A child's line: Person K's Father and Mother links.
+  const kid = await lineBetween(page, "Person L", "Person K", "child");
+  await clickLine(page, kid);
+  await bar.getByRole("button", { name: "Remove…" }).click();
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect.poll(async () => (await storedPage(page, "Person K.md")).infobox.fields.flatMap((f: Field) => f.value ?? [])).toEqual([]);
+});
+
+test("New person… creates a page and shows it in the middle", async ({ page }) => {
+  await openProject(page, data());
+  await openTree(page);
+  await page.getByRole("button", { name: "New person…" }).click();
+  const dialog = page.getByRole("dialog", { name: "New person" });
+  await dialog.getByLabel("Page title").fill("Person New");
+  await dialog.getByRole("button", { name: "Create" }).click();
+  await expect(page.locator(".tree-box.centre")).toContainText("Person New");
+  await expect(page.getByRole("heading", { name: "Family tree", level: 1 })).toBeVisible();
+});
+
+test("Save image writes the whole tree as PNG or SVG", async ({ page }) => {
+  await openProject(page, data());
+  await openTree(page);
+  const saved = () => page.evaluate(() => (window as any).__mock.savedImages.map((x: any) => ({ path: x.path, head: x.bytes.slice(0, 8), size: x.bytes.length })));
+  await page.evaluate(() => (window as any).__mock.setNextSave("/Out/Tree.svg"));
+  await page.getByRole("button", { name: "Save image…" }).click();
+  await expect.poll(saved).toHaveLength(1);
+  const svg = await page.evaluate(() => String.fromCharCode(...(window as any).__mock.savedImages[0].bytes));
+  expect(svg).toContain("<svg");
+  // Every person, not only those on screen; no clickable helper lines; theme colours written in.
+  for (const t of ["Person GA", "Person X", "Person MZ"]) expect(svg).toContain(t);
+  expect(svg).not.toContain("data-line");
+  expect(svg).toContain("stroke:rgb(");
+  await page.evaluate(() => (window as any).__mock.setNextSave("/Out/Tree"));
+  await page.getByRole("button", { name: "Save image…" }).click();
+  await expect.poll(saved).toHaveLength(2);
+  const png = (await saved())[1];
+  expect(png.path).toBe("/Out/Tree.png");
+  expect(png.head.slice(0, 4)).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  expect(png.size).toBeGreaterThan(5000);
 });

@@ -14,7 +14,12 @@ import { Family, type FamilyData } from "./data";
 import { layoutTree, type Metrics, sideBySide } from "./layout";
 import { alignTrees, buildAllTrees, buildTree } from "./model";
 import { MAX_GENERATIONS, useTreePrefs } from "./prefs";
-import { hasPicture, measureText, TEXT_H, TreeCanvas, type TreeFonts, type TreeHandle, type View } from "./TreeCanvas";
+import { hasPicture, measureText, type Selection, TEXT_H, TreeCanvas, type TreeFonts, type TreeHandle, type View, ZoomButtons } from "./TreeCanvas";
+import { SelectionBar } from "./FamilyEditing";
+import { treePng, treeSvg } from "./exportImage";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { useReportError } from "../notify";
+import { GearIcon } from "../SidebarHeader";
 
 export const useFamilyData = makeIndexStore<FamilyData>((p, known) => api.familyData(p, known));
 
@@ -104,10 +109,12 @@ export function FamilyTreeView({
   onOpenSettings: () => void;
 }) {
   const wiki = useWiki();
+  const report = useReportError();
   const project = wiki.project;
   const raw = useFamilyData(project);
   const [prefs, setPrefs] = useTreePrefs(project);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Selection | null>(null);
   const handle = useRef<TreeHandle>(null);
 
   const houseName = centre?.startsWith(HOUSE_PREFIX) ? centre.slice(HOUSE_PREFIX.length) : null;
@@ -177,6 +184,60 @@ export function FamilyTreeView({
     };
   }, [project, centre]);
 
+  // A selection that's gone from the tree (after an edit, another person) lets go.
+  useEffect(() => {
+    if (!selected || !layout) return;
+    const gone = selected.kind === "box" ? !layout.boxes.some((b) => b.key === selected.key) : !layout.lines[selected.index]?.select;
+    if (gone) setSelected(null);
+  }, [layout, selected]);
+  useEffect(() => setSelected(null), [centre]);
+  useEffect(() => {
+    if (!selected) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && !document.querySelector(".backdrop") && setSelected(null);
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [selected]);
+
+  /** A placeholder's page (the template of a page linking to them suggested). */
+  const createPage = (i: number) => fam && wiki.createFromLink(fam.people[i].title, relatedPage(fam, i), { stay: true });
+
+  /** New person…: creates a page and shows their tree (a family can grow from there). */
+  const newPerson = () =>
+    wiki.createFromLink("", undefined, {
+      stay: true,
+      heading: "New person",
+      note: "Creates a page and shows it here; then add parents, children and partners.",
+      template: centreIndex !== undefined ? fam?.people[centreIndex].template : undefined,
+      onCreated: (p) => onCentre(p.id, true),
+    });
+
+  /** Save as image: the whole tree as PNG or SVG, to a file chosen here. */
+  async function saveImage() {
+    const svg = handle.current?.svg();
+    if (!layout || !svg) return;
+    setSelected(null);
+    const name = houseName !== null ? (fam?.houses.find((h) => norm(h) === houseName) ?? "House") : all ? "All families" : (title ?? "Family tree");
+    const path = await saveDialog({
+      title: "Save the family tree as an image",
+      defaultPath: `${name.replace(/[\\/:*?"<>|]/g, "-")} family tree.png`,
+      filters: [
+        { name: "PNG picture", extensions: ["png"] },
+        { name: "SVG drawing (sharp at any size)", extensions: ["svg"] },
+      ],
+    }).catch(() => null);
+    if (!path) return;
+    // (A frame later: the selection is gone from the drawing.)
+    await new Promise(requestAnimationFrame);
+    try {
+      const svgFile = /\.svg$/i.test(path);
+      const file = /\.(png|svg)$/i.test(path) ? path : `${path}.png`;
+      const bytes = svgFile ? new TextEncoder().encode(await treeSvg(svg, layout)) : await treePng(svg, layout);
+      await api.saveImageFile(file, bytes);
+    } catch (e) {
+      report(e);
+    }
+  }
+
   // Test hook (not in the built app).
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -207,19 +268,14 @@ export function FamilyTreeView({
           <input type="checkbox" disabled={all} checked={prefs.partnersParents} onChange={(e) => setPrefs({ partnersParents: e.target.checked })} />
           <span>Partners' parents</span>
         </label>
-        <div className="family-zoom">
-          <button className="plain" title="Zoom out" aria-label="Zoom out" disabled={!layout} onClick={() => handle.current?.zoom(1 / 1.25)}>
-            −
-          </button>
-          <button className="plain" title="Zoom in" aria-label="Zoom in" disabled={!layout} onClick={() => handle.current?.zoom(1.25)}>
-            +
-          </button>
-        </div>
-        <button title="Show the whole tree" disabled={!layout} onClick={() => handle.current?.fit(true)}>
-          Fit
+        <button title="Create a page for a person and show their tree" disabled={nothingSet} onClick={newPerson}>
+          New person…
         </button>
-        <button title="Which fields make a family (Project settings)" onClick={onOpenSettings}>
-          Settings…
+        <button title="Save the whole tree as a PNG picture or SVG drawing" disabled={!layout} onClick={() => void saveImage()}>
+          Save image…
+        </button>
+        <button className="plain nav" title="Family tree settings (Project settings)" aria-label="Family tree settings" onClick={onOpenSettings}>
+          <GearIcon />
         </button>
       </header>
       <div className="family-body">
@@ -245,13 +301,32 @@ export function FamilyTreeView({
             label={houseName !== null ? `Family tree of a house` : all ? "All families" : `Family tree of ${fam.people[centreIndex!].title}`}
             onOpen={(i) => fam.people[i].id && onOpenPage(fam.people[i].id!)}
             onReveal={(keys) => setRevealed((r) => new Set([...r, ...keys]))}
-            onCreate={(i) => wiki.createFromLink(fam.people[i].title, relatedPage(fam, i), { stay: true })}
+            onCreate={createPage}
+            selection={{ selected, onSelect: setSelected }}
           />
         ) : data && houseName !== null ? (
           <p className="empty center">Nobody in a family has this house any more.</p>
         ) : data ? (
           <p className="empty center">Choose a person above to see their family.</p>
         ) : null}
+        {layout && (
+          <div className="family-zoom">
+            <ZoomButtons handle={handle} />
+          </div>
+        )}
+        {selected && layout && fam && data && (
+          <SelectionBar
+            selection={selected}
+            layout={layout}
+            fam={fam}
+            data={data}
+            isCentre={(i) => !all && i === centreIndex}
+            onClear={() => setSelected(null)}
+            onOpen={onOpenPage}
+            onCentre={(id) => onCentre(id, true)}
+            onCreate={createPage}
+          />
+        )}
       </div>
     </div>
   );

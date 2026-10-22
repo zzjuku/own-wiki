@@ -7,7 +7,7 @@ import type {
 } from "../../../src/api";
 import type { GraphData, GraphLink } from "../../../src/graph/model";
 import type { ThemeData } from "../../../src/themes/engine";
-import { familyData, fieldNames } from "./family";
+import { familyCommands, savedImages, setNextSave } from "./family";
 import { search } from "./search";
 
 export interface MockPage {
@@ -529,7 +529,8 @@ export function createBackend(fixture: Fixture) {
     },
     set_relation: ({ project, target, field, source, edit }) => {
       const p = proj(project);
-      const src = page(p, source);
+      // Removing a name without a page (a family tree placeholder): `source` is the name.
+      const src = !p.pages.has(source) && edit === "remove" ? fullPage({ id: "", title: source }) : page(p, source);
       const tgt = page(p, target);
       const names = [src.title, ...src.aliases].map(lc);
       const isSource = (v: string) => names.includes(lc((/\[\[([^\]|#]*)/.exec(v)?.[1] ?? v.split("#")[0]).trim()));
@@ -559,8 +560,7 @@ export function createBackend(fixture: Fixture) {
     },
     search_prepare: () => undefined,
     graph_data: ({ project, known }) => fingerprinted(graphData(proj(project)), known),
-    family_data: ({ project, known }) => fingerprinted(familyData([...proj(project).pages.values()], proj(project).settings), known),
-    field_names: ({ project, kinds }) => fieldNames([...proj(project).pages.values()], kinds),
+    ...familyCommands((project) => proj(project), fingerprinted),
     graph_layout: ({ project }) => graphLayouts.get(project) ?? null,
     save_graph_layout: ({ project, layout }) => void graphLayouts.set(project, layout),
     list_categories: ({ project }) => [...categories(proj(project)).values()].map(catInfo),
@@ -779,6 +779,8 @@ export function createBackend(fixture: Fixture) {
       return appTheme;
     },
     setNextOpen: (path: string | null) => void (nextOpen = path),
+    savedImages,
+    setNextSave,
     handle(cmd: string, args: any, options?: { headers?: Record<string, string> }): unknown {
       const fn = commands[cmd];
       if (!fn) throw new CommandError("invalid", `mock: no command ${cmd}`);

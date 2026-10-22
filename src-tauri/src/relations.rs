@@ -150,9 +150,12 @@ pub fn set_relation(
     if target == source {
         return Err(AppError::Invalid("A page can't be listed in its own field.".into()));
     }
-    let src = entry(idx, source)?;
-    let name = src.title.clone();
-    let names = names_of(src);
+    // Removing a name that has no page (a family tree's placeholder): `source` is that name.
+    let (name, names) = match entry(idx, source) {
+        Ok(src) => (src.title.clone(), names_of(src)),
+        Err(_) if edit == Edit::Remove => (source.to_string(), vec![norm(source)]),
+        Err(e) => return Err(e),
+    };
     let target_title = entry(idx, target)?.title.clone();
     let pages = pages_dir(library, project)?;
     let mut ib = pages::read_infobox(&pages, target)
@@ -447,6 +450,17 @@ mod tests {
         assert_eq!(r.values.keys().collect::<Vec<_>>(), ["Page B.md", "Page D.md"]);
         assert_eq!(r.values["Page B.md"]["born"], [20.0, 0.0, 0.0]);
         assert_eq!(r.values["Page D.md"]["chapter no."], [3.0]);
+    }
+
+    #[test]
+    fn a_name_without_a_page_can_be_removed() {
+        let fields = "  - label: Father\n    type: links\n    value: [Missing Person, 'Lord [[Missing Person]]', Page A]\n";
+        let (lib, p, mut idx) = setup(&[("Page A.md", PARENT), ("Page B.md", &child("Page B", "t-a", fields))]);
+        let lib = lib.path();
+        set_relation(lib, &p, &mut idx, "Page B.md", "Father", "missing person", Edit::Remove).unwrap();
+        assert_eq!(infobox(lib, &p, "Page B.md").fields[0].value, Some(serde_json::json!(["Page A"])));
+        // Only removing works with a name; adding needs the page.
+        assert!(set_relation(lib, &p, &mut idx, "Page B.md", "Father", "Missing Person", Edit::Add).is_err());
     }
 
     #[test]

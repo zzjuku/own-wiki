@@ -9,7 +9,7 @@ import { Family } from "./data";
 import { relatedPage, useFamilyData, useTreeMetrics, withPerson } from "./FamilyTreeView";
 import { layoutTree } from "./layout";
 import { buildTree } from "./model";
-import { TreeCanvas, type TreeHandle } from "./TreeCanvas";
+import { TreeCanvas, type TreeHandle, ZoomButtons } from "./TreeCanvas";
 import type { TreeLineCall } from "./treeLine";
 
 const MIN_HEIGHT = 200;
@@ -78,15 +78,7 @@ function PageTree({ call, spoilers }: { call: TreeLineCall; spoilers: boolean })
       <div className="page-tree-bar">
         <span className="page-tree-title">Family tree of {target.title}</span>
         <span className="spacer" />
-        <button className="plain" title="Zoom out" aria-label="Zoom out" onClick={() => handle.current?.zoom(1 / 1.25)}>
-          −
-        </button>
-        <button className="plain" title="Zoom in" aria-label="Zoom in" onClick={() => handle.current?.zoom(1.25)}>
-          +
-        </button>
-        <button className="plain" title="Show the whole tree" onClick={() => handle.current?.fit(true)}>
-          Fit
-        </button>
+        <ZoomButtons handle={handle} />
         <button className="plain" onClick={() => wiki.openFamilyTree(target.id)}>
           Open in Family tree
         </button>

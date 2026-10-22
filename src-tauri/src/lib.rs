@@ -375,6 +375,21 @@ fn import_image_data(state: State<'_, AppState>, request: tauri::ipc::Request<'_
     assets::import_image_data(&state.library()?, &header("project"), &header("name"), &data, true)
 }
 
+/// Writes a family tree image (M12, Save as image) to the file the user chose
+/// in the save dialog. The bytes are the request body; `path` comes as a
+/// percent-encoded header. Only .png and .svg files are written.
+#[tauri::command(async)]
+fn save_image_file(request: tauri::ipc::Request<'_>) -> AppResult<()> {
+    let data = request_bytes(&request).ok_or_else(|| AppError::Invalid("No image data.".into()))?;
+    let path = request.headers().get("path").and_then(|v| v.to_str().ok()).map(assets::percent_decode).unwrap_or_default();
+    let path = std::path::PathBuf::from(path);
+    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+    if !path.is_absolute() || !matches!(ext.as_deref(), Some("png") | Some("svg")) {
+        return Err(AppError::Invalid("Images can only be saved as .png or .svg files.".into()));
+    }
+    Ok(fsutil::safe_write(&path, &data)?)
+}
+
 /// The bytes sent with a command: raw, or, when the window had to fall back
 /// to its second message channel, the same bytes as a JSON list of numbers.
 fn request_bytes<'a>(request: &'a tauri::ipc::Request<'_>) -> Option<std::borrow::Cow<'a, [u8]>> {
@@ -888,6 +903,7 @@ pub fn run() {
             graph_data,
             family_data,
             field_names,
+            save_image_file,
             graph_layout,
             save_graph_layout,
             watch_project,

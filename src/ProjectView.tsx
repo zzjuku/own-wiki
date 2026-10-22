@@ -441,10 +441,10 @@ export function ProjectView({ project, onBack }: Props) {
    * With `stay`, the new page isn't opened (e.g. created from an infobox field). */
   function createFromLink(title: string, fromPage?: string, opts: CreateOptions = {}) {
     dialogs.prompt({
-      title: "Create page",
+      title: opts.heading ?? "Create page",
       label: "Page title",
       initial: title,
-      note: <>This page doesn't exist yet.{opts.stay && " You stay on this page."}</>,
+      note: opts.note ?? <>This page doesn't exist yet.{opts.stay && " You stay on this page."}</>,
       selects: [
         { key: "group", label: "Group", options: groupOptions, initial: fromPage ? parentOf(fromPage) : ROOT },
         ...templateSelect(opts.template ?? (fromPage ? (pageTemplates.current.get(fromPage) ?? null) : null)),

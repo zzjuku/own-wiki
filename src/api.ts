@@ -455,6 +455,8 @@ export const api = {
   graphData: (project: string, known: string | null) => invoke<{ hash: string; data?: GraphData }>("graph_data", { project, known }),
   /** Every family relation (M12). */
   familyData: (project: string, known: string | null) => invoke<{ hash: string; data?: FamilyData }>("family_data", { project, known }),
+  /** Writes an exported image (Save as image) to a file chosen in the save dialog. */
+  saveImageFile: (path: string, data: Uint8Array) => invoke<void>("save_image_file", data, { headers: { path: encodeURIComponent(path) } }),
   /** Names of the fields of these types that pages have. */
   fieldNames: (project: string, kinds: string[]) => invoke<string[]>("field_names", { project, kinds }),
   /** Where the graph's nodes were left on this computer. */

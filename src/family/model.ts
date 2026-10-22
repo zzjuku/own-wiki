@@ -340,7 +340,7 @@ export function buildTree(fam: Family, centre: number, opts: TreeOptions): TreeS
       key: `above${i}`,
       parents: parents.map((l) => personBox(l.parent)),
       style: coupleShown ? c.style : "solid",
-      labels: coupleShown ? c.labels.filter((x) => !x.spoiler || opts.revealAll) : [],
+      labels: coupleShown ? c.labels.filter((x) => !x.spoiler || opts.revealAll || opts.revealed.has(c.key)) : [],
       drop: parents.map((l) => fam.style(l)).reduce(weaker, "solid" as LineStyle),
     };
   }
