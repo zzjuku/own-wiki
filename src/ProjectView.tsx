@@ -9,8 +9,11 @@ import { ImageViewer } from "./ImageViewer";
 import { NameIndex } from "./names";
 import { useReportError } from "./notify";
 import { PageView, type Arrival } from "./PageView";
-import { catKey, GRAPH_KEY, HISTORY_LIMIT, historyKey, keyCategory, keySearch, SEARCH_KEY, type History } from "./history";
-import { GraphView, isGraphKey } from "./graph/GraphView";
+import { catKey, FAMILY_KEY, GRAPH_KEY, HISTORY_LIMIT, keyCategory, keyFamily, keySearch, SEARCH_KEY, type History } from "./history";
+import { FamilyTreeView } from "./family/FamilyTreeView";
+import { renameFieldInFamily } from "./family/settings";
+import { GraphView } from "./graph/GraphView";
+import { useProjectKeys } from "./projectKeys";
 import { LocalGraph } from "./graph/LocalGraph";
 import { useLocalPrefs } from "./graph/prefs";
 import { usePageActions } from "./pageActions";
@@ -18,8 +21,8 @@ import { ConflictsView } from "./ConflictsView";
 import { useProjectSync } from "./projectSync";
 import { useExpanded } from "./expanded";
 import { norm } from "./wikilinks";
-import { isSearchKey, NO_SEARCH, SearchView, type SearchState } from "./SearchView";
-import { IS_MAC, isQuickOpenKey, QuickOpen } from "./QuickOpen";
+import { NO_SEARCH, SearchView, type SearchState } from "./SearchView";
+import { IS_MAC, QuickOpen } from "./QuickOpen";
 import { DEFAULT_FRAME, WikiContext, type CreateOptions, type FollowTarget, type Wiki } from "./wiki";
 import { useGlobalReveal } from "./spoilers";
 import { loadPageEdge, useSidebarHidden } from "./layoutPrefs";
@@ -80,22 +83,14 @@ export function ProjectView({ project, onBack }: Props) {
   const [localGraph] = useLocalPrefs();
   const [imageFrame, setImageFrameState] = useState<Frame>(DEFAULT_FRAME);
   const [settings, setSettings] = useState<ProjectSettings>({ hideCategoryBox: false });
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Project settings open (`family`: scrolled to Family tree).
+  const [settingsOpen, setSettingsOpen] = useState<false | "top" | "family">(false);
+  // The Family tree screen's person in the middle (page id).
+  const [familyCentre, setFamilyCentre] = useState<string | null>(null);
   // Show every spoiler everywhere (this computer only).
   const [revealAll, setRevealAll] = useGlobalReveal();
   // The sidebar can be hidden for more room (this computer only).
   const [sidebarHidden, setSidebarHidden] = useSidebarHidden();
-  const sidebarRef = useRef({ hidden: sidebarHidden, set: setSidebarHidden });
-  sidebarRef.current = { hidden: sidebarHidden, set: setSidebarHidden };
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (!(IS_MAC ? e.metaKey : e.ctrlKey) || e.altKey || e.shiftKey || (e.key !== "\\" && e.code !== "Backslash")) return;
-      e.preventDefault();
-      sidebarRef.current.set(!sidebarRef.current.hidden);
-    };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
-  }, []);
   useEffect(() => {
     api.getImageFrame(project.id).then(setImageFrameState, () => {});
     api.getProjectSettings(project.id).then(setSettings, () => {});
@@ -208,26 +203,6 @@ export function ProjectView({ project, onBack }: Props) {
   // Read every page into the search index in the background, so the first search is quick.
   useEffect(() => void api.searchPrepare(project.id).catch(() => {}), [project.id]);
 
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (isSearchKey(e) && !document.querySelector(".backdrop")) {
-        e.preventDefault();
-        void openSearchRef.current();
-        return;
-      }
-      if (isGraphKey(e) && !document.querySelector(".backdrop")) {
-        e.preventDefault();
-        void openGraphRef.current();
-        return;
-      }
-      if (!isQuickOpenKey(e)) return;
-      e.preventDefault();
-      setQuickOpen(true);
-    };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
-  }, []);
-
   /** Opens every group down to `group` so its contents are visible. */
   const reveal = useCallback(
     (group: string) => {
@@ -269,6 +244,7 @@ export function ProjectView({ project, onBack }: Props) {
     if (category) return catKey(category);
     if (panel === "search") return SEARCH_KEY + search.query;
     if (panel === "graph") return GRAPH_KEY;
+    if (panel === "family") return FAMILY_KEY + (familyCentre ?? "");
     return selected && !panel ? selected : null;
   }
 
@@ -317,8 +293,6 @@ export function ProjectView({ project, onBack }: Props) {
     }
     setSearchFocus((n) => n + 1);
   }
-  const openSearchRef = useRef(openSearch);
-  openSearchRef.current = openSearch;
 
   /** The Graph screen (Cmd+Alt+G, the sidebar's graph button); `focus`: centred on that page. */
   async function openGraph({ record = true, focus = null }: { record?: boolean; focus?: string | null } = {}) {
@@ -327,15 +301,24 @@ export function ProjectView({ project, onBack }: Props) {
     if (record) remember(GRAPH_KEY);
     await openPanel("graph");
   }
-  const openGraphRef = useRef(openGraph);
-  openGraphRef.current = openGraph;
+
+  /** The Family tree screen (Cmd+Alt+T, the sidebar's tree button), centred on `centre` if given. */
+  async function openFamily({ record = true, centre }: { record?: boolean; centre?: string | null } = {}) {
+    const next = centre === undefined ? familyCentre : centre;
+    if (panel === "family" && next === familyCentre) return;
+    if (record) remember(FAMILY_KEY + (next ?? ""));
+    setFamilyCentre(next);
+    if (panel !== "family") await openPanel("family");
+  }
+  const openFamilyRef = useRef(openFamily);
+  openFamilyRef.current = openFamily;
 
   /** Back (-1) or forward (1) through visited pages, skipping deleted ones. */
   async function go(step: -1 | 1) {
     const from = step < 0 ? [...history.back] : [...history.forward];
     const skipped: string[] = [];
     let target: string | undefined;
-    const gone = (t: string) => keyCategory(t) === null && keySearch(t) === null && t !== GRAPH_KEY && !index.pages.has(t);
+    const gone = (t: string) => keyCategory(t) === null && keySearch(t) === null && keyFamily(t) === null && t !== GRAPH_KEY && !index.pages.has(t);
     while ((target = step < 0 ? from.pop() : from.shift()) !== undefined && gone(target)) skipped.push(target);
     if (target === undefined) return;
     const now = place();
@@ -347,7 +330,9 @@ export function ProjectView({ project, onBack }: Props) {
     );
     const cat = keyCategory(target);
     const query = keySearch(target);
+    const person = keyFamily(target);
     if (cat !== null) await openCategory(cat, { record: false });
+    else if (person !== null) await openFamily({ record: false, centre: person || null });
     else if (query !== null) await openSearch(query, { record: false });
     else if (target === GRAPH_KEY) await openGraph({ record: false });
     else await openPage(target, false, { record: false });
@@ -373,26 +358,14 @@ export function ProjectView({ project, onBack }: Props) {
     setHistory((h) => ({ back: map(h.back), forward: map(h.forward) }));
   }
 
-  // Back/forward keys (and the mouse's back/forward buttons).
-  const goRef = useRef(go);
-  goRef.current = go;
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      const step = historyKey(e);
-      if (!step || document.querySelector(".backdrop")) return;
-      e.preventDefault();
-      void goRef.current(step as -1 | 1);
-    };
-    const mouse = (e: MouseEvent) => {
-      if (e.button === 3 || e.button === 4) void goRef.current(e.button === 3 ? -1 : 1);
-    };
-    window.addEventListener("keydown", key);
-    window.addEventListener("mouseup", mouse);
-    return () => {
-      window.removeEventListener("keydown", key);
-      window.removeEventListener("mouseup", mouse);
-    };
-  }, []);
+  useProjectKeys({
+    toggleSidebar: () => setSidebarHidden(!sidebarHidden),
+    search: () => void openSearch(),
+    graph: () => void openGraph(),
+    family: () => void openFamily(),
+    quickOpen: () => setQuickOpen(true),
+    go: (step) => void go(step),
+  });
 
   // A project opens on its main page.
   const openedMain = useRef(false);
@@ -474,7 +447,7 @@ export function ProjectView({ project, onBack }: Props) {
       note: <>This page doesn't exist yet.{opts.stay && " You stay on this page."}</>,
       selects: [
         { key: "group", label: "Group", options: groupOptions, initial: fromPage ? parentOf(fromPage) : ROOT },
-        ...templateSelect(fromPage ? (pageTemplates.current.get(fromPage) ?? null) : null),
+        ...templateSelect(opts.template ?? (fromPage ? (pageTemplates.current.get(fromPage) ?? null) : null)),
       ],
       confirmLabel: "Create",
       submit: async (t, allowLong, { selected: sel }) => {
@@ -544,6 +517,10 @@ export function ProjectView({ project, onBack }: Props) {
         : ROOT;
   const targetHint = targetGroup ? `in ${displayGroup(targetGroup)}` : "at the top level";
 
+  // The Family tree's person changed (Back returns to the one before when `record`).
+  const onFamilyCentre = useCallback((id: string, record: boolean) => void openFamilyRef.current({ centre: id, record }), []);
+  const openFamilySettings = useCallback(() => setSettingsOpen("family"), []);
+
   // Stable functions for the context, always calling the latest versions.
   const actions = useRef({ follow, createFromLink, openCategory, createCategory });
   actions.current = { follow, createFromLink, openCategory, createCategory };
@@ -586,9 +563,11 @@ export function ProjectView({ project, onBack }: Props) {
           onSelectTop={() => setSelectedGroup(ROOT)}
           revealAll={revealAll}
           setRevealAll={setRevealAll}
-          onSettings={() => setSettingsOpen(true)}
+          onSettings={() => setSettingsOpen("top")}
           graphOpen={panel === "graph"}
           onGraph={() => void openGraph()}
+          familyOpen={panel === "family"}
+          onFamily={() => void openFamily()}
           onHideSidebar={() => setSidebarHidden(true)}
         />
         <div className="row">
@@ -710,6 +689,15 @@ export function ProjectView({ project, onBack }: Props) {
             onOpenPage={(id) => void openPage(id)}
             changeSettings={changeSettings}
           />
+        ) : panel === "family" ? (
+          <FamilyTreeView
+            centre={familyCentre}
+            onCentre={onFamilyCentre}
+            openPage={selected}
+            revealAll={revealAll}
+            onOpenPage={(id) => void openPage(id)}
+            onOpenSettings={openFamilySettings}
+          />
         ) : panel === "conflicts" ? (
           <ConflictsView onResolved={conflictResolved} />
         ) : panel === "relations" ? (
@@ -727,6 +715,10 @@ export function ProjectView({ project, onBack }: Props) {
             selected={templateSelected}
             setSelected={setTemplateSelected}
             openPage={(id) => void openPage(id)}
+            onFieldRenamed={(old, next) => {
+              const ft = renameFieldInFamily(settings.familyTree, templates.templates, old, next);
+              if (ft) changeSettings({ ...settings, familyTree: ft });
+            }}
           />
         ) : selected && (selectedExists || deletedOpen === selected) ? (
           <div className="page-with-graph">
@@ -777,7 +769,13 @@ export function ProjectView({ project, onBack }: Props) {
       <ImageViewer />
 
       {settingsOpen && (
-        <ProjectSettingsDialog project={project.id} settings={settings} change={changeSettings} close={() => setSettingsOpen(false)} />
+        <ProjectSettingsDialog
+          project={project.id}
+          settings={settings}
+          change={changeSettings}
+          focus={settingsOpen}
+          close={() => setSettingsOpen(false)}
+        />
       )}
 
       {quickOpen && (

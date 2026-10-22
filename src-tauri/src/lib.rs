@@ -3,6 +3,7 @@ mod categories;
 mod conflicts;
 mod edits;
 mod error;
+mod family;
 mod fonts;
 mod fsutil;
 mod graph;
@@ -698,6 +699,18 @@ fn graph_data(state: State<'_, AppState>, project: String, known: Option<String>
     state.with_index(&project, false, |_, idx| Ok(graph::reply(idx, known.as_deref())))
 }
 
+/// Every family relation (M12), or only the fingerprint when `known` is still current.
+#[tauri::command(async)]
+fn family_data(state: State<'_, AppState>, project: String, known: Option<String>) -> AppResult<family::FamilyReply> {
+    state.with_index(&project, false, |dir, idx| Ok(family::reply(idx, &family::FamilySettings::read(dir), known.as_deref())))
+}
+
+/// Names of the Page link fields pages have (Family tree settings).
+#[tauri::command(async)]
+fn link_field_names(state: State<'_, AppState>, project: String) -> AppResult<Vec<String>> {
+    state.with_index(&project, false, |_, idx| Ok(family::link_field_names(idx)))
+}
+
 /// Where the graph's nodes were left on this computer (none yet: null).
 #[tauri::command]
 fn graph_layout(state: State<AppState>, project: String) -> AppResult<Option<serde_json::Value>> {
@@ -873,6 +886,8 @@ pub fn run() {
             search_prepare,
             search,
             graph_data,
+            family_data,
+            link_field_names,
             graph_layout,
             save_graph_layout,
             watch_project,

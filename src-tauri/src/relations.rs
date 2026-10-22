@@ -323,6 +323,7 @@ pub fn table(idx: &ProjectIndex) -> RelationsTable {
     }
     let labels: std::collections::HashSet<String> =
         idx.pages.values().flat_map(|e| e.fields.iter().map(|f| norm(&f.label))).collect();
+    let loops = crate::family::loop_relations(idx, &crate::family::FamilySettings::read(&idx.dir));
     let mut out = RelationsTable::default();
     for (pid, e) in &idx.pages {
         for l in &e.field_links {
@@ -339,6 +340,9 @@ pub fn table(idx: &ProjectIndex) -> RelationsTable {
                 (_, "typed") => None,
                 (None, _) => Some(format!("No page “{}” yet (red link).", l.target)),
                 (Some((tid, _)), _) if *tid == pid.as_str() => Some("Links to its own page.".to_string()),
+                (_, "link") if loops.contains(&(pid.clone(), norm(&l.field), norm(&l.target))) => {
+                    Some("Makes someone their own ancestor (family tree).".to_string())
+                }
                 (Some((_, t)), _) if shows.is_empty() => {
                     Some(format!("Doesn't show on {}: no field there reads “{}”.", t.title, l.field))
                 }

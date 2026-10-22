@@ -22,6 +22,8 @@ export interface CreateOptions {
   stay?: boolean;
   /** Called with the created page (its title may differ from the one suggested). */
   onCreated?: (page: PageInfo) => void;
+  /** Template suggested for the new page (else the one of the page the link is on). */
+  template?: string | null;
 }
 
 export interface Wiki {

@@ -132,6 +132,17 @@
   --graph-category: #b8862e;
   --graph-group: #4f8a5b;
 
+  /* Family trees (M12) */
+  --tree-bg: var(--page-bg);
+  --tree-box-bg: var(--infobox-bg);
+  --tree-box-border: var(--infobox-border);
+  --tree-box-text: var(--page-text);
+  --tree-line: var(--infobox-border);
+  --tree-line-active: var(--accent);
+  --tree-placeholder: var(--link-new);
+  --tree-stub: var(--link);
+  --tree-label: var(--page-text);
+
   /* Tooltips (M8) */
   --tooltip-bg: #2e2f31;
   --tooltip-text: #ffffff;
@@ -139,6 +150,7 @@
   /* Fonts */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-tree: var(--font-body);
   --font-heading: Georgia, "Linux Libertine", "Times New Roman", serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   /* Each part of the page can have its own font (M8). */

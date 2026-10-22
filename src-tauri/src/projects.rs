@@ -67,6 +67,9 @@ struct ProjectFile {
     /// The graph's colour rules (M11): `{kind: template|group|category, value, color}`, first match wins.
     #[serde(rename = "graphColors", default, skip_serializing_if = "Vec::is_empty")]
     graph_colors: Vec<serde_json::Value>,
+    /// Which Page link fields make families (M12): `{parents: [{field, line}], partners: [{field, line}]}`.
+    #[serde(rename = "familyTree", default, skip_serializing_if = "Option::is_none")]
+    family_tree: Option<serde_json::Value>,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -157,6 +160,9 @@ pub struct ProjectSettings {
     /// See [`ProjectFile::graph_colors`].
     #[serde(default)]
     pub graph_colors: Vec<serde_json::Value>,
+    /// See [`ProjectFile::family_tree`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family_tree: Option<serde_json::Value>,
     /// project.json's version when read; saving sends it back (not stored).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
@@ -170,6 +176,7 @@ pub fn settings(dir: &Path) -> AppResult<ProjectSettings> {
         theme: file.theme,
         present_day: file.present_day,
         graph_colors: file.graph_colors,
+        family_tree: file.family_tree,
         version,
     })
 }
@@ -181,6 +188,7 @@ pub fn set_settings(dir: &Path, s: &ProjectSettings) -> AppResult<()> {
     file.theme = s.theme.clone().filter(|t| !t.trim().is_empty());
     file.present_day = s.present_day.clone().filter(|d| !crate::infobox::is_empty_value(d));
     file.graph_colors = s.graph_colors.clone();
+    file.family_tree = s.family_tree.clone().filter(|v| !crate::infobox::is_empty_value(v));
     write_project_file(dir, &file)
 }
 
@@ -286,6 +294,7 @@ pub fn create_project(library: &Path, name: &str) -> AppResult<ProjectInfo> {
             theme: None,
             present_day: None,
             graph_colors: Vec::new(),
+            family_tree: None,
             extra: Default::default(),
         },
     )?;
@@ -357,17 +366,20 @@ mod tests {
                 theme: Some("project:Theme A".into()),
                 present_day: Some(today.clone()),
                 graph_colors: rules.clone(),
+                family_tree: Some(serde_json::json!({"parents": [{"field": "Father", "line": "solid", "x": 1}], "partners": [], "y": 2})),
                 version: None,
             },
         )
         .unwrap();
         assert_eq!(settings(&dir).unwrap().graph_colors, rules);
+        // Unknown keys in familyTree are kept.
+        assert_eq!(settings(&dir).unwrap().family_tree.unwrap()["parents"][0]["x"], 1);
         assert!(settings(&dir).unwrap().hide_category_box);
         assert_eq!(settings(&dir).unwrap().present_day, Some(today));
         assert_eq!(settings(&dir).unwrap().theme.as_deref(), Some("project:Theme A"));
         let json = fs::read_to_string(dir.join(PROJECT_FILE)).unwrap();
         assert!(json.contains("\"hideCategoryBox\": true") && json.contains("\"theme\": \"project:Theme A\""));
-        set_settings(&dir, &ProjectSettings { hide_category_box: false, theme: None, present_day: None, graph_colors: Vec::new(), version: None }).unwrap();
+        set_settings(&dir, &ProjectSettings { hide_category_box: false, theme: None, present_day: None, graph_colors: Vec::new(), family_tree: None, version: None }).unwrap();
         assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("graphColors"));
         assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("theme"));
         assert!(!fs::read_to_string(dir.join(PROJECT_FILE)).unwrap().contains("presentDay"));

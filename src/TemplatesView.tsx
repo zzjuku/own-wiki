@@ -83,6 +83,8 @@ interface Props {
   selected: string | null;
   setSelected: (id: string | null) => void;
   openPage: (id: string) => void;
+  /** A template field was renamed (the Family tree settings follow). */
+  onFieldRenamed?: (old: string, next: string) => void;
 }
 
 function nameProblem(name: string, templates: Template[], exceptId?: string): string | null {
@@ -92,7 +94,7 @@ function nameProblem(name: string, templates: Template[], exceptId?: string): st
   return taken ? `A template named “${taken.name}” already exists.` : null;
 }
 
-export function TemplatesView({ project, state, selected, setSelected, openPage }: Props) {
+export function TemplatesView({ project, state, selected, setSelected, openPage, onFieldRenamed }: Props) {
   const dialogs = useDialogs();
   const { templates, update, status } = state;
   const current = templates.find((t) => t.id === selected) ?? null;
@@ -232,7 +234,10 @@ export function TemplatesView({ project, state, selected, setSelected, openPage 
             onRename={() => rename(current)}
             onDuplicate={() => duplicate(current)}
             onDelete={() => void remove(current)}
-            onFieldRenamed={(old, next) => update(renameFieldInTemplates(templates, old, next))}
+            onFieldRenamed={(old, next) => {
+              update(renameFieldInTemplates(templates, old, next));
+              onFieldRenamed?.(old, next);
+            }}
             openPage={openPage}
             flush={state.flush}
           />

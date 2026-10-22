@@ -4,6 +4,7 @@
 import { Icon } from "./editorTheme";
 import { GraphIcon } from "./graph/GraphIcon";
 import { GRAPH_KEYS } from "./graph/GraphView";
+import { FAMILY_KEYS } from "./family/FamilyTreeView";
 import { IS_MAC } from "./QuickOpen";
 import { ROOT } from "./tree";
 
@@ -17,6 +18,18 @@ export function SidebarIcon() {
     <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
       <rect x="2" y="3" width="12" height="10" rx="1.5" className="stroke" />
       <path d="M6 3v10" className="stroke" />
+    </svg>
+  );
+}
+
+/** A small family tree: one box above two. */
+export function TreeIcon() {
+  return (
+    <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <rect x="5.5" y="1.5" width="5" height="4" rx="1" className="stroke" />
+      <rect x="1.5" y="10.5" width="5" height="4" rx="1" className="stroke" />
+      <rect x="9.5" y="10.5" width="5" height="4" rx="1" className="stroke" />
+      <path d="M8 5.5V8M4 10.5V8h8v2.5" className="stroke" />
     </svg>
   );
 }
@@ -37,6 +50,8 @@ export function SidebarHeader({
   onHideSidebar,
   graphOpen,
   onGraph,
+  familyOpen,
+  onFamily,
 }: {
   projectName: string;
   mainPageTitle: string | null;
@@ -54,6 +69,8 @@ export function SidebarHeader({
   onHideSidebar: () => void;
   graphOpen: boolean;
   onGraph: () => void;
+  familyOpen: boolean;
+  onFamily: () => void;
 }) {
   return (
     <>
@@ -97,6 +114,15 @@ export function SidebarHeader({
             onClick={onGraph}
           >
             <GraphIcon />
+          </button>
+          <button
+            className={`plain nav ${familyOpen ? "active" : ""}`}
+            title={`Family tree (${FAMILY_KEYS})`}
+            aria-label="Family tree"
+            aria-pressed={familyOpen}
+            onClick={onFamily}
+          >
+            <TreeIcon />
           </button>
           <button className="plain nav" title={`Hide the sidebar (${HIDE_KEYS})`} aria-label="Hide the sidebar" onClick={onHideSidebar}>
             <SidebarIcon />

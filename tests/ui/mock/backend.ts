@@ -7,6 +7,7 @@ import type {
 } from "../../../src/api";
 import type { GraphData, GraphLink } from "../../../src/graph/model";
 import type { ThemeData } from "../../../src/themes/engine";
+import { familyData, linkFieldNames } from "./family";
 import { search } from "./search";
 
 export interface MockPage {
@@ -80,6 +81,12 @@ const parent = (id: string) => (id.includes("/") ? id.slice(0, id.lastIndexOf("/
 const LINK = /\[\[([^\]|#]*)(#[^\]|]*)?(\|[^\]]*)?\]\]/g;
 /** `{{Page…}}` lines: indent, page, the rest (`#Section`, `|infobox`). */
 const EMBED = /^( {0,3})\{\{([^{}|#\n]+)([^{}\n]*)\}\}[ \t]*$/gm;
+
+/** Data with its fingerprint, left out when the window already has it (like graph.rs / family.rs). */
+function fingerprinted<T>(data: T, known: string | null) {
+  const hash = String([...JSON.stringify(data)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
+  return hash === known ? { hash } : { hash, data };
+}
 
 function fullPage(p: MockPage): Required<MockPage> {
   return { aliases: [], body: "", infobox: null, categories: [], sort: null, ...p };
@@ -551,11 +558,9 @@ export function createBackend(fixture: Fixture) {
       return search([...p.pages.values()], [...p.catTexts.values()], request, parent);
     },
     search_prepare: () => undefined,
-    graph_data: ({ project, known }) => {
-      const data = graphData(proj(project));
-      const hash = String([...JSON.stringify(data)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
-      return hash === known ? { hash } : { hash, data };
-    },
+    graph_data: ({ project, known }) => fingerprinted(graphData(proj(project)), known),
+    family_data: ({ project, known }) => fingerprinted(familyData([...proj(project).pages.values()], proj(project).settings), known),
+    link_field_names: ({ project }) => linkFieldNames([...proj(project).pages.values()]),
     graph_layout: ({ project }) => graphLayouts.get(project) ?? null,
     save_graph_layout: ({ project, layout }) => void graphLayouts.set(project, layout),
     list_categories: ({ project }) => [...categories(proj(project)).values()].map(catInfo),

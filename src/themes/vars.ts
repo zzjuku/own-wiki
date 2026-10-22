@@ -83,6 +83,15 @@ export const MAIN_SETTINGS: { title: string; settings: Setting[] }[] = [
     ],
   },
   {
+    title: "Family trees",
+    settings: [
+      { name: "--tree-bg", label: "Background", type: color },
+      { name: "--tree-box-bg", label: "Boxes", type: color },
+      { name: "--tree-box-border", label: "Box frames", type: color },
+      { name: "--tree-line", label: "Lines", type: color },
+    ],
+  },
+  {
     title: "Look",
     settings: [
       { name: "--title-align", label: "Page title", type: select(["left", "Left"], ["center", "Centred, own row"]) },
@@ -149,6 +158,7 @@ export const MAIN_SETTINGS: { title: string; settings: Setting[] }[] = [
       { name: "--font-navbox-title", label: "Embed box titles", type: font },
       { name: "--font-quote", label: "Quote boxes", type: font },
       { name: "--font-caption", label: "Captions", type: font },
+      { name: "--font-tree", label: "Family trees", type: font },
       { name: "--font-ui", label: "App interface", hint: "Buttons, sidebar, dialogs", type: font },
     ],
   },
@@ -264,6 +274,20 @@ export const ALL_COLORS: { title: string; vars: [string, string][] }[] = [
       ["--graph-red-link", "Missing pages (red links)"],
       ["--graph-category", "Category nodes"],
       ["--graph-group", "Group nodes"],
+    ],
+  },
+  {
+    title: "Family trees",
+    vars: [
+      ["--tree-bg", "Background"],
+      ["--tree-box-bg", "Boxes"],
+      ["--tree-box-border", "Box frames"],
+      ["--tree-box-text", "Names and years"],
+      ["--tree-line", "Lines"],
+      ["--tree-line-active", "Lines of the person under the mouse, the person in the middle"],
+      ["--tree-placeholder", "People without a page (red links)"],
+      ["--tree-stub", "Stubs (someone shown elsewhere in the tree)"],
+      ["--tree-label", "Words on couple lines"],
     ],
   },
   {

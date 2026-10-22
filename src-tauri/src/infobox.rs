@@ -199,6 +199,10 @@ pub struct FieldLink {
     /// A name typed into a Linked from field (shows only on its own page).
     #[serde(default, skip_serializing_if = "is_false")]
     pub typed: bool,
+    /// The words around a Page link entry's link (`[[Bea]] (m. 283)` ->
+    /// "(m. 283)"), shown on family-tree couple lines (M12).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub words: Option<String>,
 }
 
 /// A field of a page, as the link index keeps it: its label and type.
@@ -267,6 +271,14 @@ pub(crate) fn link_value_page(s: &str) -> &str {
     s.split('#').next().unwrap_or("").trim()
 }
 
+/// The words around a link field value's link, if it has any.
+fn link_value_words(s: &str) -> Option<String> {
+    let l = parse_links(s).into_iter().find(|l| !l.page.is_empty())?;
+    let rest = format!("{} {}", &s[..l.start], &s[l.end..]);
+    let words = rest.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!words.is_empty()).then_some(words)
+}
+
 /// Every link in the infobox's fields (not in hidden values). Typed-in
 /// entries of Linked from fields count like Page link values.
 pub fn field_links(ib: &Infobox) -> Vec<FieldLink> {
@@ -281,6 +293,7 @@ pub fn field_links(ib: &Infobox) -> Vec<FieldLink> {
             spoiler,
             in_text: false,
             typed: f.kind == LINKED_FROM,
+            words: None,
         };
         // [[links]] in text, each a spoiler if it sits inside ||…||.
         let text_links = |s: &str, out: &mut Vec<FieldLink>| {
@@ -296,7 +309,7 @@ pub fn field_links(ib: &Infobox) -> Vec<FieldLink> {
                 for s in strings(v) {
                     let page = link_value_page(s);
                     if !page.is_empty() {
-                        out.push(link(page.to_string(), two_way, spoiler));
+                        out.push(FieldLink { words: link_value_words(s), ..link(page.to_string(), two_way, spoiler) });
                     }
                 }
             }
@@ -352,6 +365,62 @@ pub fn sortable_values(ib: &Infobox) -> BTreeMap<String, Vec<f64>> {
         }
     }
     out
+}
+
+/// A birth or death date for family trees (M12): the date's start point.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LifeDate {
+    pub year: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub month: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub day: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub era: Option<String>,
+    /// "c", "before" or "after".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qualifier: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub spoiler: bool,
+}
+
+/// Birth and death dates: the first Date or Date, place field set to Age:
+/// Birth / Death that has a year (like the ages in the infobox).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct Life {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub birth: Option<LifeDate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub death: Option<LifeDate>,
+}
+
+impl Life {
+    pub fn is_empty(&self) -> bool {
+        self.birth.is_none() && self.death.is_none()
+    }
+}
+
+pub fn life(ib: &Infobox) -> Life {
+    let date = |role: &str| {
+        ib.fields
+            .iter()
+            .filter(|f| (f.kind == DATE || f.kind == DATE_PLACE) && f.options.get("age").and_then(Value::as_str) == Some(role))
+            .find_map(|f| {
+                let v = f.value.as_ref()?;
+                let v = if f.kind == DATE_PLACE { date_entries(v).first()?.get("date")? } else { v };
+                let p = v.get("start").unwrap_or(v);
+                let text = |k: &str| p.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+                Some(LifeDate {
+                    year: p.get("year")?.as_f64()?,
+                    month: p.get("month").and_then(Value::as_f64),
+                    day: p.get("day").and_then(Value::as_f64),
+                    era: text("era"),
+                    qualifier: text("qualifier"),
+                    spoiler: f.is_spoiler(),
+                })
+            })
+    };
+    Life { birth: date("birth"), death: date("death") }
 }
 
 /// The file (inside `assets/`) of the first image field with an image that

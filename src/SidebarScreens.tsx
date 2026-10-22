@@ -4,7 +4,7 @@ import { QUICK_OPEN_KEYS } from "./QuickOpen";
 import { SEARCH_KEYS } from "./SearchView";
 
 /** Screens shown instead of a page. */
-export type Panel = "categories" | "templates" | "themes" | "relations" | "search" | "conflicts" | "graph";
+export type Panel = "categories" | "templates" | "themes" | "relations" | "search" | "conflicts" | "graph" | "family";
 
 export function SidebarScreens({
   panel,

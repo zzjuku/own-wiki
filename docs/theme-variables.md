@@ -97,6 +97,17 @@ Rule: the app's CSS uses no colour or font of its own. Every colour and font com
 
 Pages, faded pages and lines are computed from the graph background and names when a theme changes those (or the page colours they follow).
 
+## Family trees (M12)
+| Variable | Used for |
+|---|---|
+| `--tree-bg` | Tree background (follows `--page-bg`) |
+| `--tree-box-bg` / `--tree-box-border` | People's boxes and their frames (follow the infobox colours); corners follow `--box-radius` |
+| `--tree-box-text` | Names and years (follows `--page-text`) |
+| `--tree-line` / `--tree-line-active` | Couple and children's lines; lines of the person under the mouse and the frame of the person in the middle (follows `--accent`) |
+| `--tree-placeholder` | People without a page (follows `--link-new`) |
+| `--tree-stub` | Stubs: "↪ Name" where someone shown elsewhere in the tree also belongs (follows `--link`) |
+| `--tree-label` | Words on couple lines, e.g. "(m. 283)" (follows `--page-text`) |
+
 ## Tooltips (M8)
 | Variable | Used for |
 |---|---|
@@ -111,6 +122,7 @@ Pages, faded pages and lines are computed from the graph background and names wh
 | `--font-title` | The page title (follows `--font-heading`) |
 | `--font-infobox` / `--font-infobox-title` / `--font-infobox-header` / `--font-infobox-label` | Infobox text, title, section headings, labels (follow `--font-body`) |
 | `--font-toc` / `--font-navbox-title` / `--font-quote` / `--font-caption` | Contents, embed box titles, quote boxes, captions (follow `--font-body`) |
+| `--font-tree` | Family trees (follows `--font-body`) |
 | `--font-mono` | Code |
 | `--title-size` / `--heading-size` / `--infobox-title-size` | Page title, section headings (h2), infobox title |
 | `--title-weight` / `--heading-weight` | Weight of the page title and of section headings (h1, h2): `400`, `500`, `600`, `700` |

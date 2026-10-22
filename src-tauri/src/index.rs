@@ -14,14 +14,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AppResult;
 use crate::fsutil::{rel_join, rel_parent, safe_write};
-use crate::infobox::{FieldLink, FieldName, ReverseDef, field_infos, field_links, first_image, sortable_values};
+use crate::infobox::{FieldLink, FieldName, Life, ReverseDef, field_infos, field_links, first_image, life, sortable_values};
 use crate::pages::{meta_aliases, meta_categories, meta_infobox, meta_sort, meta_title, parse};
 use crate::projects::{CATEGORIES_DIR, PAGES_DIR};
 use crate::tree::{GroupInfo, PageInfo, is_page_file};
 use crate::wikilinks::{self, Heading};
 
 const CACHE_FILE: &str = "link-index.json";
-const CACHE_VERSION: u32 = 8;
+const CACHE_VERSION: u32 = 9;
 /// The cache is rewritten at most this often for small changes (a stale
 /// cache only costs re-reading the changed files at the next open).
 const CACHE_SAVE_INTERVAL: Duration = Duration::from_secs(10);
@@ -79,6 +79,9 @@ pub struct Entry {
     /// The infobox's Linked from fields.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reverse: Vec<ReverseDef>,
+    /// Birth and death dates, for family trees.
+    #[serde(default, skip_serializing_if = "Life::is_empty")]
+    pub life: Life,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -148,6 +151,7 @@ pub fn read_entry(path: &Path, file_name: &str) -> Option<Entry> {
         values: infobox.as_ref().map(sortable_values).unwrap_or_default(),
         fields: infos.0,
         reverse: infos.1,
+        life: infobox.as_ref().map(life).unwrap_or_default(),
     })
 }
 

@@ -1,6 +1,8 @@
 // Project settings (stored in project.json, so the same on every computer):
-// the categories box at the bottom of pages and the project's theme.
-import { useEffect, useState } from "react";
+// the categories box at the bottom of pages, the project's theme, the
+// present day and which fields make family trees.
+import { useEffect, useRef, useState } from "react";
+import { FamilyTreeSettings } from "./family/FamilySettings";
 import { api, type ProjectSettings, type ThemeInfo } from "./api";
 import { BUILTIN_PREFIX, BUILTIN_THEMES } from "./themes/builtin";
 import { DateInput } from "./FieldInputs";
@@ -9,20 +11,27 @@ export function ProjectSettingsDialog({
   project,
   settings,
   change,
+  focus = "top",
   close,
 }: {
   project: string;
   settings: ProjectSettings;
   change: (next: ProjectSettings) => void;
+  /** "family": opened from the Family tree screen, scrolled to its settings. */
+  focus?: "top" | "family";
   close: () => void;
 }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focus === "family") box.current?.querySelector("#family-tree-settings")?.scrollIntoView({ block: "start" });
+  }, [focus]);
   const [projectThemes, setProjectThemes] = useState<ThemeInfo[]>([]);
   useEffect(() => {
     api.listThemes(project).then(setProjectThemes, () => setProjectThemes([]));
   }, [project]);
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="dialog" role="dialog" aria-label="Project settings" onKeyDown={(e) => e.key === "Escape" && close()}>
+      <div ref={box} className="dialog project-settings" role="dialog" aria-label="Project settings" onKeyDown={(e) => e.key === "Escape" && close()}>
         <h2>Project settings</h2>
         <p className="muted small-note">These settings are stored in the project, so they're the same on every computer.</p>
         <label className="check settings-check">
@@ -77,6 +86,7 @@ export function ProjectSettingsDialog({
           The story's "today": a birth date set as such in its field settings shows the age, e.g. "(age 9)", while no death date is
           filled in. Leave it empty for no ages.
         </p>
+        <FamilyTreeSettings settings={settings} change={change} />
         <div className="dialog-actions">
           <button type="button" className="primary" autoFocus onClick={() => close()}>
             Done

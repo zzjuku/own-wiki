@@ -1,0 +1,245 @@
+/* Family trees (M12): the Family tree screen and its settings. */
+
+.family-view {
+  position: relative;
+}
+.family-head {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.family-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  background: var(--tree-bg);
+}
+.family-empty {
+  margin: auto;
+  max-width: 440px;
+}
+.family-count {
+  white-space: nowrap;
+}
+.family-gen {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.family-gen input {
+  font: inherit;
+  width: 52px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px 6px;
+}
+.family-switch {
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.family-zoom {
+  display: flex;
+}
+.family-zoom button {
+  font-size: 16px;
+  width: 26px;
+}
+
+/* Person picker */
+.family-picker {
+  position: relative;
+  margin-left: 16px;
+}
+.family-picker input {
+  font: inherit;
+  width: 230px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 10px;
+}
+.family-picker-list {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.family-picker-list li {
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  cursor: default;
+}
+.family-picker-list li.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* The tree */
+.tree-canvas {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  display: block;
+  user-select: none;
+  cursor: grab;
+  font-family: var(--font-tree);
+}
+.tree-canvas.panning {
+  cursor: grabbing;
+}
+.tree-line {
+  fill: none;
+  stroke: var(--tree-line);
+  stroke-width: 1.6;
+}
+.tree-line.dashed {
+  stroke-dasharray: 7 5;
+}
+.tree-line.dotted {
+  stroke-dasharray: 1.5 4;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+.tree-line.lit {
+  stroke: var(--tree-line-active);
+  stroke-width: 2.4;
+}
+.tree-couple-label {
+  fill: var(--tree-label);
+  font-size: 11px;
+  font-style: italic;
+}
+.tree-box {
+  cursor: pointer;
+}
+.tree-box rect {
+  fill: var(--tree-box-bg);
+  stroke: var(--tree-box-border);
+  stroke-width: 1;
+  rx: var(--box-radius);
+}
+.tree-box text {
+  fill: var(--tree-box-text);
+}
+.tree-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.tree-years {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.tree-box:hover rect,
+.tree-box.lit rect {
+  stroke: var(--tree-line-active);
+}
+.tree-box.centre rect {
+  stroke: var(--tree-line-active);
+  stroke-width: 2.5;
+}
+.tree-box.placeholder rect {
+  stroke: var(--tree-placeholder);
+  stroke-dasharray: 5 4;
+}
+.tree-box.placeholder text {
+  fill: var(--tree-placeholder);
+}
+.tree-box.hidden rect {
+  fill: var(--spoiler-bg);
+  stroke: var(--spoiler-bg);
+}
+.tree-box.hidden text {
+  fill: var(--tree-box-bg);
+  opacity: 0.6;
+  font-size: 14px;
+}
+.tree-box.unknown rect {
+  stroke-dasharray: 4 3;
+}
+.tree-box.unknown text {
+  font-size: 15px;
+  opacity: 0.7;
+}
+.tree-box.stub rect {
+  fill: var(--tree-bg);
+  stroke: var(--tree-stub);
+  stroke-dasharray: 3 3;
+  rx: 13px;
+}
+.tree-box.stub text {
+  fill: var(--tree-stub);
+  font-size: 12px;
+}
+.tree-box.flash rect {
+  animation: tree-flash 1.2s ease-out;
+}
+@keyframes tree-flash {
+  0%,
+  40% {
+    stroke: var(--tree-line-active);
+    stroke-width: 5;
+  }
+}
+
+/* Project settings → Family tree */
+.dialog.project-settings {
+  width: min(520px, 92vw);
+  max-height: 76vh;
+  overflow-y: auto;
+}
+.family-settings {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.family-settings h3 {
+  font-size: var(--text-base);
+  margin: 0 0 6px;
+}
+.family-fields {
+  margin-top: 12px;
+}
+.family-fields h4 {
+  font-size: var(--text-sm);
+  margin: 0 0 2px;
+}
+.family-field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.family-field-row select:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.family-line-sample path {
+  stroke: var(--text);
+  stroke-width: 1.6;
+}
+.family-line-sample.dashed path {
+  stroke-dasharray: 6 4;
+}
+.family-line-sample.dotted path {
+  stroke-dasharray: 1.5 3.5;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+.family-add {
+  width: 100%;
+}

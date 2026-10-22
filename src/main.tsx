@@ -14,6 +14,7 @@ import "./styles/templates.css";
 import "./styles/relations.css";
 import "./styles/search.css";
 import "./styles/graph.css";
+import "./styles/family.css";
 import "./styles/sync.css";
 import "./styles/layoutPrefs.css";
 import "./styles/picking.css";

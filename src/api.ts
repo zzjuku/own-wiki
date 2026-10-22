@@ -1,14 +1,15 @@
 // Thin typed wrappers around the Rust commands in src-tauri/src/lib.rs.
 import { invoke as invokeRaw, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
 import type { SavedLayout } from "./graph/controller";
+import type { FamilyData, FamilySettings } from "./family/data";
 import type { GraphColorRule, GraphData } from "./graph/model";
 import type { ThemeData, ThemeFont } from "./themes/engine";
 
-/** Commands after which pages, links or groups may have changed (the graph reads them again). */
+/** Commands after which pages, links, groups or the project settings may have changed (the graph and family trees read them again). */
 const CHANGES = new Set([
   "create_page", "save_page", "rename_page", "move_page", "delete_page", "set_aliases", "save_infobox", "apply_template",
   "set_relation", "set_page_categories", "create_category", "set_category_parents", "change_category", "create_group",
-  "rename_group", "move_group", "delete_group", "keep_mine", "restore_page", "resolve_conflict",
+  "rename_group", "move_group", "delete_group", "keep_mine", "restore_page", "resolve_conflict", "set_project_settings",
 ]);
 
 /** Fired after a command that may have changed pages (and on changes from outside, see projectSync). */
@@ -176,6 +177,8 @@ export interface ProjectSettings {
   presentDay?: Record<string, unknown> | null;
   /** The graph's colour rules, first match wins (M11). */
   graphColors?: GraphColorRule[];
+  /** Which Page link fields make families (M12). */
+  familyTree?: FamilySettings | null;
   /** project.json's version when read (sent back when saving). */
   version?: string | null;
 }
@@ -450,6 +453,10 @@ export const api = {
   // Link index
   /** Every page and line for the graph view (M11). */
   graphData: (project: string, known: string | null) => invoke<{ hash: string; data?: GraphData }>("graph_data", { project, known }),
+  /** Every family relation (M12). */
+  familyData: (project: string, known: string | null) => invoke<{ hash: string; data?: FamilyData }>("family_data", { project, known }),
+  /** Names of the Page link fields pages have. */
+  linkFieldNames: (project: string) => invoke<string[]>("link_field_names", { project }),
   /** Where the graph's nodes were left on this computer. */
   graphLayout: (project: string) => invoke<SavedLayout | null>("graph_layout", { project }),
   saveGraphLayout: (project: string, layout: SavedLayout) => invoke<void>("save_graph_layout", { project, layout }),
