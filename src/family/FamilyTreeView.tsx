@@ -217,6 +217,14 @@ function PersonPicker({ fam, current, onPick }: { fam: Family; current: string |
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  // Closes on a press outside the picker (not on losing focus, which can come before the press on an option).
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: MouseEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", down);
+    return () => document.removeEventListener("mousedown", down);
+  }, [open]);
   const people = useMemo(
     () =>
       fam.people
@@ -237,7 +245,7 @@ function PersonPicker({ fam, current, onPick }: { fam: Family; current: string |
     onPick(id);
   };
   return (
-    <div className="family-picker">
+    <div className="family-picker" ref={root}>
       <input
         type="search"
         value={open ? query : (currentTitle ?? "")}
@@ -248,7 +256,6 @@ function PersonPicker({ fam, current, onPick }: { fam: Family; current: string |
           setOpen(true);
           setActive(0);
         }}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
         onChange={(e) => {
           setQuery(e.target.value);
           setActive(0);
@@ -257,7 +264,10 @@ function PersonPicker({ fam, current, onPick }: { fam: Family; current: string |
           if (e.key === "ArrowDown") setActive((a) => Math.min(a + 1, matches.length - 1));
           else if (e.key === "ArrowUp") setActive((a) => Math.max(a - 1, 0));
           else if (e.key === "Enter" && matches[active]) pick(matches[active].p.id!);
-          else if (e.key === "Escape") (e.target as HTMLInputElement).blur();
+          else if (e.key === "Escape") {
+            setOpen(false);
+            (e.target as HTMLInputElement).blur();
+          } else if (e.key === "Tab") return setOpen(false);
           else return;
           e.preventDefault();
         }}
@@ -270,10 +280,8 @@ function PersonPicker({ fam, current, onPick }: { fam: Family; current: string |
               role="option"
               aria-selected={n === active}
               className={n === active ? "active" : ""}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                pick(p.id!);
-              }}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick(p.id!)}
             >
               {p.title}
             </li>

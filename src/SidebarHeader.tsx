@@ -1,6 +1,6 @@
 // The top of a project's sidebar: back to the projects, main page, back and
 // forward, the project name (click: add new pages at the top level), the
-// global spoiler switch and Project settings.
+// global spoiler switch, Project settings and hiding the sidebar.
 import { Icon } from "./editorTheme";
 import { GraphIcon } from "./graph/GraphIcon";
 import { GRAPH_KEYS } from "./graph/GraphView";
@@ -124,9 +124,6 @@ export function SidebarHeader({
           >
             <TreeIcon />
           </button>
-          <button className="plain nav" title={`Hide the sidebar (${HIDE_KEYS})`} aria-label="Hide the sidebar" onClick={onHideSidebar}>
-            <SidebarIcon />
-          </button>
         </div>
       </div>
       <div className="project-name-row">
@@ -155,6 +152,9 @@ export function SidebarHeader({
               className="stroke"
             />
           </svg>
+        </button>
+        <button className="plain nav" title={`Hide the sidebar (${HIDE_KEYS})`} aria-label="Hide the sidebar" onClick={onHideSidebar}>
+          <SidebarIcon />
         </button>
       </div>
       {revealAll && (

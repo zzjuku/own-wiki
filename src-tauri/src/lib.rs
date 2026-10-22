@@ -702,7 +702,7 @@ fn graph_data(state: State<'_, AppState>, project: String, known: Option<String>
 /// Every family relation (M12), or only the fingerprint when `known` is still current.
 #[tauri::command(async)]
 fn family_data(state: State<'_, AppState>, project: String, known: Option<String>) -> AppResult<family::FamilyReply> {
-    state.with_index(&project, false, |dir, idx| Ok(family::reply(idx, &family::FamilySettings::read(dir), known.as_deref())))
+    state.with_index(&project, false, |_, idx| Ok(family::reply(idx, &family::FamilySettings::read(&idx.dir), known.as_deref())))
 }
 
 /// Names of the Page link fields pages have (Family tree settings).
