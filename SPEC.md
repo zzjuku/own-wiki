@@ -1,8 +1,8 @@
-# Own WIKI — Spec (v0.19, 2026-10-23)
+# Own WIKI — Spec (v0.20, 2026-10-23)
 
 This file is the single source of truth for what the program is and why. Update the decision log whenever a decision changes. Detailed scopes and decisions of finished milestones are in `docs/history.md`.
 
-Status: M1–M12 done (M12 on 2026-10-23); next: build M13 Field notes & zoom (defined 2026-10-23); roadmap M13–M18 drafted.
+Status: M1–M13 done (M13 on 2026-10-23); next: define M14 Health reports; roadmap M14–M18 drafted.
 
 ## Purpose
 A blank, local desktop program for building personal wikis for fictional stories. The program is only the container. All content is created by the user inside it. Nothing story-specific is hardcoded.
@@ -116,44 +116,18 @@ Order follows dependencies: typed fields before maps/timelines/trees; links befo
 - **M10 Search & sync safety** (done 2026-10-21): Search screen (word starts, filters, spoilers follow the eye switch), find on page; no blind overwrites, live reload, edit clash bar, conflict copies (also edits Drive silently overwrote) and the Conflicts screen, open-on-another-computer warning; easier field moving in the infobox editors; plus Move library…, a synced page edge, What links here listing relations, caches out of the Drive folder. Mac and Windows can now both be used with the library in Drive.
 - **M11 Graph view** (done 2026-10-22): Graph screen with live Obsidian-style physics (drag pulls neighbours, springs back, gentle drift, glow, smooth hover fades), hover card, search, Filters & colours panel (filters, red-link/category/group nodes, arrows, colour rules), remembered layout, local graph beside pages with depth and Open in Graph, live updates, graph theme colours.
 - **M12 Family trees** (done 2026-10-23): Family tree screen centred on anyone (generations up/down, partners' parents, All families side by side with generations lined up, one house's trees), picture boxes, several partners with line styles and couple labels, "?" parents, stubs, placeholders, spoilers; editing in the tree (Add parent/child/partner with the other parent, Remove, New person…), the page header button, trees in page text, Save image (PNG/SVG); loops flagged on the Relations screen.
-- **M13 Field notes & zoom** (Juku, 2026-10-23; scope below): a small note before or after any infobox value, Cmd/Ctrl+scroll zoom of the whole app.
+- **M13 Field notes & zoom** (done 2026-10-23): a small note before or after any infobox entry (formatting, links that count as links but not relations, searched, kept with their entries); zoom of the whole app with Cmd/Ctrl + scroll, keys and Settings, per computer.
 - **M14 Health reports.**
 - **M15 Interactive maps.**
 - **M16 Calendars & timelines.**
 - **M17 Solar system map** (later version, scope to be defined).
 - **M18 Export:** zip, static HTML site.
 
-### M13 — Field notes & zoom (defined 2026-10-23)
-Two small additions from Juku's M12 review: a short note next to any infobox value, and making the whole app bigger or smaller.
-
-**Field notes**
-- A **note** is a short text before or after one entry's value, on the same line and smaller, exactly like the note of Date, text today ("[[House A]] *(by marriage)*", "*(claimed)* Lord of X"). Each note has its own **before / after** switch (Juku). It's separate from the words around links (the Aa button, M9), which stay as they are.
-- **Any field, any time** (Juku): no template setting. In the Infobox tab every entry gets a small **Note** button; it opens a one-line input with the before/after switch; emptying it removes the note.
-- **One note per entry** (Juku): each page of a Page link field, each item of a List, each name typed into a Linked from field, each entry of a Date, place / Date, text field with several entries; Text, Long text, Number, Yes/no, Choice and Date fields have one entry. Not for Image (it has its caption), Heading and Divider, nor for entries a page doesn't store itself (Linked from entries from other pages, two-way extras). Date, text keeps its own note; a field note can be added there too.
-- Notes allow bold, italic, `[[links]]` and `||spoilers||` like text fields. Their links count like links in text fields (red links, hover cards, What links here "via infobox: field", rename rewrite, graph lines). A note in a spoiler field is hidden with the value.
-- Shown wherever the infobox shows (pages, editor preview, embeds with `|infobox`); searched like the values (Search screen, find on page).
-- Notes stay with their entries: moving an entry in the Infobox tab moves its note; removing an entry (also by write-back from another page, M9 Remove / Replace, M12 Remove) removes its note. Apply / Change template keep notes with their values (also when a value becomes a hidden value). Templates don't hold notes.
-- Stored on the page's field next to its value; the values themselves keep their format (older copies of the app still read the page, ignoring the notes).
-
-**Zoom**
-- **Cmd + scroll** (Mac) / **Ctrl + scroll** (Windows) makes the whole app bigger or smaller (text stays sharp), 50–200 % in 10 % steps; also **Cmd/Ctrl + =**, **Cmd/Ctrl + −** and **Cmd/Ctrl + 0** (back to 100 %) (Juku). Everywhere: library, pages, screens, dialogs.
-- **Settings → Zoom**: the same level as a choice (Juku).
-- Remembered on this computer only (local storage, never synced), also after quitting.
-- The Graph and Family tree canvases keep their own zoom: on the Mac the trackpad pinch and the wheel there zoom the canvas, Cmd + scroll zooms the app; on Windows Ctrl + scroll over a canvas zooms the canvas (a trackpad pinch sends the same), the keyboard keys zoom the app (Claude's default, open to review).
-
-**Not in M13:** notes set in templates; notes as family-tree couple labels (the words around partner links stay that); zoom per project.
-
-**Checkpoint for Juku:** notes on every field type in the Infobox tab and the infobox (before and after, formatting, spoilers). After it: links in notes counting everywhere (red links, rename, What links here, graph, search), notes following moves, write-back and templates, zoom, final review.
-
-**Progress (2026-10-23, final review handed to Juku):** everything above is built. Notes: `notes: [{i, text, before}]` on the page's field (`src/notes.ts`), Note button per entry in the Infobox tab, shown in the infobox; links in notes are in the link index as `note` links (red links, hover cards, What links here, graph, rename), never relations (left out of Linked from, the Relations table and What links here's relations); search reads notes with their field; write-back (M9/M12 Remove, Replace) and Apply / Change template keep notes with their entries. Zoom: `src/zoom.ts` (webview zoom, local storage `ownwiki.zoom`), Settings → Zoom. Link index cache version 12. Measured: 5,000 pages reopen in ~25 ms, search ~15 ms. Left: Juku's review.
-
-- **Done when:** the points above work; new features have Playwright UI tests (a note before and one after on a Page link entry, a List item, a Text and a Date field; formatting, a link and a spoiler in a note; moving an entry moves its note; removing a relation from another page removes its note; Apply template keeps notes; a red link in a note creates its page; search finds a note; zoom with Cmd/Ctrl + scroll, the keys and Settings, remembered after a reload; the canvases still zoom themselves) and pass with the Rust and unit tests (notes read and written with their entries, links in notes in the link index and rename rewrite, write-back keeping notes in step, search text including notes); screenshots check the Infobox tab with the note input, an infobox with notes before and after in the built-in themes, Settings → Zoom and the app at 150 %; a 5,000-page project still reopens in under 1 s and search answers as fast as before; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
-
 ### How every milestone is written
 - **Done when** always includes: new features have automated UI tests (Playwright smoke tests in `tests/ui/`) and pass with the Rust and unit tests; screenshots check how new or changed screens look; speed targets only if the milestone touches loading, the index, search or big lists; this milestone's diff reviewed once for bugs and duplicated code; the Mac app built, installed and checked once on screen; the Windows workflow produces an installer; Juku has reviewed the installed app and approved it.
 - A milestone may name a **checkpoint** partway for Juku. A session that ends partway adds a short **Progress** note (done / left / open questions) to the milestone here.
 
-## Rules from finished milestones (M1–M12)
+## Rules from finished milestones (M1–M13)
 Everything later work must keep working. Reasons and full detail: `docs/history.md` (search it).
 
 **Stack and code**
@@ -277,9 +251,16 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 - Save image: PNG (canvas, theme fonts, twice the size) or SVG (styles written in, pictures embedded) of the whole tree through the save dialog (`save_image_file`, only .png/.svg). Pictures are loaded as images (`wikiasset:` responses allow reading them back), never fetched.
 - Theme variables `--tree-*` (bg, box-bg, box-border, box-text, line, line-active, placeholder, stub, label) and `--font-tree`, following existing colours by default; boxes follow `--box-radius`. Test hook `window.__familyTree` (not in the built app); speed check `PERF=1 npx playwright test family-speed`.
 
+**Field notes & zoom (M13)**
+- Field notes: `notes: [{i, text, before}]` on a page's field (`src/notes.ts`), one per entry by its place (`i`; 0 for single values; List items, Page link pages, typed-in Linked from names, Date, place / Date, text entries in stored order); not for Image, Heading, Divider or entries from other pages. Shown on the same line, smaller (`.infobox-note`, like Date, text's note), before or after the entry; bold, italic, links, spoilers; hidden with a spoiler field. Templates hold no notes. Values keep their format.
+- Infobox tab: a Note button per entry (on the field's line for single values), a one-line note with an After ▸ / ◂ Before switch; × removes the note, removing an entry removes its note.
+- Links in notes are link-index `note` links: red links, hover cards, What links here, graph, rename rewrite; never relations (left out of Linked from, page lists, the Relations table and What links here's relations). Search reads notes with their field.
+- Notes stay with their entries: write-back (`set_relation` Remove / Replace) remaps or drops them; Apply / Change template keep them with their values (also as hidden values). Link index cache version 12.
+- Zoom: the webview's own zoom, 50–200 % in 10 % steps, Cmd/Ctrl + scroll (one wheel notch or ~100 px per step), Cmd/Ctrl + = − 0, Settings → Zoom; local storage `ownwiki.zoom` (per computer). The Graph and Family tree drawings keep their wheel and pinch zoom (on Windows Ctrl + scroll over them is theirs). Permission `core:webview:allow-set-webview-zoom`.
+
 **Behaviour to keep**
 - Autosave a moment after typing stops and before switching pages, leaving the project, closing the window or quitting; no Save button.
-- Pages open in the read view; new pages open in the editor. Shortcuts in use (Ctrl on Windows): Cmd+O quick-open, Cmd+Shift+F search, Cmd+Alt+G graph, Cmd+Alt+T family tree, Cmd+F find (read view: find on page; editor: its own find), Cmd+E read/edit, Cmd+B/I bold/italic, Cmd+Shift+X strikethrough, Cmd+Shift+S spoiler, Cmd+Alt+1/2/3 headings, Cmd+Shift+8/7 lists, Cmd+K link, Cmd+Z / Cmd+Shift+Z undo/redo, Cmd+Shift+V plain paste, Cmd+[ / Cmd+] back/forward (Alt+Left/Right on Windows), Cmd+click follows a link in the source.
+- Pages open in the read view; new pages open in the editor. Shortcuts in use (Ctrl on Windows): Cmd+O quick-open, Cmd+Shift+F search, Cmd+Alt+G graph, Cmd+Alt+T family tree, Cmd+= / Cmd+− / Cmd+0 and Cmd+scroll zoom, Cmd+F find (read view: find on page; editor: its own find), Cmd+E read/edit, Cmd+B/I bold/italic, Cmd+Shift+X strikethrough, Cmd+Shift+S spoiler, Cmd+Alt+1/2/3 headings, Cmd+Shift+8/7 lists, Cmd+K link, Cmd+Z / Cmd+Shift+Z undo/redo, Cmd+Shift+V plain paste, Cmd+[ / Cmd+] back/forward (Alt+Left/Right on Windows), Cmd+click follows a link in the source.
 - One Enter = new line in the preview; an empty line = new paragraph.
 
 **Promised to later milestones (from M1–M9 scopes)**
@@ -298,13 +279,10 @@ Everything later work must keep working. Reasons and full detail: `docs/history.
 
 
 ## Decision log
-- Entries up to 2026-10-18 (M1–M6), the M7 entries (2026-10-19 – 2026-10-20), the M8 entries (2026-10-20) the M9 entries (2026-10-20 – 2026-10-21), the M10 entries (2026-10-21), the M11 entries (2026-10-21 – 2026-10-22) and the M12 entries (2026-10-22 – 2026-10-23): see `docs/history.md`.
+- Entries up to 2026-10-18 (M1–M6), the M7 entries (2026-10-19 – 2026-10-20), the M8 entries (2026-10-20) the M9 entries (2026-10-20 – 2026-10-21), the M10 entries (2026-10-21), the M11 entries (2026-10-21 – 2026-10-22), the M12 entries (2026-10-22 – 2026-10-23) and the M13 entries (2026-10-23): see `docs/history.md`.
 - 2026-10-18 (maintenance, not a milestone): SPEC.md trimmed; finished scopes and the old decision log moved to `docs/history.md` unchanged, SPEC.md keeps a "Rules from finished milestones" summary. `src/styles.css` split into `src/styles/*.css` by area, imported in the original order from `src/main.tsx` (pure move: the built CSS is byte-identical, screenshots unchanged).
 - 2026-10-18 technical: automated UI tests with **Playwright** (Chromium) against the Vite dev server (port 1430) on `tests/ui/harness.html`, which installs an in-memory backend (`tests/ui/mock/`, via Tauri's `mockIPC`) before the app; images answer with a placeholder picture. tauri-driver isn't used (no macOS support). The real file and index logic stays covered by the Rust tests. `npm test` = unit + Rust (also in Windows CI); `npm run test:ui` = type-check + Playwright (Mac only for now). Smoke tests cover opening a project, creating/editing a page, links, infobox from a template, image in text and categories.
 - 2026-10-19 (planning): Juku's list of small additions placed. M7 gains an AWOIAF-style quote box (inserted by hand), a separator line in text + Divider infobox field (optional label), a thinner Contents box, and the app is always light on Mac and Windows (replaces "follows the system"). Automatic relation fields pulled forward from Family trees into a new **M8 Relations** (calculated from the link index, never written into other files; parents → children, two-way for spouse), together with automatic page lists such as "Chapters that take place at …". Themes (now M12) also set fonts (body, headings), text size, line spacing and page width; fonts are copied into the project. Later milestones renumbered +1 (old M8 → M9 … M16 → M17); `docs/history.md` keeps the old numbers. Edit/read hotkey already exists (Cmd+E).
 - 2026-10-20 (planning): AWOIAF-style rework of the hover cards moved to a later version (listed under "Later / undecided"); the current M4/M6 hover cards stay as they are.
 - 2026-10-20 (planning): embed boxes get their own look per theme (frame/box appearance, background, colours), added to M12 Themes.
 - 2026-10-21 (planning): Graph view moved ahead of Health reports (Juku). Renumbered: Graph view M12 → M11, Health reports M11 → M12; M13–M17 unchanged. No dependency between the two; `docs/history.md` keeps the old numbers.
-- 2026-10-23 (Juku): new **M13 Field notes & zoom** after M12: a small note before/after any infobox field value, one per entry, besides the words around links; Cmd/Ctrl+scroll zoom of the whole app, remembered per computer. Renumbered: Health reports M13 → M14, Interactive maps M14 → M15, Calendars & timelines M15 → M16, Solar system map M16 → M17, Export M17 → M18. `docs/history.md` keeps the old numbers.
-- 2026-10-23 (planning, Juku): **M13 Field notes & zoom defined** (scope above). Juku chose: a before/after switch per note; any field, any time (no template setting); same line, smaller, like Date, text; zoom also with Cmd/Ctrl + = − 0 and in Settings. Claude's defaults, open to review: notes stored next to the value without changing value formats; canvases keep their own wheel/pinch zoom (on Windows Ctrl + scroll over a canvas zooms the canvas).
-- 2026-10-23 technical (M13): notes are stored by entry place (`i`), and kept in step by the Infobox tab, write-back (`set_relation` remaps them) and templates (whole fields move); links in notes carry `note: true` in the link index so they count as links but not as relations. Zoom uses the webview's own zoom (sharp text, canvases keep working), one wheel notch or ~100 px of trackpad scrolling per 10 % step.
