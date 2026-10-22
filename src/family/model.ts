@@ -109,6 +109,8 @@ export interface TreeOptions {
   revealAll: boolean;
   /** Relations revealed by clicking their "▒▒▒" box. */
   revealed: ReadonlySet<string>;
+  /** People with a full box in another tree on the same screen ("All families"): stubs here. */
+  elsewhere?: ReadonlySet<number>;
 }
 
 type Role = "line" | "blood" | "inlaw" | "inlawParent" | "extra";
@@ -237,6 +239,9 @@ export function buildTree(fam: Family, centre: number, opts: TreeOptions): TreeS
 
   // ---- walk outwards, nearest first ----
   const home = new Map<number, string>();
+  const elsewhere = opts.elsewhere ?? new Set<number>();
+  /** Has a full box somewhere (this tree or another). */
+  const homed = (i: number) => home.has(i) || elsewhere.has(i);
   const genOf = new Map<number, number>();
   /** Union key -> who draws it (a person's number, or "line"). */
   const claimed = new Map<string, number | "line">();
@@ -244,7 +249,7 @@ export function buildTree(fam: Family, centre: number, opts: TreeOptions): TreeS
   const lineOf = new Map<number, Union | null>();
   const queue: { i: number; role: Role }[] = [];
   const place = (i: number, where: string, gen: number, role: Role) => {
-    if (home.has(i)) return;
+    if (homed(i)) return;
     home.set(i, where);
     genOf.set(i, gen);
     queue.push({ i, role });
@@ -310,13 +315,13 @@ export function buildTree(fam: Family, centre: number, opts: TreeOptions): TreeS
       if (k.child === line && !k.hidden) out.push({ drop: k.drop, line: true });
       else if (k.hidden) out.push({ drop: k.drop, box: hiddenBox([k.hidden], gen + 1) });
       else if (home.get(k.child) === `child:${u.key}`) out.push({ drop: k.drop, unit: unitOf(k.child) });
-      else if (home.has(k.child)) out.push({ drop: k.drop, box: stub(k.child, gen + 1) });
+      else if (homed(k.child)) out.push({ drop: k.drop, box: stub(k.child, gen + 1) });
     }
     return out;
   };
 
   const otherBox = (o: Other, where: string, gen: number): TBox | null => {
-    if (o.kind === "person") return home.get(o.i) === where ? personBox(o.i) : home.has(o.i) ? stub(o.i, gen) : null;
+    if (o.kind === "person") return home.get(o.i) === where ? personBox(o.i) : homed(o.i) ? stub(o.i, gen) : null;
     if (o.kind === "hidden") return hiddenBox(o.edges, gen);
     if (o.kind === "unknown") return box({ kind: "unknown", gen });
     return null;
@@ -416,3 +421,39 @@ export function buildTree(fam: Family, centre: number, opts: TreeOptions): TreeS
 /** Keys of the relations a hidden box stands for, as one string (for tests and lookups). */
 export const revealKeys = (b: TBox) => (b.reveal ?? []).join(" ");
 export { coupleKey, parentKey };
+
+/** How many people descend from `i` (for choosing where trees start). */
+function descendants(fam: Family, i: number): number {
+  const seen = new Set([i]);
+  const queue = [i];
+  for (let q = 0; q < queue.length; q++)
+    for (const l of fam.childrenOf[queue[q]])
+      if (!seen.has(l.child)) {
+        seen.add(l.child);
+        queue.push(l.child);
+      }
+  return seen.size - 1;
+}
+
+/**
+ * "All families": one tree after another until everyone in a family has a
+ * full box once. Each tree starts at the person without parents who has the
+ * most descendants left (biggest families first); people already drawn in an
+ * earlier tree are stubs in later ones.
+ */
+export function buildAllTrees(fam: Family, opts: TreeOptions): TreeSpec[] {
+  const everyone = fam.people.map((_, i) => i).filter((i) => fam.inFamily(i));
+  const size = new Map(everyone.map((i) => [i, descendants(fam, i)]));
+  const order = [...everyone].sort((a, b) => Number(fam.parentsOf[a].length > 0) - Number(fam.parentsOf[b].length > 0) || size.get(b)! - size.get(a)! || a - b);
+  const shown = new Set<number>();
+  const trees: TreeSpec[] = [];
+  for (const root of order) {
+    if (shown.has(root)) continue;
+    const spec = buildTree(fam, root, { ...opts, up: 0, down: Infinity, elsewhere: shown });
+    // Someone whose relations are all hidden spoilers would stand alone: left out.
+    if (spec.boxes.length === 1) continue;
+    spec.shown.forEach((i) => shown.add(i));
+    trees.push(spec);
+  }
+  return trees;
+}

@@ -19,6 +19,7 @@ import { SplitEditor } from "./SplitEditor";
 import { useSpoilerReveal } from "./spoilers";
 import { displayGroup } from "./tree";
 import { useContentClick, useLinkContext, useWiki } from "./wiki";
+import { usePageTrees } from "./family/PageTrees";
 
 const SUB_KEY = "ownwiki.categorySubpages";
 
@@ -170,6 +171,8 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted, 
   const html = useMemo(() => (text.trim() ? renderWithEmbeds(text, { tocBox: false, links }, embedEnv).html : ""), [text, links, embedEnv]);
   const readRef = useRef<HTMLDivElement>(null);
   const { onClick: revealOne } = useSpoilerReveal(readRef);
+  const textRef = useRef<HTMLDivElement>(null);
+  usePageTrees(textRef, editing ? "" : html, wiki.revealAll);
   const groups = useMemo(() => fileMembers(data?.pages ?? []), [data]);
 
   async function saveParents(next: string[]) {
@@ -297,7 +300,7 @@ export function CategoryView({ name, editing, setEditing, onRenamed, onDeleted, 
                   This category doesn't exist yet. Add it to a page, or write its text with <strong>Edit</strong>.
                 </p>
               )}
-              {html && <div dangerouslySetInnerHTML={{ __html: html }} />}
+              {html && <div ref={textRef} dangerouslySetInnerHTML={{ __html: html }} />}
               {data.subcategories.length > 0 && (
                 <section>
                   <h2>Subcategories</h2>

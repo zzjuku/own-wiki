@@ -1,5 +1,5 @@
 // Blocks of the page editor that are edited in a dialog rather than typed:
-// galleries, quote boxes, embeds and page lists. The toolbar opens a dialog for a new one;
+// galleries, quote boxes, embeds, page lists and family trees. The toolbar opens a dialog for a new one;
 // clicking one in the source opens its dialog (an embed first shows a small
 // popup: Open, Change, Remove).
 import { useState, type RefObject } from "react";
@@ -14,6 +14,9 @@ import { QuoteDialog } from "./QuoteDialog";
 import { PageListDialog } from "./PageListDialog";
 import { pageListOnLine, pageListSource, type PageListCall } from "./pageLists";
 import { parseQuote, quoteAround, quoteSource, type Quote } from "./quotes";
+import { FamilyTreeDialog } from "./family/FamilyTreeDialog";
+import { treeLineSource, treeOnLine, type TreeLineCall } from "./family/treeLine";
+import { useWiki } from "./wiki";
 
 /** Lines of the source (0-based, first and last). */
 type Range = { start: number; end: number };
@@ -24,6 +27,9 @@ export function useBlockDialogs(viewRef: RefObject<EditorView | null>, pageId: s
   const [quote, setQuote] = useState<{ range: Range | null; quote: Quote } | null>(null);
   const [embedDialog, setEmbedDialog] = useState<{ line: number | null; call: EmbedCall | null } | null>(null);
   const [pageList, setPageList] = useState<{ line: number | null; call: PageListCall | null } | null>(null);
+  const [tree, setTree] = useState<{ line: number | null; call: TreeLineCall | null } | null>(null);
+  const wiki = useWiki();
+  const pageTitle = wiki.names.entries.find((e) => e.page.id === pageId)?.page.title ?? "";
   // The popup after clicking an embed line.
   const [embedPopup, setEmbedPopup] = useState<{ line: number; call: EmbedCall; at: { left: number; top: number } } | null>(null);
 
@@ -60,6 +66,8 @@ export function useBlockDialogs(viewRef: RefObject<EditorView | null>, pageId: s
     if (q) return setQuote({ range: q, quote: parseQuote(lines.slice(q.start + 1, q.end)) });
     const list = pageListOnLine(lines[n]);
     if (list) return setPageList({ line: n, call: list });
+    const t = treeOnLine(lines[n]);
+    if (t) return setTree({ line: n, call: t });
     const call = embedOnLine(lines[n]);
     if (call) {
       requestAnimationFrame(() => {
@@ -69,8 +77,9 @@ export function useBlockDialogs(viewRef: RefObject<EditorView | null>, pageId: s
     }
   }
 
-  function open(kind: "gallery" | "embed" | "quotebox" | "pagelist") {
+  function open(kind: "gallery" | "embed" | "quotebox" | "pagelist" | "familytree") {
     if (kind === "gallery") setGallery({ range: null, items: [], spoiler: false });
+    else if (kind === "familytree") setTree({ line: null, call: null });
     else if (kind === "pagelist") setPageList({ line: null, call: null });
     else if (kind === "embed") setEmbedDialog({ line: null, call: null });
     else setQuote({ range: null, quote: { text: "", by: "", source: "" } });
@@ -167,6 +176,29 @@ export function useBlockDialogs(viewRef: RefObject<EditorView | null>, pageId: s
           }
           close={() => {
             setPageList(null);
+            focus();
+          }}
+        />
+      )}
+
+      {tree && (
+        <FamilyTreeDialog
+          initial={tree.call}
+          pageTitle={pageTitle}
+          save={(call) => {
+            setTree(null);
+            write(tree.line === null ? null : { start: tree.line, end: tree.line }, treeLineSource(call));
+          }}
+          remove={
+            tree.line !== null
+              ? () => {
+                  setTree(null);
+                  write({ start: tree.line!, end: tree.line! }, null);
+                }
+              : undefined
+          }
+          close={() => {
+            setTree(null);
             focus();
           }}
         />

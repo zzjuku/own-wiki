@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Family, type FamilyData, labelText, lifeYears, parentKey } from "./data";
-import { layoutTree, type Metrics, type TreeLayout } from "./layout";
-import { buildTree, type TBox, type TreeOptions, type TreeSpec, type Unit } from "./model";
+import { layoutTree, type Metrics, stackLayouts, type TreeLayout } from "./layout";
+import { buildAllTrees, buildTree, type TBox, type TreeOptions, type TreeSpec, type Unit } from "./model";
 import { renameFieldInFamily } from "./settings";
 
 /** A family from names: parents as [child, parent, field], partners as [a, b, field, words]. */
@@ -32,7 +32,7 @@ function family(
 
 const OPTS: TreeOptions = { up: 2, down: 3, partnersParents: false, revealAll: false, revealed: new Set() };
 const METRICS: Metrics = {
-  boxW: 160, boxH: 56, unknownW: 40, stubH: 26, gap: 20, coupleGap: 28, rowGap: 64,
+  boxW: 160, boxH: 56, cardH: 200, tall: (b) => b.person === 0, unknownW: 40, stubH: 26, gap: 20, coupleGap: 28, rowGap: 64,
   measure: (t) => t.length * 7, stubText: (b) => `↪ ${b.person}`,
 };
 
@@ -76,7 +76,10 @@ describe("family tree model", () => {
     // Parents above children, partners in one row, the father left of the mother.
     expect(at(l, fam, "Father").y).toBeLessThan(at(l, fam, "Centre").y);
     expect(at(l, fam, "Father").x).toBeLessThan(at(l, fam, "Mother").x);
-    expect(at(l, fam, "Wife").y).toBe(at(l, fam, "Centre").y);
+    // (The centre has a picture: a taller box; boxes sit in the middle of their row.)
+    const middle = (t: string) => at(l, fam, t).y + at(l, fam, t).h / 2;
+    expect(middle("Wife")).toBe(middle("Centre"));
+    expect(at(l, fam, "Centre").h).toBeGreaterThan(at(l, fam, "Wife").h);
     expect(at(l, fam, "Grandfather").y).toBeLessThan(at(l, fam, "Father").y);
     // The aunt sits with her brother (the father) under the grandfather.
     expect(at(l, fam, "Aunt").y).toBe(at(l, fam, "Father").y);
@@ -242,6 +245,27 @@ describe("family tree model", () => {
     expect(l.boxes.length).toBeGreaterThan(200);
     expectNoOverlap(l);
     expect(ms).toBeLessThan(500);
+  });
+});
+
+describe("all families", () => {
+  it("draws every family once, biggest first, with stubs across trees", () => {
+    const { fam } = family(
+      ["A", "A wife", "B", "C", "D", "E", "In-law", "In-law's father", "Lonely"],
+      [["B", "A"], ["B", "A wife", 1], ["C", "A"], ["D", "B"], ["E", "In-law's father"], ["In-law", "In-law's father"]],
+      [["A", "A wife"], ["B", "In-law"]],
+    );
+    const trees = buildAllTrees(fam, OPTS);
+    const full = trees.flatMap((t) => fullBoxes(t, fam));
+    // Everyone in a family once (Lonely has no relations: not drawn).
+    expect(full.sort()).toEqual(["A", "A wife", "B", "C", "D", "E", "In-law", "In-law's father"]);
+    expect(fam.people[trees[0].centre.box.person!].title).toBe("A");
+    expect(trees.length).toBe(2);
+    // The in-law is drawn beside B; in their father's tree they're a stub.
+    expect(stubs(trees[1], fam)).toEqual(["In-law"]);
+    const l = stackLayouts(trees.map((t) => layoutTree(t, METRICS)), 100);
+    expectNoOverlap(l);
+    expect(l.boxes.length).toBe(trees.reduce((n, t) => n + t.boxes.length, 0));
   });
 });
 

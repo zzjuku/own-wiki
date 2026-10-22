@@ -52,6 +52,10 @@ export interface Wiki {
   reloadCategories: () => void;
   /** Project-wide options (Project settings). */
   settings: ProjectSettings;
+  /** The global "show all spoilers" switch is on. */
+  revealAll: boolean;
+  /** Opens the Family tree screen centred on a page (recorded for back/forward). */
+  openFamilyTree: (pageId: string) => void;
 }
 
 export const DEFAULT_FRAME: Frame = { width: 250, height: 300 };

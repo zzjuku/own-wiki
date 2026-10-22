@@ -580,6 +580,7 @@ fn is_prose(line: &str) -> bool {
         || t.starts_with(['>', '|'])
         || t.starts_with("<!--")
         || t.starts_with("<pagelist")
+        || t.starts_with("<familytree")
         || footnote_def_label(t).is_some()
         || is_hr(t))
 }
@@ -770,6 +771,7 @@ mod tests {
         assert!(parse_links("{{Page A}}").is_empty());
         assert_eq!(summary("{{Page A}}\n\nFirst text."), "First text.");
         assert_eq!(summary("<pagelist from=\"Father\">\n\nFirst text."), "First text.");
+        assert_eq!(summary("<familytree root=\"Page A\" up=\"1\" down=\"3\">\n\nFirst text."), "First text.");
     }
 
     #[test]

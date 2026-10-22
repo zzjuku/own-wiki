@@ -6,6 +6,7 @@ import { FULL_PX, GALLERY, GALLERY_PX, imageAtStart, parseGallery, parseImage, S
 import { EMBED_BLOCK, parseEmbed, type EmbedCall } from "./embedSyntax";
 import { parseQuote, QUOTE_BLOCK } from "./quotes";
 import { PAGELIST_BLOCK, parsePageListAttrs, type PageListCall } from "./pageLists";
+import { FAMILYTREE_BLOCK, parseTreeAttrs, type TreeLineCall } from "./family/treeLine";
 import { SPOILER_AT_START } from "./spoilers";
 import { linkAtStart, shownText, type WikiLink } from "./wikilinks";
 
@@ -332,6 +333,21 @@ md.use({
       renderer(token) {
         state.pageLists.push(token.call as PageListCall);
         return `<div class="pagelist-slot" data-slot="${state.pageLists.length - 1}"></div>\n`;
+      },
+    },
+    {
+      // <familytree root="…" up="1" down="3"> on a line of its own (drawn by src/family/PageTrees.tsx)
+      name: "familyTree",
+      level: "block",
+      start: (src: string) => src.match(/^ {0,3}<familytree\b/im)?.index,
+      tokenizer(src: string) {
+        const m = FAMILYTREE_BLOCK.exec(src);
+        if (!m) return undefined;
+        return { type: "familyTree", raw: m[0], call: parseTreeAttrs(m[1]) };
+      },
+      renderer(token) {
+        const c = token.call as TreeLineCall;
+        return `<div class="familytree-slot" data-root="${escapeHtml(c.root)}" data-up="${c.up}" data-down="${c.down}"></div>\n`;
       },
     },
     {

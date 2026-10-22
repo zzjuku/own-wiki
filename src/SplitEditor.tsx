@@ -42,6 +42,8 @@ import { htmlToMarkdown } from "./paste";
 import { TableDialog } from "./TableDialog";
 import { IS_MAC, PagePicker } from "./QuickOpen";
 import { frameFor, scrollToSection, useContentClick, useLinkContext, useWiki } from "./wiki";
+import { usePageTrees } from "./family/PageTrees";
+import { TreeIcon } from "./family/TreeIcon";
 
 interface Props {
   /** The page being edited. */
@@ -107,6 +109,7 @@ const TOOLS: (Tool | "|")[] = [
   { id: "link", label: <Icon name="link" />, title: `Link to a page (${MOD}K)`, run: () => true },
   { id: "embed", label: <Icon name="embed" />, title: "Embed a page (its current content shows here)", run: () => true },
   { id: "pagelist", label: <Icon name="pagelist" />, title: "Page list (the pages whose fields point here)", run: () => true },
+  { id: "familytree", label: <TreeIcon />, title: "Family tree (a person's family, drawn in the page)", run: () => true },
   { id: "image", label: <Icon name="image" />, title: "Insert image (you can also drop or paste images)", run: () => true },
   { id: "gallery", label: <Icon name="gallery" />, title: "Insert gallery", run: () => true },
 ];
@@ -499,6 +502,9 @@ export function SplitEditor({ pageId, title, initial, replaced, onChange, infobo
     [infobox, wiki, title, links, relations],
   );
   const html = boxHtml + textHtml;
+  // Family trees in the preview (spoilers show there, as all spoilers do).
+  const previewMarkdown = useRef<HTMLDivElement>(null);
+  usePageTrees(previewMarkdown, previewHidden ? "" : html, true);
   const counts = useMemo(() => {
     const plain = plainText(text);
     return { words: countWords(plain), chars: plain.length };
@@ -626,7 +632,7 @@ export function SplitEditor({ pageId, title, initial, replaced, onChange, infobo
                     ? openLinkPickerRef.current()
                     : tool.id === "image"
                       ? void chooseImages()
-                      : tool.id === "gallery" || tool.id === "embed" || tool.id === "quotebox" || tool.id === "pagelist"
+                      : tool.id === "gallery" || tool.id === "embed" || tool.id === "quotebox" || tool.id === "pagelist" || tool.id === "familytree"
                         ? blocks.open(tool.id)
                         : run(tool.run)
               }
@@ -679,7 +685,7 @@ export function SplitEditor({ pageId, title, initial, replaced, onChange, infobo
           <>
             <div className="split-divider" onPointerDown={startDrag} title="Drag to resize" />
             <div className="split-preview" ref={previewRef}>
-              <div className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: html }} />
+              <div ref={previewMarkdown} className="markdown" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: html }} />
             </div>
           </>
         )}

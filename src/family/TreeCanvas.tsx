@@ -8,6 +8,7 @@ import { HOVER_DELAY_MS, showCardFor } from "../HoverCard";
 import { imageUrl } from "../infobox";
 import { type Family, labelText, lifeYears } from "./data";
 import type { Placed, TreeLayout } from "./layout";
+import type { TBox } from "./model";
 
 export interface View {
   x: number;
@@ -27,8 +28,11 @@ export interface TreeHandle {
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 3;
 const CLICK_SLOP = 4;
-const PICTURE = 42;
 const PAD = 8;
+/** Space between the frame and a picture. */
+const INSET = 5;
+/** Height of the name and years under a picture. */
+export const TEXT_H = 50;
 
 /** Measures text in the tree's font (canvas, cached per font). */
 let ctx: CanvasRenderingContext2D | null = null;
@@ -83,6 +87,7 @@ export function TreeCanvas({
   onReveal,
   onCreate,
   label,
+  wheelZoom = true,
 }: {
   layout: TreeLayout;
   fam: Family;
@@ -95,6 +100,8 @@ export function TreeCanvas({
   onReveal: (keys: string[]) => void;
   onCreate: (person: number) => void;
   label: string;
+  /** The wheel zooms (the Family tree screen); off in page text, where it scrolls the page. */
+  wheelZoom?: boolean;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const group = useRef<SVGGElement>(null);
@@ -179,6 +186,8 @@ export function TreeCanvas({
     const el = svg.current;
     if (!el) return;
     const wheel = (e: WheelEvent) => {
+      // In page text the wheel scrolls the page (zoom with the buttons).
+      if (!wheelZoom) return;
       e.preventDefault();
       const r = el.getBoundingClientRect();
       const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
@@ -362,37 +371,50 @@ function BoxView({
       </g>
     );
   }
-  const image = b.box.kind === "person" && p?.image ? imageUrl(project, p.image, PICTURE) : null;
-  const textX = image ? PAD + PICTURE + 8 : PAD;
-  const width = b.w - textX - PAD;
-  const name = wrapName(p?.title ?? "", width, fonts.name);
+  // A picture: big on top, name and years below; else name and years only.
+  const image = hasPicture(b.box, fam) ? imageUrl(project, p!.image!, b.w) : null;
+  const picH = image ? b.h - TEXT_H : 0;
+  const name = wrapName(p?.title ?? "", b.w - 2 * PAD, fonts.name);
   const years = p ? lifeYears(p, spoilers) : "";
   const lineH = 17;
   const total = name.length * lineH + (years ? 15 : 0);
-  const top = (b.h - total) / 2 + 13;
+  const top = picH + (b.h - picH - total) / 2 + 13;
   return (
     <g {...common}>
       <rect width={b.w} height={b.h} />
       {image && (
         <>
           <clipPath id={clip}>
-            <rect x={PAD} y={(b.h - PICTURE) / 2} width={PICTURE} height={PICTURE} rx={3} />
+            <rect className="tree-picture-clip" x={INSET} y={INSET} width={b.w - 2 * INSET} height={picH - INSET} />
           </clipPath>
-          <image href={image} x={PAD} y={(b.h - PICTURE) / 2} width={PICTURE} height={PICTURE} preserveAspectRatio="xMidYMid slice" clipPath={`url(#${clip})`} />
+          <image
+            href={image}
+            x={INSET}
+            y={INSET}
+            width={b.w - 2 * INSET}
+            height={picH - INSET}
+            preserveAspectRatio="xMidYMin slice"
+            clipPath={`url(#${clip})`}
+          />
         </>
       )}
-      <text className="tree-name" x={textX} y={top}>
+      <text className="tree-name" x={b.w / 2} y={top} textAnchor="middle">
         {name.map((l, i) => (
-          <tspan key={i} x={textX} dy={i ? lineH : 0}>
+          <tspan key={i} x={b.w / 2} dy={i ? lineH : 0}>
             {l}
           </tspan>
         ))}
       </text>
       {years && (
-        <text className="tree-years" x={textX} y={top + name.length * lineH - 1}>
+        <text className="tree-years" x={b.w / 2} y={top + name.length * lineH - 1} textAnchor="middle">
           {years}
         </text>
       )}
     </g>
   );
+}
+
+/** A person box that shows a picture (the page's hover-card image). */
+export function hasPicture(b: TBox, fam: Family): boolean {
+  return b.kind === "person" && !!fam.people[b.person!]?.image;
 }

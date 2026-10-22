@@ -150,3 +150,74 @@ test("the tree in the built-in themes", async ({ page }) => {
     await shot(page, `theme-${id}`);
   }
 });
+
+test("All families draws every family, each person once", async ({ page }) => {
+  await openProject(page, data());
+  await openTree(page);
+  await page.getByLabel("Person in the middle").click();
+  await page.getByRole("option", { name: "All families" }).click();
+  await expect(page.getByLabel("Person in the middle")).toHaveValue("All families");
+  await expect(page.getByLabel("Generations up")).toBeDisabled();
+  // Everyone in a family has one full box (Page A has no family; Person Q is behind a spoiler).
+  for (const p of FAMILY.filter((x) => !["Page A", "Person Q"].includes(x.title))) await expect(box(page, p.title)).toHaveCount(1);
+  await expect(box(page, "Person MZ")).toHaveCount(1);
+  await expect(box(page, "Person Q")).toHaveCount(0);
+  await page.getByRole("button", { name: "Fit" }).click();
+  await shot(page, "all-families");
+  // Back to the person before.
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.locator(".tree-box.centre")).toContainText("Person C");
+});
+
+test("pages in a family have a Family tree button that opens the tree on them", async ({ page }) => {
+  await openProject(page, data());
+  await page.locator(".sidebar").getByText("Page A", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Family tree of this page" })).toHaveCount(0);
+  // Person Q's only relation is a spoiler: no button either.
+  await page.locator(".sidebar").getByText("Person Q", { exact: true }).click();
+  await expect(page.locator(".page-head h1")).toHaveText("Person Q");
+  await expect(page.getByRole("button", { name: "Family tree of this page" })).toHaveCount(0);
+  await page.locator(".sidebar").getByText("Person H", { exact: true }).click();
+  await page.getByRole("button", { name: "Family tree of this page" }).click();
+  await expect(page.locator(".tree-box.centre")).toContainText("Person H");
+  // Back returns to the page.
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.locator(".page-head h1")).toHaveText("Person H");
+});
+
+test("a family tree in page text: inserted with its dialog, drawn in the page, opens on the screen", async ({ page }) => {
+  await openProject(page, data());
+  await page.locator(".sidebar").getByText("Person F", { exact: true }).click();
+  await page.keyboard.press("ControlOrMeta+e");
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.getByRole("button", { name: "Family tree (a person's family, drawn in the page)" }).click();
+  const dialog = page.getByRole("dialog", { name: "Family tree" });
+  await expect(dialog.getByLabel("Person in the middle")).toHaveValue("Person F");
+  await dialog.getByLabel("Generations up").fill("0");
+  await dialog.getByLabel("Generations down").fill("1");
+  await dialog.getByRole("button", { name: "Insert" }).click();
+  await expect(page.locator(".cm-content")).toContainText('<familytree root="Person F" up="0" down="1">');
+  // The preview draws it already.
+  await expect(page.locator(".split-preview .page-tree .tree-box.centre")).toContainText("Person F");
+  // Clicking the line in the source reopens the dialog.
+  await page.locator(".cm-line", { hasText: "<familytree" }).click();
+  await expect(dialog.getByLabel("Generations down")).toHaveValue("1");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.keyboard.press("ControlOrMeta+e");
+  // Read view: parents (up 0) left out, children shown.
+  const tree = page.locator(".read-view .page-tree");
+  await expect(tree.locator(".tree-box.centre")).toContainText("Person F");
+  await expect(tree.locator('.tree-box[data-name="Person GA"]')).toHaveCount(0);
+  await expect(tree.locator('.tree-box[data-name="Person C"]')).toHaveCount(1);
+  await shot(page, "in-page");
+  await tree.getByRole("button", { name: "Open in Family tree" }).click();
+  await expect(page.locator(".tree-canvas:not(.page-tree *) .tree-box.centre, .family-body .tree-box.centre")).toContainText("Person F");
+});
+
+test("a family tree line naming no page shows a red notice", async ({ page }) => {
+  const pages = [...FAMILY, { id: "Page B.md", title: "Page B", body: 'Text.\n\n<familytree root="Missing person" up="1" down="1">\n' }];
+  await openProject(page, oneProject(pages, { settings: SETTINGS }));
+  await page.locator(".sidebar").getByText("Page B", { exact: true }).click();
+  await expect(page.locator(".page-tree-missing")).toContainText("Missing person");
+});

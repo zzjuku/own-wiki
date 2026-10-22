@@ -20,6 +20,9 @@ import { FindBar, useFindBar } from "./FindBar";
 import { usePageSync } from "./PageSync";
 import { hasSpoilers, useSpoilerReveal } from "./spoilers";
 import { GraphIcon } from "./graph/GraphIcon";
+import { useInFamily } from "./family/FamilyTreeView";
+import { TreeIcon } from "./family/TreeIcon";
+import { usePageTrees } from "./family/PageTrees";
 import { useLocalPrefs } from "./graph/prefs";
 
 interface Props {
@@ -47,6 +50,8 @@ interface Props {
   diskTick: number;
   /** The page was deleted on disk and the user chose Close. */
   onClosed: () => void;
+  /** Opens the Family tree screen centred on this page. */
+  onFamilyTree: () => void;
 }
 
 export interface Arrival {
@@ -191,6 +196,7 @@ export function PageView(props: Props) {
   const [backlinksOpen, setBacklinksOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [localGraph, setLocalGraph] = useLocalPrefs();
+  const inFamily = useInFamily(project, pageId);
   useEffect(() => {
     let live = true;
     // Pages linking here, and pages showing this one through its own relations (counted once).
@@ -238,6 +244,8 @@ export function PageView(props: Props) {
   const loaded = page !== null;
   const finder = useFindBar(editing);
   const markdownRef = useRef<HTMLDivElement>(null);
+  // (Keyed by `editing` too: the read view is new after editing.)
+  usePageTrees(markdownRef, editing ? "" : rendered.html, revealAll || wiki.revealAll);
   useEffect(() => {
     if (!loaded || editing) return;
     const view = readRef.current;
@@ -327,6 +335,11 @@ export function PageView(props: Props) {
             }}
           >
             {revealAll ? "Hide spoilers" : "Reveal spoilers"}
+          </button>
+        )}
+        {inFamily && (
+          <button className="plain nav family-tree-button" title="Family tree of this page" aria-label="Family tree of this page" onClick={props.onFamilyTree}>
+            <TreeIcon />
           </button>
         )}
         <button

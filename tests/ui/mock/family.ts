@@ -33,6 +33,12 @@ function life(ib: Infobox | null, role: string): LifeDate | undefined {
   return undefined;
 }
 
+/** The first image field's picture (the hover-card image). */
+function picture(ib: Infobox | null): string | undefined {
+  const f = ib?.fields.find((x) => x.type === "image" && !x.spoiler && (x.value as any)?.file);
+  return f ? (f.value as any).file : undefined;
+}
+
 export function familyData(pages: Page[], settings: ProjectSettings): FamilyData {
   const ft = { parents: settings.familyTree?.parents ?? [], partners: settings.familyTree?.partners ?? [] };
   const index = (list: { field: string }[], name: string) => list.findIndex((f) => f.field.trim() && lc(f.field) === lc(name));
@@ -49,7 +55,10 @@ export function familyData(pages: Page[], settings: ProjectSettings): FamilyData
       at.set(key, people.length);
       people.push(
         p
-          ? { id: p.id, title: p.title, ...(p.aliases.length ? { aliases: p.aliases } : {}), template: p.infobox?.template ?? undefined, birth: life(p.infobox, "birth"), death: life(p.infobox, "death") }
+          ? {
+              id: p.id, title: p.title, ...(p.aliases.length ? { aliases: p.aliases } : {}), template: p.infobox?.template ?? undefined,
+              image: picture(p.infobox), birth: life(p.infobox, "birth"), death: life(p.infobox, "death"),
+            }
           : { title: name.trim() },
       );
     }

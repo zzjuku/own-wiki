@@ -11,7 +11,12 @@ import type { Kid, Lineage, Partnership, Side, TBox, TreeSpec, Unit } from "./mo
 
 export interface Metrics {
   boxW: number;
+  /** Height of a box without a picture. */
   boxH: number;
+  /** Height of a box with a picture (picture on top, name below). */
+  cardH: number;
+  /** The box shows a picture. */
+  tall: (b: TBox) => boolean;
   /** Width of the "?" box. */
   unknownW: number;
   stubH: number;
@@ -67,6 +72,8 @@ interface Item {
   box?: TBox;
   /** Junction points: their height (middle of the box row, under the boxes, or the box's bottom). */
   jy?: "mid" | "bottom" | number;
+  /** "bottom" junctions: the box whose bottom the line starts from. */
+  of?: string;
 }
 
 class Block {
@@ -144,7 +151,7 @@ export function layoutTree(spec: TreeSpec, m: Metrics): TreeLayout {
   const size = (b: TBox) =>
     b.kind === "stub"
       ? { w: Math.ceil(m.measure(m.stubText(b), "stub")) + 18, h: m.stubH }
-      : { w: b.kind === "unknown" ? m.unknownW : m.boxW, h: m.boxH };
+      : { w: b.kind === "unknown" ? m.unknownW : m.boxW, h: m.tall(b) ? m.cardH : m.boxH };
   const labelGap = (labels: CoupleLabel[]) => Math.max(m.coupleGap, ...labels.map((l) => Math.ceil(m.measure(l.text, "label")) + 12));
   const single = (b: TBox) => {
     const blk = new Block();
@@ -220,7 +227,7 @@ export function layoutTree(spec: TreeSpec, m: Metrics): TreeLayout {
       const dx = kids.items.length ? Math.max(desired, sep(kids, kb[i].block, m.gap * 1.5)) : desired;
       kids.merge(kb[i].block, dx);
       const level = gr.side === "alone" ? 0 : Math.abs(gr.at - host) - 1;
-      blk.add({ key: `j:${gr.key}`, x: j, row: g, w: 0, h: 0, jy: gr.side === "alone" ? "bottom" : level ? level : "mid" });
+      blk.add({ key: `j:${gr.key}`, x: j, row: g, w: 0, h: 0, jy: gr.side === "alone" ? "bottom" : level ? level : "mid", of: u.box.key });
       specs.push({ t: "descent", from: `j:${gr.key}`, kids: gr.kids.map((k) => ({ key: kidKey(k), drop: k.drop })), people: gr.people });
     });
     // Couple lines (and junctions for couples without children).
@@ -263,7 +270,7 @@ export function layoutTree(spec: TreeSpec, m: Metrics): TreeLayout {
       right = x - gap;
       const first = blk.byKey.get(keys[0])!;
       const j = keys.length === 2 ? first.x + first.w + gap / 2 : centreOf(first);
-      blk.add({ key: `j:${a.key}`, x: j, row: g - 1, w: 0, h: 0, jy: keys.length === 2 ? "mid" : "bottom" });
+      blk.add({ key: `j:${a.key}`, x: j, row: g - 1, w: 0, h: 0, jy: keys.length === 2 ? "mid" : "bottom", of: keys[0] });
       if (keys.length === 2) specs.push({ t: "couple", a: keys[0], b: keys[1], style: a.style, labels: a.labels, level: 0, junction: `j:${a.key}` });
       specs.push({ t: "descent", from: `j:${a.key}`, kids: [{ key: p.partner.key, drop: a.drop }], people: keys });
     }
@@ -315,7 +322,7 @@ export function layoutTree(spec: TreeSpec, m: Metrics): TreeLayout {
       out.merge(left, 0);
     }
     out.merge(k.block, kx);
-    out.add({ key: `j:${l.key}`, x: j, row: g, w: 0, h: 0, jy: l.right ? "mid" : "bottom" });
+    out.add({ key: `j:${l.key}`, x: j, row: g, w: 0, h: 0, jy: l.right ? "mid" : "bottom", of: l.left.unit.box.key });
     specs.push({
       t: "descent",
       from: `j:${l.key}`,
@@ -328,7 +335,8 @@ export function layoutTree(spec: TreeSpec, m: Metrics): TreeLayout {
   const centreBlock = unitBlock(spec.centre, "both");
   const root = spec.lineage ? lineageBlock(spec.lineage, centreBlock, spec.centre.box.key, null) : centreBlock;
   for (const c of spec.connectors) specs.push({ t: "connector", ...c });
-  return resolve(root, specs, m);
+  // Every row is as tall as the tallest box (boxes sit in the middle of their row).
+  return resolve(root, specs, m, spec.boxes.some(m.tall) ? m.cardH : m.boxH);
 }
 
 /**
@@ -362,16 +370,20 @@ function isotonic(n: number, want: Map<number, number>): number[] {
 }
 
 /** Pixel positions, then the lines and labels between them. */
-function resolve(root: Block, specs: Spec[], m: Metrics): TreeLayout {
-  const rowTop = (row: number) => row * (m.boxH + m.rowGap);
+function resolve(root: Block, specs: Spec[], m: Metrics, rowH: number): TreeLayout {
+  const rowTop = (row: number) => row * (rowH + m.rowGap);
   const pos = new Map<string, Item & { y: number }>();
-  for (const it of root.items) pos.set(it.key, { ...it, y: rowTop(it.row) + (m.boxH - it.h) / 2 });
+  for (const it of root.items) pos.set(it.key, { ...it, y: rowTop(it.row) + (rowH - it.h) / 2 });
   const boxes: Placed[] = [];
   for (const it of pos.values()) if (it.box) boxes.push({ key: it.key, box: it.box, x: it.x, y: it.y, w: it.w, h: it.h });
-  const mid = (row: number) => rowTop(row) + m.boxH / 2;
-  const bottom = (row: number) => rowTop(row) + m.boxH;
+  const mid = (row: number) => rowTop(row) + rowH / 2;
+  const bottom = (row: number) => rowTop(row) + rowH;
   const below = (row: number, level: number) => bottom(row) + 6 + 6 * level;
-  const jy = (it: Item) => (it.jy === "mid" ? mid(it.row) : it.jy === "bottom" ? bottom(it.row) : below(it.row, it.jy ?? 0));
+  const boxBottom = (key: string | undefined, row: number) => {
+    const b = key ? pos.get(key) : undefined;
+    return b ? b.y + b.h : bottom(row);
+  };
+  const jy = (it: Item) => (it.jy === "mid" ? mid(it.row) : it.jy === "bottom" ? boxBottom(it.of, it.row) : below(it.row, it.jy ?? 0));
   const cx = (it: Item) => it.x + it.w / 2;
   const lines: TreeLine[] = [];
   const labels: TreeLabel[] = [];
@@ -422,4 +434,29 @@ function resolve(root: Block, specs: Spec[], m: Metrics): TreeLayout {
     bounds.maxY = Math.max(bounds.maxY, b.y + b.h);
   }
   return { boxes, lines, labels, bounds };
+}
+
+/** Trees one below another, left-aligned, `gap` apart ("All families"). */
+export function stackLayouts(layouts: TreeLayout[], gap: number): TreeLayout {
+  const out: TreeLayout = { boxes: [], lines: [], labels: [], bounds: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity } };
+  let top = 0;
+  for (const l of layouts) {
+    if (!l.boxes.length) continue;
+    const dx = -l.bounds.minX;
+    const dy = top - l.bounds.minY;
+    // Paths are written as M x,y / H x / V y only.
+    const move = (d: string) =>
+      d.replace(/([MHV])(-?[\d.]+)(?:,(-?[\d.]+))?/g, (_, c: string, a: string, b?: string) =>
+        c === "M" ? `M${+a + dx},${+b! + dy}` : c === "H" ? `H${+a + dx}` : `V${+a + dy}`,
+      );
+    out.boxes.push(...l.boxes.map((b) => ({ ...b, x: b.x + dx, y: b.y + dy })));
+    out.lines.push(...l.lines.map((x) => ({ ...x, d: move(x.d) })));
+    out.labels.push(...l.labels.map((x) => ({ ...x, x: x.x + dx, y: x.y + dy })));
+    out.bounds.minX = Math.min(out.bounds.minX, 0);
+    out.bounds.minY = Math.min(out.bounds.minY, top);
+    out.bounds.maxX = Math.max(out.bounds.maxX, l.bounds.maxX + dx);
+    out.bounds.maxY = top + l.bounds.maxY - l.bounds.minY;
+    top = out.bounds.maxY + gap;
+  }
+  return out;
 }

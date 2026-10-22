@@ -6,7 +6,7 @@
 //! Searched: title, aliases, page text (tables, footnotes, captions, quote
 //! boxes included), every infobox value as shown, category text. Not
 //! searched: hidden template values, embeds (they count on their own page),
-//! code blocks, `<pagelist>` lines.
+//! code blocks, `<pagelist>` and `<familytree>` lines.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -466,6 +466,7 @@ fn body_segs(body: &str, fixed: Option<Place>, out: &mut Vec<Seg>) {
             || is_hr(t)
             || embed_line(line, 0, 0).is_some()
             || t.starts_with("<pagelist")
+            || t.starts_with("<familytree")
             || t.starts_with("<!--")
         {
             return;

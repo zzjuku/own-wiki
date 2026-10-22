@@ -84,6 +84,9 @@
   border-radius: var(--radius);
   cursor: default;
 }
+.family-picker-list li.family-all {
+  font-weight: 600;
+}
 .family-picker-list li.active {
   background: var(--accent);
   color: var(--accent-text);
@@ -135,6 +138,9 @@
 }
 .tree-box text {
   fill: var(--tree-box-text);
+}
+.tree-picture-clip {
+  rx: var(--box-radius);
 }
 .tree-name {
   font-size: 14px;
@@ -242,4 +248,62 @@
 }
 .family-add {
   width: 100%;
+}
+
+/* A family tree in page text */
+.familytree-slot {
+  margin: 1em 0;
+  clear: both;
+}
+.page-tree {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--tree-box-border);
+  border-radius: var(--box-radius);
+  background: var(--tree-bg);
+  overflow: hidden;
+}
+.page-tree .tree-canvas {
+  flex: 1;
+  min-height: 0;
+}
+.page-tree-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--tree-box-border);
+  background: var(--tree-box-bg);
+  font-size: var(--text-sm);
+  font-family: var(--font-ui);
+}
+.page-tree-bar .spacer {
+  flex: 1;
+}
+.page-tree-bar button {
+  font-size: var(--text-sm);
+}
+.page-tree-title {
+  color: var(--tree-box-text);
+  font-weight: 600;
+}
+.page-tree-loading {
+  height: 200px;
+}
+.page-tree-missing {
+  color: var(--link-new);
+  border: 1px dashed var(--link-new);
+  border-radius: var(--box-radius);
+  padding: 8px 12px;
+}
+.family-dialog-gens {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+}
+.family-dialog-gens .field {
+  flex: 1;
+}
+.family-dialog-missing {
+  color: var(--danger);
 }

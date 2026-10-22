@@ -522,8 +522,8 @@ export function ProjectView({ project, onBack }: Props) {
   const openFamilySettings = useCallback(() => setSettingsOpen("family"), []);
 
   // Stable functions for the context, always calling the latest versions.
-  const actions = useRef({ follow, createFromLink, openCategory, createCategory });
-  actions.current = { follow, createFromLink, openCategory, createCategory };
+  const actions = useRef({ follow, createFromLink, openCategory, createCategory, openFamily });
+  actions.current = { follow, createFromLink, openCategory, createCategory, openFamily };
   const wiki = useMemo<Wiki>(
     () => ({
       project: project.id,
@@ -543,8 +543,10 @@ export function ProjectView({ project, onBack }: Props) {
       createCategory: (name) => void actions.current.createCategory(name),
       reloadCategories,
       settings,
+      revealAll,
+      openFamilyTree: (pageId) => void actions.current.openFamily({ centre: pageId }),
     }),
-    [project.id, names, groupOptions, templates.templates, imageFrame, report, categories, reloadCategories, settings],
+    [project.id, names, groupOptions, templates.templates, imageFrame, report, categories, reloadCategories, settings, revealAll],
   );
 
   return (
@@ -742,6 +744,7 @@ export function ProjectView({ project, onBack }: Props) {
             }}
             arrival={arrival}
             diskTick={diskTick}
+            onFamilyTree={() => void openFamily({ centre: selected })}
             onClosed={() => {
               setDeletedOpen(null);
               setSelected(null);
