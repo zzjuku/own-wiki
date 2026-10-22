@@ -109,6 +109,26 @@ impl Field {
         self.extra.get("spoiler").and_then(Value::as_bool).unwrap_or(false)
     }
 
+    /// The texts of the field's notes (M13: `notes: [{i, text, before}]`, kept in `extra`).
+    pub fn note_texts(&self) -> Vec<&str> {
+        let Some(Value::Array(notes)) = self.extra.get("notes") else { return Vec::new() };
+        notes.iter().filter_map(|n| n.get("text")?.as_str()).filter(|t| !t.trim().is_empty()).collect()
+    }
+
+    /// The notes after the field's entries changed: `kept[n]` is the old place
+    /// of the entry now at place n (notes of entries that went are dropped).
+    pub fn remap_notes(&mut self, kept: &[usize]) {
+        let Some(Value::Array(notes)) = self.extra.get_mut("notes") else { return };
+        notes.retain_mut(|n| {
+            let Some(at) = n.get("i").and_then(Value::as_u64).and_then(|i| kept.iter().position(|&k| k as u64 == i)) else { return false };
+            n["i"] = Value::from(at);
+            true
+        });
+        if notes.is_empty() {
+            self.extra.remove("notes");
+        }
+    }
+
     fn definition_eq(&self, other: &Field) -> bool {
         self.label == other.label && self.kind == other.kind && self.hint == other.hint && self.options == other.options
     }
@@ -199,6 +219,10 @@ pub struct FieldLink {
     /// A name typed into a Linked from field (shows only on its own page).
     #[serde(default, skip_serializing_if = "is_false")]
     pub typed: bool,
+    /// A `[[link]]` in a field note (M13): counts as a link (red links, What
+    /// links here, rename, graph) but never as a relation.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub note: bool,
     /// The words around a Page link entry's link (`[[Bea]] (m. 283)` ->
     /// "(m. 283)"), shown on family-tree couple lines (M12).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -294,6 +318,7 @@ pub fn field_links(ib: &Infobox) -> Vec<FieldLink> {
             in_text: false,
             typed: f.kind == LINKED_FROM,
             words: None,
+            note: false,
         };
         // [[links]] in text, each a spoiler if it sits inside ||…||.
         let text_links = |s: &str, out: &mut Vec<FieldLink>| {
@@ -331,6 +356,26 @@ pub fn field_links(ib: &Infobox) -> Vec<FieldLink> {
                 }
             }
             _ => {}
+        }
+    }
+    // Links in notes (M13).
+    for f in &ib.fields {
+        let spoiler = f.is_spoiler();
+        for t in f.note_texts() {
+            let hidden = spoiler_ranges(t);
+            for l in parse_links(t).into_iter().filter(|l| !l.page.is_empty()) {
+                let inside = hidden.iter().any(|&(a, b)| a <= l.start && l.end <= b);
+                out.push(FieldLink {
+                    field: f.label.clone(),
+                    target: l.page,
+                    two_way: false,
+                    spoiler: spoiler || inside,
+                    in_text: true,
+                    typed: false,
+                    words: None,
+                    note: true,
+                });
+            }
         }
     }
     out
@@ -542,7 +587,19 @@ fn rewrite_field(f: &mut Field, old: &str, new: &str) -> usize {
 /// Points links to `old` at `new` in every field value (hidden values too).
 /// Returns how many changed.
 pub fn rewrite_infobox_links(ib: &mut Infobox, old: &str, new: &str) -> usize {
-    ib.fields.iter_mut().chain(ib.hidden.iter_mut()).map(|f| rewrite_field(f, old, new)).sum()
+    ib.fields.iter_mut().chain(ib.hidden.iter_mut()).map(|f| rewrite_field(f, old, new) + rewrite_notes(f, old, new)).sum()
+}
+
+/// Points links in a field's notes from `old` to `new`.
+fn rewrite_notes(f: &mut Field, old: &str, new: &str) -> usize {
+    let Some(Value::Array(notes)) = f.extra.get_mut("notes") else { return 0 };
+    let mut n = 0;
+    for note in notes.iter_mut() {
+        if let Some(Value::String(t)) = note.get_mut("text") {
+            n += rewrite_text(t, old, new);
+        }
+    }
+    n
 }
 
 // ---- applying a template to existing pages ----
@@ -823,6 +880,36 @@ mod tests {
         assert_eq!(v["chapter no."], [12.0]);
         assert_eq!(v["born"], [250.0, 3.0, 0.0]);
         assert_eq!(v["reign"], [-5.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn apply_template_keeps_notes_with_their_values() {
+        let mut kept = field(Some("k1"), "House", LINKS, Some(json!(["Page A"])));
+        kept.extra.insert("notes".into(), json!([{ "i": 0, "text": "(x)" }]));
+        let mut gone = field(Some("k2"), "Old", TEXT, Some(json!("V")));
+        gone.extra.insert("notes".into(), json!([{ "i": 0, "text": "(y)" }]));
+        let ib = Infobox { fields: vec![kept, gone], ..Default::default() };
+        let (next, _) = apply_template(&ib, &template(vec![field(Some("k1"), "House", LINKS, None)])).unwrap();
+        assert_eq!(next.fields[0].extra["notes"], json!([{ "i": 0, "text": "(x)" }]));
+        assert_eq!(next.hidden[0].extra["notes"], json!([{ "i": 0, "text": "(y)" }]));
+    }
+
+    #[test]
+    fn notes_links_count_and_follow_renames_and_removals() {
+        let mut f = field(None, "House", LINKS, Some(json!(["Page A", "Page B", "Page C"])));
+        f.extra.insert("notes".into(), json!([{ "i": 0, "text": "see [[Page D]]" }, { "i": 2, "text": "(||[[Page E]]||)", "before": true }, { "i": 1, "text": "  " }]));
+        let mut ib = Infobox { fields: vec![f], ..Default::default() };
+        let notes: Vec<(String, bool, bool)> = field_links(&ib).into_iter().filter(|l| l.note).map(|l| (l.target, l.spoiler, l.in_text)).collect();
+        assert_eq!(notes, vec![("Page D".to_string(), false, true), ("Page E".to_string(), true, true)]);
+        assert_eq!(ib.fields[0].note_texts(), vec!["see [[Page D]]", "(||[[Page E]]||)"]);
+        // Renaming rewrites links in notes too.
+        assert_eq!(rewrite_infobox_links(&mut ib, "Page D", "Page F"), 1);
+        assert_eq!(ib.fields[0].extra["notes"][0]["text"], "see [[Page F]]");
+        // Entries 0 and 2 stay (now 0 and 1): their notes follow; the rest go.
+        ib.fields[0].remap_notes(&[0, 2]);
+        assert_eq!(ib.fields[0].extra["notes"], json!([{ "i": 0, "text": "see [[Page F]]" }, { "i": 1, "text": "(||[[Page E]]||)", "before": true }]));
+        ib.fields[0].remap_notes(&[]);
+        assert!(!ib.fields[0].extra.contains_key("notes"));
     }
 
     #[test]

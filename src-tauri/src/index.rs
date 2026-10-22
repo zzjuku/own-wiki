@@ -21,7 +21,7 @@ use crate::tree::{GroupInfo, PageInfo, is_page_file};
 use crate::wikilinks::{self, Heading};
 
 const CACHE_FILE: &str = "link-index.json";
-const CACHE_VERSION: u32 = 11;
+const CACHE_VERSION: u32 = 12;
 /// The cache is rewritten at most this often for small changes (a stale
 /// cache only costs re-reading the changed files at the next open).
 const CACHE_SAVE_INTERVAL: Duration = Duration::from_secs(10);

@@ -97,3 +97,54 @@ test("a list entry's note moves with it and goes when it's removed", async ({ pa
   await expect.poll(() => notesOf(page, "Titles")).toBeUndefined();
   expect((await fields(page))[0].value).toEqual(["B"]);
 });
+
+test("links in notes are links: red links create pages; search finds notes", async ({ page }) => {
+  const pages: MockPage[] = [
+    { ...PAGES[0], infobox: { fields: [{ label: "House", type: "links", value: ["Page B"], notes: [{ i: 0, text: "(by marriage, see [[Missing X]])" }] }] } },
+    PAGES[1],
+  ];
+  await openProject(page, oneProject(pages));
+  await page.locator(".sidebar").getByText("Page A", { exact: true }).click();
+  const red = page.locator(".read-view .infobox .infobox-note a.wikilink.new");
+  await expect(red).toHaveText("Missing X");
+  await red.click();
+  await expect(page.getByRole("dialog")).toContainText("Create page");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  // Search finds the note's words.
+  await page.getByLabel("Search the project").fill("marriage");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".search-result").first()).toContainText("Page A");
+});
+
+test("removing a relation from the other page removes only that entry's note", async ({ page }) => {
+  const pages: MockPage[] = [
+    { id: "Page A.md", title: "Page A", body: "A.", infobox: { fields: [{ label: "Children", type: "linkedfrom", options: { from: ["Father"] } }] } },
+    {
+      id: "Page B.md",
+      title: "Page B",
+      body: "B.",
+      infobox: { fields: [{ label: "Father", type: "links", value: ["Page Z", "Page A"], notes: [{ i: 0, text: "(note Z)" }, { i: 1, text: "(note A)" }] }] },
+    },
+  ];
+  await openProject(page, oneProject(pages));
+  await page.locator(".sidebar").getByText("Page A", { exact: true }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("tab", { name: "Infobox" }).click();
+  await formRow(page, "Children").getByRole("button", { name: "Remove Page B" }).click();
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect.poll(async () => (await storedPage(page, "Page B.md")).infobox.fields[0]).toMatchObject({ value: ["Page Z"], notes: [{ i: 0, text: "(note Z)" }] });
+});
+
+test("notes in the built-in themes", async ({ page }) => {
+  test.setTimeout(60_000);
+  const fields: Field[] = [
+    { label: "House", type: "links", value: ["Page B", "Page C"], notes: [{ i: 1, text: "*(by marriage)*" }] },
+    { label: "Titles", type: "list", value: ["Lord of X"], notes: [{ i: 0, text: "(claimed)", before: true }] },
+  ];
+  for (const id of ["default", "parchment", "awoiaf", "folio", "midnight"]) {
+    await openProject(page, { ...oneProject([{ ...PAGES[0], infobox: { fields } }, PAGES[1], PAGES[2]]), appTheme: `builtin:${id}` });
+    await page.locator(".sidebar").getByText("Page A", { exact: true }).click();
+    await expect(page.locator(".read-view .infobox .infobox-note")).toHaveCount(2);
+    await page.locator(".read-view .infobox").screenshot({ path: `test-results/notes-theme-${id}.png` });
+  }
+});

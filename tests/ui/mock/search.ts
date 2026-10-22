@@ -46,7 +46,8 @@ function segs(pg: SearchPage): Seg[] {
   for (const a of pg.aliases) out.push({ place: "Alias", rank: 1, text: a, spoilers: [] });
   for (const f of pg.infobox?.fields ?? []) {
     if (f.type === "heading" || f.type === "divider" || f.value === undefined || f.value === null) continue;
-    const p = plain(f.type === "links" || f.type === "list" ? (f.value as string[]).join(", ") : valueText(f));
+    const notes = (f.notes ?? []).map((n) => ` ${n.text}`).join("");
+    const p = plain((f.type === "links" || f.type === "list" ? (f.value as string[]).join(", ") : valueText(f)) + notes);
     out.push({ place: `Infobox: ${f.label}`, rank: 2, ...p, hidden: !!f.spoiler });
   }
   let place = "Text";

@@ -55,7 +55,8 @@ pub fn incoming_fields(idx: &ProjectIndex, id: &str) -> AppResult<Vec<IncomingFi
     let mut out: Vec<IncomingField> = Vec::new();
     for (pid, e) in idx.pages.iter().filter(|(pid, _)| pid.as_str() != id) {
         let start = out.len();
-        for l in e.field_links.iter().filter(|l| names.contains(&norm(&l.target))) {
+        // (Links in notes are no relations.)
+        for l in e.field_links.iter().filter(|l| !l.note && names.contains(&norm(&l.target))) {
             match out[start..].iter_mut().find(|o| norm(&o.field) == norm(&l.field)) {
                 // One open link is enough to show it openly.
                 Some(o) => o.spoiler &= l.spoiler,
@@ -177,6 +178,12 @@ pub fn set_relation(
             let current: Vec<String> = f.value.as_ref().map(|v| strings(v).into_iter().map(str::to_string).collect()).unwrap_or_default();
             let current: Vec<String> = current.into_iter().filter(|s| !s.trim().is_empty()).collect();
             let has = current.iter().any(|s| is_source(s));
+            // Notes (M13) stay with their entries: the places the remaining entries had.
+            let kept: Option<Vec<usize>> = match edit {
+                Edit::Add => None,
+                Edit::Replace => Some(Vec::new()),
+                Edit::Remove => Some(current.iter().enumerate().filter(|(_, s)| !is_source(s)).map(|(i, _)| i).collect()),
+            };
             let next: Vec<String> = match f.kind.as_str() {
                 LINK | LINKS => match edit {
                     Edit::Add if has => return Ok(()),
@@ -203,6 +210,9 @@ pub fn set_relation(
                 (LINK, _) => next.into_iter().next().map(Value::from),
                 _ => Some(Value::from(next)),
             };
+            if let Some(kept) = kept {
+                f.remap_notes(&kept);
+            }
         }
     }
     pages::write_infobox(&pages, target, &ib)?;
@@ -251,7 +261,7 @@ pub fn shown_on(idx: &ProjectIndex, id: &str) -> AppResult<Vec<ShownOn>> {
         }
     }
     let mut out: Vec<ShownOn> = Vec::new();
-    for l in e.field_links.iter().filter(|l| !l.typed && !l.spoiler) {
+    for l in e.field_links.iter().filter(|l| !l.typed && !l.spoiler && !l.note) {
         let Some(tid) = by_name.get(&norm(&l.target)).copied().filter(|t| *t != id) else { continue };
         let t = &idx.pages[tid];
         let shows = shows_on(e, l, t);
@@ -329,7 +339,8 @@ pub fn table(idx: &ProjectIndex) -> RelationsTable {
     let loops = crate::family::loop_relations(idx, &crate::family::FamilySettings::read(&idx.dir));
     let mut out = RelationsTable::default();
     for (pid, e) in &idx.pages {
-        for l in &e.field_links {
+        // (Links in notes are no relations: not listed.)
+        for l in e.field_links.iter().filter(|l| !l.note) {
             let target = by_name.get(&norm(&l.target)).map(|id| (*id, &idx.pages[*id]));
             let kind = if l.typed { "typed" } else if l.in_text { "text" } else { "link" };
             let shows = match target.filter(|(tid, _)| *tid != pid.as_str() && !l.typed) {
@@ -450,6 +461,22 @@ mod tests {
         assert_eq!(r.values.keys().collect::<Vec<_>>(), ["Page B.md", "Page D.md"]);
         assert_eq!(r.values["Page B.md"]["born"], [20.0, 0.0, 0.0]);
         assert_eq!(r.values["Page D.md"]["chapter no."], [3.0]);
+    }
+
+    #[test]
+    fn notes_stay_with_their_entries_on_write_back_and_are_no_relations() {
+        let fields = "  - label: Father\n    type: links\n    value: [Page Y, Page A, Page Z]\n    notes:\n    - i: 2\n      text: (note Z) [[Page C]]\n";
+        let (lib, p, mut idx) = setup(&[("Page A.md", PARENT), ("Page B.md", &child("Page B", "t-a", fields)), ("Page C.md", "C.\n")]);
+        let lib = lib.path();
+        // A link in a note isn't a relation: Page C has no incoming field.
+        assert!(incoming_fields(&idx, "Page C.md").unwrap().is_empty());
+        set_relation(lib, &p, &mut idx, "Page B.md", "Father", "Page A.md", Edit::Remove).unwrap();
+        let f = &infobox(lib, &p, "Page B.md").fields[0];
+        assert_eq!(f.value, Some(serde_json::json!(["Page Y", "Page Z"])));
+        assert_eq!(f.extra["notes"], serde_json::json!([{ "i": 1, "text": "(note Z) [[Page C]]" }]));
+        // Replace leaves no notes.
+        set_relation(lib, &p, &mut idx, "Page B.md", "Father", "Page A.md", Edit::Replace).unwrap();
+        assert!(!infobox(lib, &p, "Page B.md").fields[0].extra.contains_key("notes"));
     }
 
     #[test]

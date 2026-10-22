@@ -620,6 +620,11 @@ fn field_plain(f: &Field) -> Plain {
         infobox::HEADING | infobox::DIVIDER => {}
         _ => text_like(&mut p, v),
     }
+    // Notes (M13) are read with their field.
+    for t in f.note_texts() {
+        p.gap(" ");
+        p.inline(t);
+    }
     p
 }
 
@@ -766,6 +771,14 @@ mod tests {
         assert_eq!(spoiled, vec!["secret word", "Caption Page G"]);
         let linked: Vec<(&str, &str)> = early.links.iter().map(|(a, b, t)| (&early.text[*a as usize..*b as usize], t.as_str())).collect();
         assert_eq!(linked, vec![("E", "Page E")]);
+    }
+
+    #[test]
+    fn notes_are_searched_with_their_field() {
+        let file = "---\ntitle: Page A\ninfobox:\n  fields:\n  - label: House\n    type: links\n    value: [Page B]\n    notes:\n    - i: 0\n      text: '*(by marriage)*'\n---\nText.\n";
+        let segs = page_segs(file, "Page A.md");
+        let house = segs.iter().find(|s| matches!(&s.place, Place::Field(l) if l == "House")).unwrap();
+        assert_eq!(house.text, "Page B (by marriage)");
     }
 
     #[test]

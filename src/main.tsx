@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { initZoom } from "./zoom";
 import "./theme.css";
 // App styles by area. Order matters: later files may override earlier ones.
 import "./styles/base.css";
@@ -25,6 +26,9 @@ import "./styles/embeds.css";
 import "./styles/tooltips.css";
 import "./styles/themes.css";
 import "./styles/look.css";
+
+// The remembered zoom (M13) and its wheel and keys.
+initZoom();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

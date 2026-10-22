@@ -424,10 +424,10 @@ function TemplateMenu({
   );
 }
 
-/** The input for one field's value, by type. Values that don't fit the type get a warning instead. */
 /** Field types with one value, whose note button sits on the field's line (lists have one per entry). */
 const SINGLE_NOTE_KINDS = new Set(["text", "longtext", "number", "yesno", "choice", "date", "link"]);
 
+/** The input for one field's value, by type. Values that don't fit the type get a warning instead. */
 function ValueInput({ rel, field: f, onChange }: { rel: RelationProps; field: Field; onChange: (v: unknown, notes?: FieldNote[]) => void }) {
   const pageId = rel.pageId;
   const problem = valueProblem(f);

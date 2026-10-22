@@ -134,6 +134,9 @@ export function fieldNames(pages: Page[], kinds: string[]): string[] {
   return [...out.values()];
 }
 
+/** Zoom levels the app asked the window for (M13). */
+export const zoomAsked: number[] = [];
+
 /** Images saved with Save as image: the path and the bytes (for the tests to check). */
 export const savedImages: { path: string; bytes: number[] }[] = [];
 let nextSave: string | null = null;
@@ -147,6 +150,8 @@ export function familyCommands(
     family_data: ({ project, known }) => fingerprinted(familyData([...proj(project).pages.values()], proj(project).settings), known),
     field_names: ({ project, kinds }) => fieldNames([...proj(project).pages.values()], kinds),
     "plugin:dialog|save": () => nextSave,
+    // Zoom (M13): the level asked for, for the tests to check.
+    "plugin:webview|set_webview_zoom": ({ value }) => void (zoomAsked.push(value)),
     save_image_file: (body, options) => {
       const bytes = body instanceof Uint8Array ? [...body] : Array.isArray(body) ? body : Object.values(body ?? {});
       savedImages.push({ path: decodeURIComponent(options?.headers?.path ?? ""), bytes: bytes as number[] });

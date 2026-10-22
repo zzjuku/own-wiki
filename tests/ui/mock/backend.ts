@@ -7,7 +7,7 @@ import type {
 } from "../../../src/api";
 import type { GraphData, GraphLink } from "../../../src/graph/model";
 import type { ThemeData } from "../../../src/themes/engine";
-import { familyCommands, savedImages, setNextSave } from "./family";
+import { familyCommands, savedImages, setNextSave, zoomAsked } from "./family";
 import { search } from "./search";
 
 export interface MockPage {
@@ -157,8 +157,8 @@ export function createBackend(fixture: Fixture) {
   };
   const strings = (v: unknown): string[] => (Array.isArray(v) ? v : typeof v === "string" ? [v] : []).filter((x): x is string => typeof x === "string");
   /** Links in infobox fields, as the Rust link index has them (src-tauri/src/infobox.rs, field_links). */
-  const fieldLinks = (ib: Infobox | null) =>
-    (ib?.fields ?? []).flatMap((f) => {
+  const fieldLinks = (ib: Infobox | null) => [
+    ...(ib?.fields ?? []).flatMap((f) => {
       const spoiler = !!f.spoiler;
       if (["link", "links", "linkedfrom"].includes(f.type))
         return strings(f.value).map((v) => (/\[\[([^\]|#]*)/.exec(v)?.[1] ?? v.split("#")[0]).trim()).filter(Boolean)
@@ -171,7 +171,12 @@ export function createBackend(fixture: Fixture) {
           spoiler: spoiler || hidden.some(([a, b]) => a <= m.index! && m.index! + m[0].length <= b),
         }));
       });
-    });
+    }),
+    // Links in notes (M13): links, not relations.
+    ...(ib?.fields ?? []).flatMap((f) =>
+      (f.notes ?? []).flatMap((n) => [...n.text.matchAll(LINK)].map((m) => ({ field: f.label, target: m[1].trim(), twoWay: false, spoiler: !!f.spoiler, note: true }))),
+    ),
+  ];
   /** Number and date values reverse fields can sort by (not spoilers). */
   const sortValues = (ib: Infobox | null) => {
     const out: Record<string, number[]> = {};
@@ -190,7 +195,7 @@ export function createBackend(fixture: Fixture) {
     const incoming: IncomingField[] = [];
     for (const pg of p.pages.values()) {
       if (pg.id === id) continue;
-      for (const l of fieldLinks(pg.infobox).filter((l) => names.includes(lc(l.target)))) {
+      for (const l of fieldLinks(pg.infobox).filter((l) => !("note" in l) && names.includes(lc(l.target)))) {
         const same = incoming.find((i) => i.id === pg.id && lc(i.field) === lc(l.field));
         if (same) same.spoiler &&= l.spoiler;
         else incoming.push({ field: l.field, id: pg.id, title: pg.title, twoWay: l.twoWay, spoiler: l.spoiler, template: pg.infobox?.template ?? undefined });
@@ -549,6 +554,12 @@ export function createBackend(fixture: Fixture) {
           next = [...current, src.title];
         } else if (edit === "replace") next = [src.title];
         else if (edit === "remove") next = current.filter((v) => !isSource(v));
+        // Notes stay with their entries (M13).
+        const kept = edit === "replace" ? [] : edit === "remove" ? current.flatMap((v, i) => (isSource(v) ? [] : [i])) : null;
+        if (kept && f.notes) {
+          const notes = f.notes.flatMap((n) => (kept.includes(n.i) ? [{ ...n, i: kept.indexOf(n.i) }] : []));
+          f.notes = notes.length ? notes : undefined;
+        }
         f.value = !next.length ? undefined : f.type === "link" ? next[0] : next;
       }
       tgt.infobox = ib;
@@ -781,6 +792,7 @@ export function createBackend(fixture: Fixture) {
     setNextOpen: (path: string | null) => void (nextOpen = path),
     savedImages,
     setNextSave,
+    zoomAsked,
     handle(cmd: string, args: any, options?: { headers?: Record<string, string> }): unknown {
       const fn = commands[cmd];
       if (!fn) throw new CommandError("invalid", `mock: no command ${cmd}`);

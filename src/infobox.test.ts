@@ -323,3 +323,18 @@ describe("field notes (M13)", () => {
     expect(remapNotes([{ i: 0, text: "a" }, { i: 2, text: "c" }], [2, 1])).toEqual([{ i: 0, text: "c" }]);
   });
 });
+
+describe("field notes and templates", () => {
+  it("Change template keeps notes with their values, also hidden ones", () => {
+    const t: Template = { id: "t2", name: "T2", fields: [{ key: "k1", label: "House", type: "links" }] };
+    const ib: Infobox = {
+      fields: [
+        { label: "House", type: "links", value: ["Page B"], notes: [{ i: 0, text: "(x)" }] },
+        { label: "Gone", type: "text", value: "V", notes: [{ i: 0, text: "(y)" }] },
+      ],
+    };
+    const next = changeTemplate(ib, t);
+    expect(next.fields[0].notes).toEqual([{ i: 0, text: "(x)" }]);
+    expect(next.hidden?.[0].notes).toEqual([{ i: 0, text: "(y)" }]);
+  });
+});

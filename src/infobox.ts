@@ -339,7 +339,8 @@ export function changeTemplate(ib: Infobox, t: Template): Infobox {
     const old = ib.fields.find((f) => !used.has(f) && hasValue(f.type) && norm(f.label) === norm(tf.label));
     if (!old) return tf;
     used.add(old);
-    return { ...tf, value: old.type === tf.type ? old.value : convertValue(old.value, tf.type) };
+    // Notes (M13) go with the value.
+    return { ...tf, value: old.type === tf.type ? old.value : convertValue(old.value, tf.type), ...(old.notes ? { notes: old.notes } : {}) };
   });
   for (const f of ib.fields) {
     if (!used.has(f) && fieldHasValue(f)) {

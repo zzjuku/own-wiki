@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText, type ProjectInfo, type Settings } from "./api";
+import { setZoom, useZoom, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "./zoom";
 import { useDialogs } from "./dialogs";
 import { useReportError } from "./notify";
 import { IS_MAC } from "./QuickOpen";
@@ -20,6 +21,7 @@ export function Library({ libraryPath, onOpen, onChooseLibrary, onLibraryMoved }
   const [projects, setProjects] = useState<ProjectInfo[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const zoom = useZoom();
   const [showThemes, setShowThemes] = useState(false);
 
   const reload = useCallback(async () => {
@@ -233,6 +235,20 @@ export function Library({ libraryPath, onOpen, onChooseLibrary, onLibraryMoved }
                 library folder.
               </p>
             </div>
+            <label className="settings-field">
+              <span>Zoom</span>
+              <select aria-label="Zoom" value={zoom} onChange={(e) => setZoom(Number(e.target.value))}>
+                {Array.from({ length: (ZOOM_MAX - ZOOM_MIN) / ZOOM_STEP + 1 }, (_, i) => ZOOM_MIN + i * ZOOM_STEP).map((z) => (
+                  <option key={z} value={z}>
+                    {z} %
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="hint">
+              Makes the whole app bigger or smaller, on this computer only. Also {IS_MAC ? "⌘" : "Ctrl"} + scroll, {IS_MAC ? "⌘" : "Ctrl+"}= and {IS_MAC ? "⌘" : "Ctrl+"}−;{" "}
+              {IS_MAC ? "⌘" : "Ctrl+"}0 goes back to 100 %.
+            </p>
             <div className="dialog-actions">
               <button onClick={() => void moveLibrary()}>Move library…</button>
               <button
