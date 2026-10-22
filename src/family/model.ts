@@ -111,6 +111,8 @@ export interface TreeOptions {
   revealed: ReadonlySet<string>;
   /** People with a full box in another tree on the same screen ("All families"): stubs here. */
   elsewhere?: ReadonlySet<number>;
+  /** Only these people are drawn (a house's tree). */
+  only?: ReadonlySet<number>;
 }
 
 type Role = "line" | "blood" | "inlaw" | "inlawParent" | "extra";
@@ -249,7 +251,7 @@ export function buildTree(fam: Family, centre: number, opts: TreeOptions): TreeS
   const lineOf = new Map<number, Union | null>();
   const queue: { i: number; role: Role }[] = [];
   const place = (i: number, where: string, gen: number, role: Role) => {
-    if (homed(i)) return;
+    if (homed(i) || (opts.only && !opts.only.has(i))) return;
     home.set(i, where);
     genOf.set(i, gen);
     queue.push({ i, role });
@@ -313,7 +315,9 @@ export function buildTree(fam: Family, centre: number, opts: TreeOptions): TreeS
     const out: Kid[] = [];
     for (const k of u.kids) {
       if (k.child === line && !k.hidden) out.push({ drop: k.drop, line: true });
-      else if (k.hidden) out.push({ drop: k.drop, box: hiddenBox([k.hidden], gen + 1) });
+      else if (k.hidden) {
+        if (!opts.only || opts.only.has(k.child)) out.push({ drop: k.drop, box: hiddenBox([k.hidden], gen + 1) });
+      }
       else if (home.get(k.child) === `child:${u.key}`) out.push({ drop: k.drop, unit: unitOf(k.child) });
       else if (homed(k.child)) out.push({ drop: k.drop, box: stub(k.child, gen + 1) });
     }
@@ -322,7 +326,7 @@ export function buildTree(fam: Family, centre: number, opts: TreeOptions): TreeS
 
   const otherBox = (o: Other, where: string, gen: number): TBox | null => {
     if (o.kind === "person") return home.get(o.i) === where ? personBox(o.i) : homed(o.i) ? stub(o.i, gen) : null;
-    if (o.kind === "hidden") return hiddenBox(o.edges, gen);
+    if (o.kind === "hidden") return !opts.only || opts.only.has(o.i) ? hiddenBox(o.edges, gen) : null;
     if (o.kind === "unknown") return box({ kind: "unknown", gen });
     return null;
   };
@@ -436,20 +440,32 @@ function descendants(fam: Family, i: number): number {
 }
 
 /**
- * "All families": one tree after another until everyone in a family has a
+ * "All families" (or one house's): one tree after another until everyone has a
  * full box once. Each tree starts at the person without parents who has the
  * most descendants left (biggest families first); people already drawn in an
  * earlier tree are stubs in later ones.
  */
-export function buildAllTrees(fam: Family, opts: TreeOptions): TreeSpec[] {
-  const everyone = fam.people.map((_, i) => i).filter((i) => fam.inFamily(i));
+export function buildAllTrees(fam: Family, opts: TreeOptions, house?: number): TreeSpec[] {
+  const everyone = fam.people.map((_, i) => i).filter((i) => fam.inFamily(i) && (house === undefined || fam.people[i].houses?.includes(house)));
+  // A house: its members, their partners and their children (nobody beyond).
+  let only: Set<number> | undefined;
+  if (house !== undefined) {
+    only = new Set(everyone);
+    for (const i of everyone) {
+      fam.couplesOf[i].forEach((c) => only!.add(c.other));
+      fam.childrenOf[i].forEach((l) => {
+        only!.add(l.child);
+        fam.parentsOf[l.child].forEach((p) => only!.add(p.parent));
+      });
+    }
+  }
   const size = new Map(everyone.map((i) => [i, descendants(fam, i)]));
   const order = [...everyone].sort((a, b) => Number(fam.parentsOf[a].length > 0) - Number(fam.parentsOf[b].length > 0) || size.get(b)! - size.get(a)! || a - b);
   const shown = new Set<number>();
   const trees: TreeSpec[] = [];
   for (const root of order) {
     if (shown.has(root)) continue;
-    const spec = buildTree(fam, root, { ...opts, up: 0, down: Infinity, elsewhere: shown });
+    const spec = buildTree(fam, root, { ...opts, up: 0, down: Infinity, elsewhere: shown, only });
     // Someone whose relations are all hidden spoilers would stand alone: left out.
     if (spec.boxes.length === 1) continue;
     spec.shown.forEach((i) => shown.add(i));

@@ -221,3 +221,27 @@ test("a family tree line naming no page shows a red notice", async ({ page }) =>
   await page.locator(".sidebar").getByText("Page B", { exact: true }).click();
   await expect(page.locator(".page-tree-missing")).toContainText("Missing person");
 });
+
+test("a house's tree: its members, their partners and their children", async ({ page }) => {
+  await openProject(page, data({ settings: { ...SETTINGS, familyTree: { ...SETTINGS.familyTree, house: "Dynasty" } } }));
+  await openTree(page);
+  await page.getByLabel("Person in the middle").click();
+  await expect(page.getByRole("option", { name: /House M/ })).toBeVisible();
+  await page.getByRole("option", { name: /House A/ }).click();
+  await expect(page.getByLabel("Person in the middle")).toHaveValue("House A");
+  // Members (GA, F, H), partners (GB, M, L, U), children (F's: C, S, K; H's: J, I).
+  for (const t of ["Person GA", "Person F", "Person H", "Person GB", "Person M", "Person L", "Person U", "Person C", "Person S", "Person K", "Person J", "Person I"])
+    await expect(box(page, t)).toHaveCount(1);
+  // Nobody beyond: grandchildren, partners' parents.
+  for (const t of ["Person X", "Person W", "Person MZ"]) await expect(box(page, t)).toHaveCount(0);
+  await shot(page, "house");
+});
+
+test("Project settings: the house field", async ({ page }) => {
+  await openProject(page, data());
+  await page.getByRole("button", { name: "Project settings" }).click();
+  await page.getByLabel("House field").selectOption("Dynasty");
+  await page.getByRole("button", { name: "Done" }).click();
+  const stored = await page.evaluate(() => (window as any).__mock.projects.get("Project A").settings.familyTree);
+  expect(stored.house).toBe("Dynasty");
+});

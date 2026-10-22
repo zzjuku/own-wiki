@@ -32,6 +32,9 @@ pub struct FamilySettings {
     pub parents: Vec<FieldStyle>,
     #[serde(default)]
     pub partners: Vec<FieldStyle>,
+    /// The field naming a person's house or dynasty (e.g. "Dynasty"): trees of one house.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub house: Option<String>,
 }
 
 impl FamilySettings {
@@ -62,6 +65,9 @@ pub struct FamilyPerson {
     pub template: Option<String>,
     #[serde(flatten)]
     pub life: Life,
+    /// Houses the person belongs to (places in `houses`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub houses: Vec<u32>,
 }
 
 /// A child -> parent relation (numbers: places in `people`).
@@ -102,6 +108,9 @@ pub struct PartnerLink {
 pub struct FamilyData {
     pub settings: FamilySettings,
     pub people: Vec<FamilyPerson>,
+    /// Names in the house field (as first written).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub houses: Vec<String>,
     pub parents: Vec<ParentLink>,
     pub partners: Vec<PartnerLink>,
 }
@@ -176,12 +185,40 @@ pub fn family(idx: &ProjectIndex, settings: &FamilySettings) -> FamilyData {
             }
         }
     }
-    let people = people.list;
+    let mut people = people.list;
+    let houses = add_houses(idx, settings, &mut people);
     let mut parents: Vec<ParentLink> = parents.into_values().collect();
     for i in loop_links(people.len(), &parents) {
         parents[i].in_loop = true;
     }
-    FamilyData { settings: settings.clone(), people, parents, partners }
+    FamilyData { settings: settings.clone(), people, houses, parents, partners }
+}
+
+/// Each person's houses from the house field (people in no relation are
+/// no people here, so they're in no house's tree either).
+fn add_houses(idx: &ProjectIndex, settings: &FamilySettings, people: &mut [FamilyPerson]) -> Vec<String> {
+    let Some(field) = settings.house.as_deref().map(norm).filter(|f| !f.is_empty()) else { return Vec::new() };
+    let mut names: BTreeMap<String, String> = BTreeMap::new();
+    let mut of: Vec<Vec<String>> = Vec::new();
+    for p in people.iter() {
+        let e = p.id.as_ref().and_then(|id| idx.pages.get(id));
+        let mut mine: Vec<String> = Vec::new();
+        for v in e.and_then(|e| e.texts.get(&field)).into_iter().flatten() {
+            let key = norm(v);
+            names.entry(key.clone()).or_insert_with(|| v.clone());
+            if !mine.contains(&key) {
+                mine.push(key);
+            }
+        }
+        of.push(mine);
+    }
+    // (In the order of their compared names; the window sorts them for showing.)
+    let list: Vec<(String, String)> = names.into_iter().collect();
+    let at: HashMap<&str, u32> = list.iter().enumerate().map(|(i, (k, _))| (k.as_str(), i as u32)).collect();
+    for (p, mine) in people.iter_mut().zip(of) {
+        p.houses = mine.iter().filter_map(|k| at.get(k.as_str()).copied()).collect();
+    }
+    list.into_iter().map(|(_, v)| v).collect()
 }
 
 /// People are numbered in the order they're met.
@@ -208,6 +245,7 @@ impl People<'_> {
             image: e.image.clone(),
             template: e.template.clone(),
             life: e.life.clone(),
+            houses: Vec::new(),
         });
         let n = self.list.len() as u32 - 1;
         self.page_at.insert(i, n);
@@ -227,7 +265,7 @@ impl People<'_> {
         if let Some(&n) = self.missing_at.get(&key) {
             return Some(n);
         }
-        self.list.push(FamilyPerson { id: None, title: name.to_string(), aliases: Vec::new(), image: None, template: None, life: Life::default() });
+        self.list.push(FamilyPerson { id: None, title: name.to_string(), aliases: Vec::new(), image: None, template: None, life: Life::default(), houses: Vec::new() });
         let n = self.list.len() as u32 - 1;
         self.missing_at.insert(key, n);
         Some(n)
@@ -333,11 +371,11 @@ pub fn reply(idx: &ProjectIndex, settings: &FamilySettings, known: Option<&str>)
     FamilyReply { hash, data }
 }
 
-/// Names of the Page link fields pages have (for the settings), in natural order.
-pub fn link_field_names(idx: &ProjectIndex) -> Vec<String> {
+/// Names of the fields of types `kinds` that pages have (for the settings).
+pub fn field_names(idx: &ProjectIndex, kinds: &[String]) -> Vec<String> {
     let mut seen: BTreeMap<String, String> = BTreeMap::new();
     for e in idx.pages.values() {
-        for f in e.fields.iter().filter(|f| f.kind == crate::infobox::LINK || f.kind == crate::infobox::LINKS) {
+        for f in e.fields.iter().filter(|f| kinds.contains(&f.kind)) {
             if !f.label.trim().is_empty() {
                 seen.entry(norm(&f.label)).or_insert_with(|| f.label.trim().to_string());
             }
@@ -368,7 +406,7 @@ mod tests {
 
     fn settings() -> FamilySettings {
         let f = |name: &str, line: &str| FieldStyle { field: name.into(), line: line.into() };
-        FamilySettings { parents: vec![f("Father", ""), f("Mother", ""), f("Adoptive father", "dashed")], partners: vec![f("Spouse", ""), f("Lover", "dashed")] }
+        FamilySettings { parents: vec![f("Father", ""), f("Mother", ""), f("Adoptive father", "dashed")], partners: vec![f("Spouse", ""), f("Lover", "dashed")], house: None }
     }
 
     fn page(title: &str, fields: &str) -> String {
@@ -428,6 +466,28 @@ mod tests {
     }
 
     #[test]
+    fn houses_from_the_house_field() {
+        let text = |label: &str, v: &str| format!("  - label: {label}\n    type: text\n    value: '{v}'\n");
+        let (_lib, idx) = setup(&[
+            ("Page A.md", &page("Page A", &format!("{}{}", text("Dynasty", "House A"), links("Spouse", &["Page B"])))),
+            ("Page B.md", &page("Page B", &text("dynasty", "[[house a]] by marriage"))),
+            ("Page C.md", &page("Page C", &format!("{}{}", links("Father", &["Page A"]), text("Dynasty", "||House Z||")))),
+            ("Page D.md", &page("Page D", &format!("{}{}", links("Father", &["Page A"]), "  - label: Dynasty\n    type: list\n    value: [House A, House B]\n"))),
+        ]);
+        let mut s = settings();
+        s.house = Some("Dynasty".into());
+        let d = family(&idx, &s);
+        assert_eq!(d.houses, vec!["House A".to_string(), "House B".to_string()]);
+        let houses = |t: &str| d.people[num(&d, t) as usize].houses.clone();
+        assert_eq!(houses("Page A"), vec![0]);
+        assert_eq!(houses("Page B"), vec![0], "a link to the house counts by its name");
+        assert_eq!(houses("Page C"), Vec::<u32>::new(), "spoiler parts are left out");
+        assert_eq!(houses("Page D"), vec![0, 1]);
+        // No house field: no houses.
+        assert!(family(&idx, &settings()).houses.is_empty());
+    }
+
+    #[test]
     fn loops_are_found() {
         let (_lib, idx) = setup(&[
             ("Page A.md", &page("Page A", &links("Father", &["Page B"]))),
@@ -467,7 +527,8 @@ mod tests {
         assert!(reply(&idx, &settings(), Some(&first.hash)).data.is_none());
         // Other settings, other data.
         assert!(reply(&idx, &FamilySettings::default(), Some(&first.hash)).data.is_some());
-        assert_eq!(link_field_names(&idx), vec!["Father".to_string()]);
+        assert_eq!(field_names(&idx, &["links".to_string()]), vec!["Father".to_string()]);
+        assert!(field_names(&idx, &["text".to_string()]).is_empty());
     }
 
     #[test]

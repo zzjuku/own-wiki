@@ -9,6 +9,7 @@ import { IS_MAC } from "../QuickOpen";
 import { matchesAll, parseQuery } from "../search";
 import { compareNames } from "../tree";
 import { useWiki } from "../wiki";
+import { norm } from "../wikilinks";
 import { Family, type FamilyData } from "./data";
 import { layoutTree, type Metrics, sideBySide } from "./layout";
 import { alignTrees, buildAllTrees, buildTree } from "./model";
@@ -43,6 +44,9 @@ export function isFamilyKey(e: KeyboardEvent): boolean {
 
 /** The "person" of the All families view (as a centre and in the history: "family:*"). */
 export const ALL_FAMILIES = "*";
+/** One house's trees: "*house:" + the house name as compared. */
+export const HOUSE_PREFIX = "*house:";
+const houseKey = (name: string) => HOUSE_PREFIX + norm(name);
 
 /** Where the view was, per project and person (kept while the app runs; Back returns there). */
 const views = new Map<string, View>();
@@ -106,8 +110,9 @@ export function FamilyTreeView({
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const handle = useRef<TreeHandle>(null);
 
-  const all = centre === ALL_FAMILIES;
-  const title = useMemo(() => (centre && centre !== ALL_FAMILIES ? wiki.names.entries.find((e) => e.page.id === centre)?.page.title : undefined), [wiki.names, centre]);
+  const houseName = centre?.startsWith(HOUSE_PREFIX) ? centre.slice(HOUSE_PREFIX.length) : null;
+  const all = centre === ALL_FAMILIES || houseName !== null;
+  const title = useMemo(() => (centre && !centre.startsWith("*") ? wiki.names.entries.find((e) => e.page.id === centre)?.page.title : undefined), [wiki.names, centre]);
   const data = useMemo(() => (raw ? withPerson(raw, centre, title) : null), [raw, centre, title]);
   const fam = useMemo(() => (data ? new Family(data) : null), [data]);
   const nothingSet = !!raw && !raw.settings.parents.length && !raw.settings.partners.length;
@@ -116,7 +121,7 @@ export function FamilyTreeView({
   useEffect(() => {
     if (centre || !fam) return;
     const inFamily = (id: string | null) => id !== null && fam.byPage.has(id) && fam.inFamily(fam.byPage.get(id)!);
-    const pick = inFamily(openPage) ? openPage : inFamily(prefs.last) || prefs.last === ALL_FAMILIES ? prefs.last : null;
+    const pick = inFamily(openPage) ? openPage : inFamily(prefs.last) || prefs.last?.startsWith("*") ? prefs.last : null;
     if (pick) onCentre(pick, false);
   }, [centre, fam, openPage, prefs.last, onCentre]);
   useEffect(() => {
@@ -139,14 +144,16 @@ export function FamilyTreeView({
     const opts = { ...prefs, revealAll, revealed };
     if (all) {
       // Side by side, one row height for all, generations lined up.
-      const trees = buildAllTrees(fam, opts);
+      const house = houseName === null ? undefined : fam.houses.findIndex((h) => norm(h) === houseName);
+      if (house === -1) return null;
+      const trees = buildAllTrees(fam, opts, house);
       const rowH = trees.some((t) => t.boxes.some(metrics.tall)) ? metrics.cardH : metrics.boxH;
       const shifts = alignTrees(fam, trees, revealAll);
       return sideBySide(trees.map((t, i) => ({ layout: layoutTree(t, metrics, rowH), shift: shifts[i] * (rowH + metrics.rowGap) })), ALL_GAP);
     }
     if (centreIndex === undefined) return null;
     return layoutTree(buildTree(fam, centreIndex, opts), metrics);
-  }, [fam, all, centreIndex, prefs, revealAll, revealed, metrics]);
+  }, [fam, all, houseName, centreIndex, prefs, revealAll, revealed, metrics]);
 
   // A new person in the middle: their remembered view, else the whole tree (or them, if it's big).
   const shownFor = useRef<string | null>(null);
@@ -235,11 +242,13 @@ export function FamilyTreeView({
             centreKey={all ? "" : `n${centreIndex}`}
             spoilers={revealAll}
             fonts={fonts}
-            label={all ? "All families" : `Family tree of ${fam.people[centreIndex!].title}`}
+            label={houseName !== null ? `Family tree of a house` : all ? "All families" : `Family tree of ${fam.people[centreIndex!].title}`}
             onOpen={(i) => fam.people[i].id && onOpenPage(fam.people[i].id!)}
             onReveal={(keys) => setRevealed((r) => new Set([...r, ...keys]))}
             onCreate={(i) => wiki.createFromLink(fam.people[i].title, relatedPage(fam, i), { stay: true })}
           />
+        ) : data && houseName !== null ? (
+          <p className="empty center">Nobody in a family has this house any more.</p>
         ) : data ? (
           <p className="empty center">Choose a person above to see their family.</p>
         ) : null}
@@ -277,13 +286,26 @@ function PersonPicker({ fam, current, onPick }: { fam: Family; current: string |
         .sort((a, b) => compareNames(a.title, b.title)),
     [fam],
   );
-  // "All families" first, then the people.
+  // Houses from the house field (Family tree settings).
+  const houses = useMemo(
+    () =>
+      [...fam.houses].sort(compareNames).map((h) => ({ id: houseKey(h), title: h, names: [h], house: true })),
+    [fam],
+  );
+  // "All families" first, the houses, then the people.
   const matches = useMemo(() => {
     const terms = parseQuery(query);
-    const list = [{ id: ALL_FAMILIES, title: ALL_TITLE, names: [ALL_TITLE] }, ...people];
+    const list: { id: string; title: string; names: string[]; house?: boolean }[] = [{ id: ALL_FAMILIES, title: ALL_TITLE, names: [ALL_TITLE] }, ...houses, ...people];
     return (terms.length ? list.filter((p) => p.names.some((n) => matchesAll(n, terms))) : list).slice(0, 51);
-  }, [people, query]);
-  const currentTitle = current === ALL_FAMILIES ? ALL_TITLE : current ? fam.people[fam.byPage.get(current) ?? -1]?.title : undefined;
+  }, [people, houses, query]);
+  const currentTitle =
+    current === ALL_FAMILIES
+      ? ALL_TITLE
+      : current?.startsWith(HOUSE_PREFIX)
+        ? houses.find((h) => h.id === current)?.title
+        : current
+          ? fam.people[fam.byPage.get(current) ?? -1]?.title
+          : undefined;
   const pick = (id: string) => {
     setOpen(false);
     setQuery("");
@@ -324,11 +346,12 @@ function PersonPicker({ fam, current, onPick }: { fam: Family; current: string |
               key={p.id}
               role="option"
               aria-selected={n === active}
-              className={`${n === active ? "active" : ""} ${p.id === ALL_FAMILIES ? "family-all" : ""}`}
+              className={`${n === active ? "active" : ""} ${p.id === ALL_FAMILIES ? "family-all" : ""} ${p.house ? "family-house" : ""}`}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => pick(p.id)}
             >
               {p.title}
+              {p.house && <span className="family-house-tag">house</span>}
             </li>
           ))}
           {!matches.length && <li className="muted">Nobody found</li>}

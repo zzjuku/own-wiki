@@ -291,6 +291,25 @@ describe("all families", () => {
   });
 });
 
+describe("house trees", () => {
+  it("show the house's members, their partners and children, nobody beyond", () => {
+    const { fam } = family(
+      ["A", "A wife", "B", "B husband", "C", "D", "Grandkid", "Secret"],
+      [["B", "A"], ["B", "A wife", 1], ["C", "B husband"], ["C", "B", 1], ["D", "A"], ["Grandkid", "C"], ["Secret", "D"]],
+      [["A", "A wife"], ["B", "B husband"]],
+      { spoilers: ["Secret>D"] },
+    );
+    // A and D are in the house (B married out).
+    fam.people[0].houses = [0];
+    fam.people[5].houses = [0];
+    const trees = buildAllTrees(fam, OPTS, 0);
+    const full = trees.flatMap((t) => fullBoxes(t, fam)).sort();
+    expect(full).toEqual(["A", "A wife", "B", "D"].sort());
+    // D's secret child (D is a member) shows as hidden; nothing hidden under B.
+    expect(trees.flatMap((t) => t.boxes).filter((b) => b.kind === "hidden").length).toBe(1);
+  });
+});
+
 describe("family tree text", () => {
   it("writes years", () => {
     expect(lifeYears({ title: "A", birth: { year: 250, qualifier: "c" }, death: { year: 300, era: "AC" } }, false)).toBe("c. 250 – 300 AC");

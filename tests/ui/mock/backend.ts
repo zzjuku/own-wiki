@@ -7,7 +7,7 @@ import type {
 } from "../../../src/api";
 import type { GraphData, GraphLink } from "../../../src/graph/model";
 import type { ThemeData } from "../../../src/themes/engine";
-import { familyData, linkFieldNames } from "./family";
+import { familyData, fieldNames } from "./family";
 import { search } from "./search";
 
 export interface MockPage {
@@ -560,7 +560,7 @@ export function createBackend(fixture: Fixture) {
     search_prepare: () => undefined,
     graph_data: ({ project, known }) => fingerprinted(graphData(proj(project)), known),
     family_data: ({ project, known }) => fingerprinted(familyData([...proj(project).pages.values()], proj(project).settings), known),
-    link_field_names: ({ project }) => linkFieldNames([...proj(project).pages.values()]),
+    field_names: ({ project, kinds }) => fieldNames([...proj(project).pages.values()], kinds),
     graph_layout: ({ project }) => graphLayouts.get(project) ?? null,
     save_graph_layout: ({ project, layout }) => void graphLayouts.set(project, layout),
     list_categories: ({ project }) => [...categories(proj(project)).values()].map(catInfo),

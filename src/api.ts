@@ -455,8 +455,8 @@ export const api = {
   graphData: (project: string, known: string | null) => invoke<{ hash: string; data?: GraphData }>("graph_data", { project, known }),
   /** Every family relation (M12). */
   familyData: (project: string, known: string | null) => invoke<{ hash: string; data?: FamilyData }>("family_data", { project, known }),
-  /** Names of the Page link fields pages have. */
-  linkFieldNames: (project: string) => invoke<string[]>("link_field_names", { project }),
+  /** Names of the fields of these types that pages have. */
+  fieldNames: (project: string, kinds: string[]) => invoke<string[]>("field_names", { project, kinds }),
   /** Where the graph's nodes were left on this computer. */
   graphLayout: (project: string) => invoke<SavedLayout | null>("graph_layout", { project }),
   saveGraphLayout: (project: string, layout: SavedLayout) => invoke<void>("save_graph_layout", { project, layout }),

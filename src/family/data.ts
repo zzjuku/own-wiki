@@ -17,6 +17,8 @@ export interface FieldStyle {
 export interface FamilySettings {
   parents?: FieldStyle[];
   partners?: FieldStyle[];
+  /** The field naming a person's house or dynasty (trees of one house). */
+  house?: string;
   [extra: string]: unknown;
 }
 
@@ -38,6 +40,8 @@ export interface FamilyPerson {
   template?: string;
   birth?: LifeDate;
   death?: LifeDate;
+  /** Houses (places in FamilyData.houses). */
+  houses?: number[];
 }
 
 export interface ParentLink {
@@ -62,8 +66,10 @@ export interface PartnerLink {
 }
 
 export interface FamilyData {
-  settings: { parents: FieldStyle[]; partners: FieldStyle[] };
+  settings: { parents: FieldStyle[]; partners: FieldStyle[]; house?: string };
   people: FamilyPerson[];
+  /** Names in the house field. */
+  houses?: string[];
   parents: ParentLink[];
   partners: PartnerLink[];
 }
@@ -115,6 +121,8 @@ export function compareBirth(a: FamilyPerson, b: FamilyPerson): number {
 
 export class Family {
   readonly people: FamilyPerson[];
+  /** Names in the house field. */
+  readonly houses: string[];
   readonly parentStyles: LineStyle[];
   readonly partnerStyles: LineStyle[];
   /** Each person's parent links, in the parents' order (field, then entry). */
@@ -127,6 +135,7 @@ export class Family {
 
   constructor(data: FamilyData) {
     this.people = data.people;
+    this.houses = data.houses ?? [];
     const n = data.people.length;
     this.parentStyles = data.settings.parents.map((f) => lineStyle(f.line));
     this.partnerStyles = data.settings.partners.map((f) => lineStyle(f.line));

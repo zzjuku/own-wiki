@@ -106,12 +106,30 @@ export function familyData(pages: Page[], settings: ProjectSettings): FamilyData
       }
     }
   }
-  return { settings: ft, people, parents: [...parents.values()], partners };
+  // Houses: the values of the house field (links by their page, spoilers left out).
+  const houses: string[] = [];
+  const house = settings.familyTree?.house;
+  if (house) {
+    for (const p of people) {
+      const pg = pages.find((x) => x.id === p.id);
+      const values = (pg?.infobox?.fields ?? [])
+        .filter((f) => !f.spoiler && lc(f.label) === lc(house))
+        .flatMap((f) => strings(f.value))
+        .map((v) => (LINK.exec(v)?.[1] ?? v.replace(/\|\|[^|]*\|\|/g, "")).trim())
+        .filter(Boolean);
+      for (const v of values) {
+        let i = houses.findIndex((h) => lc(h) === lc(v));
+        if (i < 0) i = houses.push(v) - 1;
+        if (!p.houses?.includes(i)) p.houses = [...(p.houses ?? []), i];
+      }
+    }
+  }
+  return { settings: { ...ft, ...(house ? { house } : {}) }, people, houses, parents: [...parents.values()], partners };
 }
 
-/** Page link field names on pages. */
-export function linkFieldNames(pages: Page[]): string[] {
+/** Names of fields of these types on pages. */
+export function fieldNames(pages: Page[], kinds: string[]): string[] {
   const out = new Map<string, string>();
-  for (const p of pages) for (const f of p.infobox?.fields ?? []) if ((f.type === "links" || f.type === "link") && !out.has(lc(f.label))) out.set(lc(f.label), f.label);
+  for (const p of pages) for (const f of p.infobox?.fields ?? []) if (kinds.includes(f.type) && !out.has(lc(f.label))) out.set(lc(f.label), f.label);
   return [...out.values()];
 }

@@ -6,20 +6,25 @@ import { compareNames } from "../tree";
 import { useWiki } from "../wiki";
 import { norm } from "../wikilinks";
 import { type FieldStyle, LINE_STYLES, lineStyle, type LineStyle } from "./data";
-import { linkFieldNames } from "./settings";
+import { fieldNamesOf, HOUSE_KINDS, LINK_KINDS } from "./settings";
 
 const STYLE_NAMES: Record<LineStyle, string> = { solid: "Solid", dashed: "Dashed", dotted: "Dotted" };
 
 export function FamilyTreeSettings({ settings, change }: { settings: ProjectSettings; change: (next: ProjectSettings) => void }) {
   const wiki = useWiki();
-  const [fromPages, setFromPages] = useState<string[]>([]);
+  const [fromPages, setFromPages] = useState<{ links: string[]; house: string[] }>({ links: [], house: [] });
   useEffect(() => {
-    api.linkFieldNames(wiki.project).then(setFromPages, () => setFromPages([]));
+    Promise.all([api.fieldNames(wiki.project, LINK_KINDS), api.fieldNames(wiki.project, HOUSE_KINDS)]).then(
+      ([links, house]) => setFromPages({ links, house }),
+      () => {},
+    );
   }, [wiki.project]);
   const ft = settings.familyTree ?? {};
-  const names = linkFieldNames(fromPages, wiki.templates).sort(compareNames);
+  const names = fieldNamesOf(fromPages.links, wiki.templates, LINK_KINDS).sort(compareNames);
   const taken = new Set([...(ft.parents ?? []), ...(ft.partners ?? [])].map((f) => norm(f.field)));
   const free = names.filter((n) => !taken.has(norm(n)));
+  // House field: text-like and Page link fields (and the one chosen).
+  const houseNames = fieldNamesOf([...fromPages.house, ...(ft.house ? [ft.house] : [])], wiki.templates, HOUSE_KINDS).sort(compareNames);
   const set = (which: "parents" | "partners", list: FieldStyle[]) => change({ ...settings, familyTree: { ...ft, [which]: list } });
 
   const list = (which: "parents" | "partners", title: string, hint: string, example: string) => {
@@ -93,6 +98,28 @@ export function FamilyTreeSettings({ settings, change }: { settings: ProjectSett
       </p>
       {list("parents", "Parent fields", "On a child's page, pointing to a parent. Their order sets the parents' order, left to right.", "Father")}
       {list("partners", "Partner fields", "Linking partners; a link entered on either page counts.", "Spouse")}
+      <div className="family-fields">
+        <h4>House field</h4>
+        <p className="hint">
+          The field naming a person's house or dynasty (text, list, choice or Page link). Each house can then be shown on its own on the
+          Family tree screen: its members, their partners and their children.
+        </p>
+        <select
+          aria-label="House field"
+          value={ft.house ?? ""}
+          onChange={(e) => {
+            const { house: _, ...rest } = ft;
+            change({ ...settings, familyTree: e.target.value ? { ...rest, house: e.target.value } : rest });
+          }}
+        >
+          <option value="">None</option>
+          {houseNames.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
     </section>
   );
 }

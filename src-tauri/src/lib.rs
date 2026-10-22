@@ -705,10 +705,10 @@ fn family_data(state: State<'_, AppState>, project: String, known: Option<String
     state.with_index(&project, false, |_, idx| Ok(family::reply(idx, &family::FamilySettings::read(&idx.dir), known.as_deref())))
 }
 
-/// Names of the Page link fields pages have (Family tree settings).
+/// Names of the fields of these types that pages have (Family tree settings).
 #[tauri::command(async)]
-fn link_field_names(state: State<'_, AppState>, project: String) -> AppResult<Vec<String>> {
-    state.with_index(&project, false, |_, idx| Ok(family::link_field_names(idx)))
+fn field_names(state: State<'_, AppState>, project: String, kinds: Vec<String>) -> AppResult<Vec<String>> {
+    state.with_index(&project, false, |_, idx| Ok(family::field_names(idx, &kinds)))
 }
 
 /// Where the graph's nodes were left on this computer (none yet: null).
@@ -887,7 +887,7 @@ pub fn run() {
             search,
             graph_data,
             family_data,
-            link_field_names,
+            field_names,
             graph_layout,
             save_graph_layout,
             watch_project,

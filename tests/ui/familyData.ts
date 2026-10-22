@@ -4,6 +4,7 @@ import type { MockPage } from "./mock/backend";
 
 const links = (label: string, ...value: string[]): Field => ({ label, type: "links", value });
 const born = (year: number): Field => ({ label: "Born", type: "date", options: { age: "birth" }, value: { year } });
+const house = (name: string): Field => ({ label: "Dynasty", type: "text", value: name });
 const portrait: Field = { label: "Portrait", type: "image", value: { file: "Portrait A.png" } };
 const person = (title: string, ...fields: Field[]): MockPage => ({ id: `${title}.md`, title, infobox: { fields } });
 
@@ -17,12 +18,12 @@ export const SETTINGS = {
 
 /** Placeholder people: grandparents, parents, the centre (Person C) and their families. */
 export const FAMILY: MockPage[] = [
-  person("Person GA", links("Spouse", "Person GB")),
+  person("Person GA", links("Spouse", "Person GB"), house("House A")),
   person("Person GB", portrait),
-  person("Person F", links("Father", "Person GA"), links("Mother", "Person GB"), links("Spouse", "[[Person M]] (m. 283)"), links("Lover", "Person L"), born(260), portrait),
-  person("Person H", links("Father", "Person GA"), links("Spouse", "Person U")),
+  person("Person F", links("Father", "Person GA"), links("Mother", "Person GB"), links("Spouse", "[[Person M]] (m. 283)"), links("Lover", "Person L"), born(260), portrait, house("House A")),
+  person("Person H", links("Father", "Person GA"), links("Spouse", "Person U"), house("House A")),
   person("Person U"),
-  person("Person M", links("Father", "Person MZ"), links("Spouse", "Person F")),
+  person("Person M", links("Father", "Person MZ"), links("Spouse", "Person F"), house("House M")),
   person("Person L"),
   person("Person C", links("Father", "Person F"), links("Mother", "Person M"), links("Spouse", "Person W"), born(290), portrait),
   person("Person S", links("Father", "Person F"), links("Mother", "Person M"), links("Spouse", "Person J"), born(288)),

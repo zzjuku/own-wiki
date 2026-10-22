@@ -22,13 +22,22 @@ export function renameFieldInFamily(ft: FamilySettings | null | undefined, templ
     return out.filter((f, i) => out.findIndex((g) => norm(g.field) === norm(f.field)) === i);
   };
   const result = { ...ft, parents: fix(ft.parents), partners: fix(ft.partners) };
+  // The house field follows unless another template still has the old name.
+  if (ft.house && norm(ft.house) === norm(old) && !stillUsed) {
+    result.house = next;
+    changed = true;
+  }
   return changed ? result : null;
 }
 
-/** Page link field names: those pages have, and those templates have. */
-export function linkFieldNames(fromPages: string[], templates: Template[]): string[] {
+export const LINK_KINDS = ["links", "link"];
+/** Field types a house field can be. */
+export const HOUSE_KINDS = ["text", "list", "choice", "links", "link"];
+
+/** Names of fields of types `kinds`: those pages have, and those templates have. */
+export function fieldNamesOf(fromPages: string[], templates: Template[], kinds: string[]): string[] {
   const out = new Map<string, string>();
   for (const n of fromPages) out.set(norm(n), n);
-  for (const t of templates) for (const f of t.fields) if ((f.type === "links" || f.type === "link") && f.label.trim()) out.set(norm(f.label), f.label.trim());
+  for (const t of templates) for (const f of t.fields) if (kinds.includes(f.type) && f.label.trim()) out.set(norm(f.label), f.label.trim());
   return [...out.values()];
 }

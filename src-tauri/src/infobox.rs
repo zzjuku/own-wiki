@@ -367,6 +367,49 @@ pub fn sortable_values(ib: &Infobox) -> BTreeMap<String, Vec<f64>> {
     out
 }
 
+/// Short values of Text, List, Choice and Page link fields (not spoilers),
+/// keyed by the field's label as compared ([`norm`]): a family tree's house
+/// field reads them (M12). A value with links gives the linked pages' names;
+/// spoiler parts (`||…||`) are left out.
+pub fn short_texts(ib: &Infobox) -> BTreeMap<String, Vec<String>> {
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for f in ib.fields.iter().filter(|f| !f.is_spoiler()) {
+        let Some(v) = &f.value else { continue };
+        let mut values: Vec<String> = Vec::new();
+        match f.kind.as_str() {
+            LINK | LINKS => values.extend(strings(v).into_iter().map(link_value_page).map(str::to_string)),
+            TEXT | LIST | CHOICE => {
+                for s in strings(v) {
+                    let hidden = spoiler_ranges(s);
+                    let links: Vec<String> = parse_links(s)
+                        .into_iter()
+                        .filter(|l| !l.page.is_empty() && !hidden.iter().any(|&(a, b)| a <= l.start && l.end <= b))
+                        .map(|l| l.page)
+                        .collect();
+                    if !links.is_empty() || s.contains("[[") {
+                        values.extend(links);
+                        continue;
+                    }
+                    let mut plain = String::new();
+                    let mut last = 0;
+                    for &(a, b) in &hidden {
+                        plain.push_str(&s[last..a]);
+                        last = b;
+                    }
+                    plain.push_str(&s[last..]);
+                    values.push(plain);
+                }
+            }
+            _ => continue,
+        }
+        let values: Vec<String> = values.into_iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && s.len() <= 200).collect();
+        if !values.is_empty() {
+            out.entry(norm(&f.label)).or_default().extend(values);
+        }
+    }
+    out
+}
+
 /// A birth or death date for family trees (M12): the date's start point.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LifeDate {
