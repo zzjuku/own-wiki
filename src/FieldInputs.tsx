@@ -11,6 +11,8 @@ import { MiniEditor } from "./MiniEditor";
 import { MultiPagePicker } from "./MultiPagePicker";
 import { entryPage, hasWords, joinLinkEntry, parseLinkEntry } from "./linkEntry";
 import { displayGroup } from "./tree";
+import { NoteEditor, NoteToggle } from "./NoteInputs";
+import { notesFrom, type FieldNote, type NoteDraft } from "./notes";
 import { DEFAULT_FRAME, useWiki } from "./wiki";
 
 // ---- page links ----
@@ -209,29 +211,36 @@ export function LinkEntryInput({
 /** Rows of a list input (List and Page link fields) with stable keys, so a
  * row inserted in the middle gets its own, focused input. An empty row stays
  * while it's being typed. */
-export function useListRows(value: string[], onChange: (v: unknown) => void) {
+export function useListRows(value: string[], onChange: (v: unknown, notes?: FieldNote[]) => void, notes: FieldNote[] = []) {
   const nextId = useRef(0);
-  const [rows, setRows] = useState(() => (value.length ? value : [""]).map((item) => ({ item, id: nextId.current++ })));
+  type Row = { item: string; id: number; note: NoteDraft | null };
+  // (The stored list has no empty entries, so a note's place is the row's place.)
+  const [rows, setRows] = useState<Row[]>(() =>
+    (value.length ? value : [""]).map((item, i) => ({ item, id: nextId.current++, note: notes.find((n) => n.i === i) ?? null })),
+  );
   const [focus, setFocus] = useState<number | null>(null);
-  const update = (next: { item: string; id: number }[], save = true) => {
+  const update = (next: Row[], save = true) => {
     setRows(next);
-    if (save) onChange(next.map((r) => r.item));
+    // Notes count the entries that are kept (empty rows aren't stored).
+    if (save) onChange(next.map((r) => r.item), notesFrom(next.filter((r) => r.item.trim()).map((r) => r.note)));
   };
   /** A new empty row after row `i`, focused. */
   const insert = (i: number) => {
     const id = nextId.current++;
-    update([...rows.slice(0, i + 1), { item: "", id }, ...rows.slice(i + 1)], false);
+    update([...rows.slice(0, i + 1), { item: "", id, note: null }, ...rows.slice(i + 1)], false);
     setFocus(id);
   };
   return {
     rows: rows.map((r) => ({ ...r, focus: r.id === focus })),
     set: (i: number, item: string) => update(rows.map((r, j) => (j === i ? { ...r, item } : r))),
-    remove: (i: number) => update(rows.length > 1 ? rows.filter((_, j) => j !== i) : [{ item: "", id: rows[0].id }]),
+    /** Row `i`'s note (null: none; an empty one shows its input). */
+    setNote: (i: number, note: NoteDraft | null) => update(rows.map((r, j) => (j === i ? { ...r, note } : r))),
+    remove: (i: number) => update(rows.length > 1 ? rows.filter((_, j) => j !== i) : [{ item: "", id: rows[0].id, note: null }]),
     add: () => insert(rows.length - 1),
     /** Adds several entries at the end (an empty last row is filled first). */
     append: (items: string[]) => {
       const kept = rows.filter((r, i) => r.item.trim() || i < rows.length - 1);
-      update([...kept, ...items.map((item) => ({ item, id: nextId.current++ }))]);
+      update([...kept, ...items.map((item) => ({ item, id: nextId.current++, note: null }))]);
     },
     /** Enter in row `i`: the next row starts (not after an empty one). */
     enter: (i: number) => void (rows[i].item.trim() && insert(i)),
@@ -239,9 +248,21 @@ export function useListRows(value: string[], onChange: (v: unknown) => void) {
 }
 
 /** Several page names (Page links fields). */
-export function PageLinksInput({ value, onChange, label, fromPage }: { value: string[]; onChange: (v: unknown) => void; label: string; fromPage?: string }) {
+export function PageLinksInput({
+  value,
+  onChange,
+  label,
+  fromPage,
+  notes,
+}: {
+  value: string[];
+  onChange: (v: unknown, notes?: FieldNote[]) => void;
+  label: string;
+  fromPage?: string;
+  notes?: FieldNote[];
+}) {
   const wiki = useWiki();
-  const list = useListRows(value, onChange);
+  const list = useListRows(value, onChange, notes);
   const [picking, setPicking] = useState(false);
   const here = new Set(list.rows.map((r) => wiki.names.resolve(entryPage(r.item))?.page.id).filter(Boolean));
   return (
@@ -256,9 +277,11 @@ export function PageLinksInput({ value, onChange, label, fromPage }: { value: st
             onEnter={() => list.enter(i)}
             onChange={(t) => list.set(i, t)}
           />
+          <NoteToggle label={`${label} ${i + 1}`} active={!!r.note} onClick={() => !r.note && list.setNote(i, { text: "" })} />
           <button type="button" className="plain remove" title="Remove page" aria-label="Remove page" onClick={() => list.remove(i)}>
             ×
           </button>
+          {r.note && <NoteEditor pageId={fromPage ?? ""} label={`${label} ${i + 1}`} note={r.note} autoFocus={!r.note.text} onChange={(n) => list.setNote(i, n)} />}
         </div>
       ))}
       <div className="row add-entries">
@@ -418,6 +441,7 @@ export function DateTextInput({
   place,
   onChange,
   label,
+  notes = [],
 }: {
   pageId: string;
   value: unknown;
@@ -425,18 +449,23 @@ export function DateTextInput({
   multiple: boolean;
   /** Date, place (else Date, text). */
   place: boolean;
-  onChange: (v: unknown) => void;
+  onChange: (v: unknown, notes?: FieldNote[]) => void;
   label: string;
+  notes?: FieldNote[];
 }) {
   const initial = dateEntries(value);
   // A list stays a list even if the field was switched back to one entry, so nothing is dropped.
   const several = multiple || initial.length > 1;
   const nextId = useRef(0);
-  const [rows, setRows] = useState(() => (initial.length ? initial : [{}]).map((e) => ({ e, id: nextId.current++ })));
-  const save = (next: { e: DateEntry; id: number }[]) => {
+  type Row = { e: DateEntry; id: number; note: NoteDraft | null };
+  const [rows, setRows] = useState<Row[]>(() =>
+    (initial.length ? initial : [{}]).map((e, i) => ({ e, id: nextId.current++, note: notes.find((n) => n.i === i) ?? null })),
+  );
+  const kept = (e: DateEntry) => cleanValue(e.date) !== undefined || !!e.text?.trim();
+  const save = (next: Row[]) => {
     setRows(next);
-    const entries = next.map((r) => r.e).filter((e) => cleanValue(e.date) !== undefined || e.text?.trim());
-    onChange(several ? entries : entries[0]);
+    const entries = next.filter((r) => kept(r.e));
+    onChange(several ? entries.map((r) => r.e) : entries[0]?.e, notesFrom(entries.map((r) => r.note)));
   };
   const set = (i: number, e: DateEntry) => save(rows.map((r, j) => (j === i ? { ...r, e: { ...(cleanValue(e.date) !== undefined ? { date: e.date } : {}), ...(e.text?.trim() ? { text: e.text } : {}) } } : r)));
   return (
@@ -452,14 +481,28 @@ export function DateTextInput({
               value={r.e.text ?? ""}
               onChange={(text) => set(i, { ...r.e, text })}
             />
+            <NoteToggle
+              label={several ? `${label} ${i + 1}` : label}
+              active={!!r.note}
+              onClick={() => !r.note && save(rows.map((x, j) => (j === i ? { ...x, note: { text: "" } } : x)))}
+            />
           </div>
+          {r.note && (
+            <NoteEditor
+              pageId={pageId}
+              label={several ? `${label} ${i + 1}` : label}
+              note={r.note}
+              autoFocus={!r.note.text}
+              onChange={(note) => save(rows.map((x, j) => (j === i ? { ...x, note } : x)))}
+            />
+          )}
           {several && (
             <button
               type="button"
               className="plain remove"
               title="Remove entry"
               aria-label="Remove entry"
-              onClick={() => save(rows.length > 1 ? rows.filter((_, j) => j !== i) : [{ e: {}, id: nextId.current++ }])}
+              onClick={() => save(rows.length > 1 ? rows.filter((_, j) => j !== i) : [{ e: {}, id: nextId.current++, note: null }])}
             >
               ×
             </button>
@@ -467,7 +510,7 @@ export function DateTextInput({
         </div>
       ))}
       {several && (
-        <button type="button" className="plain add-entry" onClick={() => setRows([...rows, { e: {}, id: nextId.current++ }])}>
+        <button type="button" className="plain add-entry" onClick={() => setRows([...rows, { e: {}, id: nextId.current++, note: null }])}>
           + Add entry
         </button>
       )}

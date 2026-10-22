@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import type { Field, Infobox, PageInfo, Template } from "./api";
+import { notesFrom, remapNotes } from "./notes";
 import {
   changeTemplate,
   cleanValue,
@@ -292,5 +293,33 @@ describe("templates", () => {
     ]);
     expect(next.hidden).toEqual([{ label: "Other", type: "text", value: "Hidden now" }]);
     expect(changeTemplate({ ...ib, ownColor: false }, t).color).toBe("#d5e8d4");
+  });
+});
+
+describe("field notes (M13)", () => {
+  it("show before or after their entry, formatted, on every kind of field", () => {
+    const ib: Infobox = {
+      fields: [
+        { label: "House", type: "links", value: ["Page B", "Page C"], notes: [{ i: 1, text: "*(by marriage)*" }] },
+        { label: "Titles", type: "list", value: ["A", "B"], notes: [{ i: 0, text: "(claimed)", before: true }] },
+        { label: "Size", type: "number", value: 5, notes: [{ i: 0, text: "(about)" }] },
+        { label: "Battles", type: "datetext", value: [{ date: { year: 290 }, text: "Battle A" }], notes: [{ i: 0, text: "(won)" }] },
+        { label: "Kids", type: "linkedfrom", options: { from: ["Father"] }, value: ["Typed X"], notes: [{ i: 0, text: "(adopted)" }] },
+        { label: "Broken", type: "text", value: "Value", notes: [{ i: 0, text: "" }, { i: "x", text: "y" } as never] },
+      ],
+    };
+    const html = infoboxHtml(ib, ctx);
+    expect(html).toContain('Page C</a> <span class="infobox-note"><em>(by marriage)</em></span>');
+    expect(html).toContain('<span class="infobox-note">(claimed)</span> A');
+    expect(html).toContain('5 <span class="infobox-note">(about)</span>');
+    expect(html).toContain('290 <span class="infobox-note">(won)</span> <span class="infobox-date-note">Battle A</span>');
+    expect(html).toContain('Typed X</a> <span class="infobox-note">(adopted)</span>');
+    // Empty or broken notes are left out.
+    expect(html).toMatch(/Value<\/td>/);
+  });
+
+  it("are kept in place when entries go", () => {
+    expect(notesFrom([null, { text: " x " }, { text: "" }, { text: "y", before: true }])).toEqual([{ i: 1, text: "x" }, { i: 3, text: "y", before: true }]);
+    expect(remapNotes([{ i: 0, text: "a" }, { i: 2, text: "c" }], [2, 1])).toEqual([{ i: 0, text: "c" }]);
   });
 });

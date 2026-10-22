@@ -8,6 +8,7 @@ import { renderInline, renderPage, slugify, spoilerHtml, type LinkContext } from
 import { hasWords } from "./linkEntry";
 import { reverseEntries, twoWayExtras, type RelationEntry } from "./relations";
 import { norm } from "./wikilinks";
+import { noteAt, withNoteHtml } from "./notes";
 
 export interface KindInfo {
   kind: FieldKind;
@@ -456,10 +457,26 @@ function linkHtml(name: string, ctx: BoxContext): string {
 }
 
 /** Entries as links, one per line; entries from spoiler fields stay hidden
- * (unless the whole field is a spoiler: one click shows it all). */
+ * (unless the whole field is a spoiler: one click shows it all). Names typed
+ * into a Linked from field show their notes. */
 function entriesHtml(entries: RelationEntry[], f: Field, ctx: BoxContext): string {
-  return entries.map((e) => (e.spoiler && !f.spoiler ? spoilerHtml(linkHtml(e.name, ctx)) : linkHtml(e.name, ctx))).join("<br>");
+  const typed = f.type === "linkedfrom" ? stringList(f.value).map((t) => norm(t.split("#")[0])) : [];
+  return entries
+    .map((e) => {
+      const html = e.spoiler && !f.spoiler ? spoilerHtml(linkHtml(e.name, ctx)) : linkHtml(e.name, ctx);
+      const at = e.typed ? typed.indexOf(norm(e.name)) : -1;
+      return at < 0 ? html : noted(f, at, html, ctx);
+    })
+    .join("<br>");
 }
+
+/** An entry's HTML with its note (M13). */
+function noted(f: Field, i: number, html: string, ctx: BoxContext): string {
+  const n = noteAt(f, i);
+  return n ? withNoteHtml(html, renderInline(n.text, ctx.links), n.before) : html;
+}
+
+const stringList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : typeof v === "string" ? [v] : []);
 
 /** The value cell's HTML, or "" when there's nothing to show. `age`: shown after the date. */
 function valueHtml(f: Field, ctx: BoxContext, age = ""): string {
@@ -471,29 +488,32 @@ function valueHtml(f: Field, ctx: BoxContext, age = ""): string {
   switch (f.type) {
     case "text":
     case "choice":
-      return renderInline(String(v), ctx.links);
+      return noted(f, 0, renderInline(String(v), ctx.links), ctx);
     case "longtext":
-      return renderPage(String(v), { tocBox: false, links: ctx.links }).html;
+      return noted(f, 0, renderPage(String(v), { tocBox: false, links: ctx.links }).html, ctx);
     case "number":
-      return escapeHtml(typeof v === "number" ? v.toLocaleString("en") : String(v));
+      return noted(f, 0, escapeHtml(typeof v === "number" ? v.toLocaleString("en") : String(v)), ctx);
     case "yesno":
-      return v ? "Yes" : "No";
+      return noted(f, 0, v ? "Yes" : "No", ctx);
     case "list":
-      return (v as string[]).filter((x) => !isEmptyValue(x)).map((x) => renderInline(x, ctx.links)).join("<br>");
+      return (v as string[])
+        .filter((x) => !isEmptyValue(x))
+        .map((x, i) => noted(f, i, renderInline(x, ctx.links), ctx))
+        .join("<br>");
     case "link":
     case "links": {
       const own = (typeof v === "string" ? [v] : isStringArray(v) ? v : []).filter((x) => x.trim());
       // Entries with words around the link ("Lord [[Page A]]") show them, the link stays a link.
-      const ownHtml = own.map((n) => (hasWords(n) ? renderInline(n, ctx.links) : linkHtml(n, ctx)));
+      const ownHtml = own.map((n, i) => noted(f, i, hasWords(n) ? renderInline(n, ctx.links) : linkHtml(n, ctx), ctx));
       return [ownHtml.join("<br>"), entriesHtml(extra, f, ctx)].filter(Boolean).join("<br>");
     }
     case "date":
-      return escapeHtml(formatDate(v)) + (age && ` ${age}`);
+      return noted(f, 0, escapeHtml(formatDate(v)) + (age && ` ${age}`), ctx);
     case "dateplace":
     case "datetext":
       return dateEntries(v)
         .map((e, i) => {
-          const date = escapeHtml(formatDate(e.date)) + (age && i === 0 ? ` ${age}` : "");
+          const date = noted(f, i, escapeHtml(formatDate(e.date)) + (age && i === 0 ? ` ${age}` : ""), ctx);
           const text = e.text?.trim() ? renderInline(e.text, ctx.links) : "";
           // The place goes on its own line under the date.
           if (f.type === "dateplace") return [date, text].filter(Boolean).join("<br>");

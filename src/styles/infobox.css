@@ -374,8 +374,9 @@ body.reordering * {
 }
 
 
-/* Date, text fields: the note after the date, smaller. */
-.infobox-date-note {
+/* Date, text fields: the note after the date, smaller; field notes (M13) the same. */
+.infobox-date-note,
+.infobox-note {
   font-size: 82%;
   margin-left: 0.15em;
 }

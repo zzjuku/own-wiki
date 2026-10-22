@@ -2,6 +2,7 @@
 import { invoke as invokeRaw, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
 import type { SavedLayout } from "./graph/controller";
 import type { FamilyData, FamilySettings } from "./family/data";
+import type { FieldNote } from "./notes";
 import type { GraphColorRule, GraphData } from "./graph/model";
 import type { ThemeData, ThemeFont } from "./themes/engine";
 
@@ -139,6 +140,8 @@ export interface Field {
   value?: unknown;
   /** Pages only: the value is hidden as a spoiler until clicked. */
   spoiler?: boolean;
+  /** Pages only: notes before or after entries of the value (M13, src/notes.ts). */
+  notes?: FieldNote[];
   [extra: string]: unknown;
 }
 

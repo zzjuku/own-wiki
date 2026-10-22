@@ -279,7 +279,7 @@ button.remove:hover:not(:disabled) {
 }
 .ib-line {
   display: grid;
-  grid-template-columns: 14px minmax(6em, 28%) 24px 24px 24px minmax(0, 1fr);
+  grid-template-columns: 14px minmax(6em, 28%) 24px 24px 24px minmax(0, 1fr) auto;
   gap: 6px;
   align-items: start;
 }
@@ -364,6 +364,7 @@ button.ib-gear.active {
 }
 .ib-list-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
 }
@@ -580,6 +581,7 @@ button.add-entry {
 /* Date, place / Date, text fields */
 .date-text-entry {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 2px;
 }
@@ -640,4 +642,35 @@ button.link-words-toggle.active {
 }
 .ib-list-item:has(.link-entry) > button.remove {
   margin-top: 3px;
+}
+
+/* Field notes (M13): the Note button and the note under its entry */
+button.note-toggle {
+  padding: 3px 5px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+button.note-toggle.active {
+  color: var(--accent);
+}
+.note-editor {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: var(--text-sm);
+}
+.note-editor .mini-editor {
+  flex: 1;
+  min-width: 0;
+}
+.ib-row > .note-editor {
+  margin-left: calc(28% + 90px);
+}
+button.note-place {
+  flex: none;
+  padding: 2px 7px;
+  font-size: var(--text-xs);
+  white-space: nowrap;
 }

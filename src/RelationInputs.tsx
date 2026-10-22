@@ -13,6 +13,8 @@ import { isLayout, kindLabel } from "./infobox";
 import { useReportError } from "./notify";
 import { fromProblems, reverseEntries, twoWayExtras, type RelationEntry } from "./relations";
 import { useWiki } from "./wiki";
+import { NoteEditor, NoteToggle } from "./NoteInputs";
+import { noteAt, notesFrom, notesOf, remapNotes, type FieldNote, type NoteDraft } from "./notes";
 import { norm } from "./wikilinks";
 
 /** What the relation inputs need besides the field. */
@@ -104,7 +106,7 @@ function EntryName({ entry }: { entry: RelationEntry }) {
 }
 
 /** A Linked from field: its entries, Add…, and × on each. */
-export function ReverseFieldInput({ field, onChange, ...rel }: RelationProps & { field: Field; onChange: (v: unknown) => void }) {
+export function ReverseFieldInput({ field, onChange, ...rel }: RelationProps & { field: Field; onChange: (v: unknown, notes?: FieldNote[]) => void }) {
   const wiki = useWiki();
   const [adding, setAdding] = useState(false);
   // Add several…: first the pages, then one choice for all of them.
@@ -114,10 +116,23 @@ export function ReverseFieldInput({ field, onChange, ...rel }: RelationProps & {
   const entries = reverseEntries(field, rel.relations, (n) => wiki.names.resolve(n));
   const from = field.options?.from ?? [];
   const typed = stringList(field.value);
+  // Notes of typed-in names (M13), by their place in the field; an empty one keeps its input open.
+  const notes = notesOf(field);
+  const [drafts, setDrafts] = useState<Record<string, NoteDraft | null>>({});
+  const typedAt = (e: RelationEntry) => typed.findIndex((t) => (e.id ? wiki.names.resolve(t.split("#")[0])?.page.id === e.id : norm(t.split("#")[0]) === norm(e.name)));
+  function setNote(at: number, name: string, n: NoteDraft | null) {
+    setDrafts((d) => ({ ...d, [norm(name)]: n }));
+    const others = notes.filter((x) => x.i !== at);
+    onChange(typed, [...others, ...notesFrom([n]).map((x) => ({ ...x, i: at }))].sort((a, b) => a.i - b.i));
+  }
 
   function removeTyped(e: RelationEntry) {
     const same = (t: string) => (e.id ? wiki.names.resolve(t)?.page.id === e.id : norm(t) === norm(e.name));
-    onChange(typed.filter((t) => !same(t.split("#")[0].trim())));
+    const kept = typed.map((t, i) => (same(t.split("#")[0].trim()) ? -1 : i)).filter((i) => i >= 0);
+    onChange(
+      kept.map((i) => typed[i]),
+      remapNotes(notes, kept),
+    );
   }
 
   return (
@@ -130,6 +145,9 @@ export function ReverseFieldInput({ field, onChange, ...rel }: RelationProps & {
               <span className="relation-source">
                 {[e.typed && "typed in", e.sources.length && `from ${sourcesText(e)}`].filter(Boolean).join(" · ")}
               </span>
+              {e.typed && typedAt(e) >= 0 && (
+                <NoteToggle label={e.name} active={!!(drafts[norm(e.name)] ?? noteAt(field, typedAt(e)))} onClick={() => !noteAt(field, typedAt(e)) && setNote(typedAt(e), e.name, { text: "" })} />
+              )}
               <button
                 type="button"
                 className="plain remove"
@@ -139,6 +157,15 @@ export function ReverseFieldInput({ field, onChange, ...rel }: RelationProps & {
               >
                 ×
               </button>
+              {e.typed && typedAt(e) >= 0 && (drafts[norm(e.name)] ?? noteAt(field, typedAt(e))) && (
+                <NoteEditor
+                  pageId={rel.pageId}
+                  label={e.name}
+                  note={(drafts[norm(e.name)] ?? noteAt(field, typedAt(e)))!}
+                  autoFocus={!noteAt(field, typedAt(e))}
+                  onChange={(n) => setNote(typedAt(e), e.name, n)}
+                />
+              )}
             </li>
           ))}
         </ul>
@@ -179,7 +206,7 @@ export function ReverseFieldInput({ field, onChange, ...rel }: RelationProps & {
           {...rel}
           field={field}
           close={() => setAdding(false)}
-          addTyped={(name) => onChange([...typed, name])}
+          addTyped={(name) => onChange([...typed, name], notes)}
         />
       )}
     </div>

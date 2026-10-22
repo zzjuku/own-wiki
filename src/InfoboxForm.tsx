@@ -25,6 +25,8 @@ import {
 import { frameFor, useWiki } from "./wiki";
 import { DateInput, DateTextInput, ImageFrameContext, ImageInput, LinkEntryInput, PageLinksInput, useListRows } from "./FieldInputs";
 import { MiniEditor } from "./MiniEditor";
+import { NoteEditor, NoteToggle } from "./NoteInputs";
+import { noteAt, notesFrom, notesOf, type FieldNote, type NoteDraft } from "./notes";
 import { FieldDef } from "./TemplatesView";
 import { Icon } from "./editorTheme";
 import { ReverseFieldInput, TwoWayExtras, type RelationProps } from "./RelationInputs";
@@ -51,6 +53,8 @@ export function InfoboxForm({ pageId, pageTitle, infobox: ib, error, templates, 
   const [settingsOpen, setSettingsOpen] = useState<number | null>(null);
   const [justAdded, setJustAdded] = useState<number | null>(null);
   const [menu, setMenu] = useState<"add" | "change" | null>(null);
+  // Notes of single values while edited (by row id; an empty one keeps its input open).
+  const [singleNotes, setSingleNotes] = useState<Record<string, NoteDraft | null>>({});
   // Stable ids for the field rows, so each row keeps its own editor when
   // fields are added, removed or moved.
   const rowIds = useRef<string[]>([]);
@@ -116,6 +120,12 @@ export function InfoboxForm({ pageId, pageTitle, infobox: ib, error, templates, 
   const template = ib.template ? templates.find((t) => t.id === ib.template) : undefined;
   const setFields = (fields: Field[]) => onChange({ ...ib, fields });
   const setField = (i: number, f: Field) => setFields(ib.fields.map((x, j) => (j === i ? f : x)));
+  /** A single value's note (null: removed). */
+  const setSingleNote = (i: number, f: Field, n: NoteDraft | null) => {
+    setSingleNotes((d) => ({ ...d, [rowIds.current[i]]: n }));
+    const notes = notesFrom([n]);
+    setField(i, { ...f, notes: notes.length ? notes : undefined });
+  };
 
   function removeField(i: number) {
     const f = ib!.fields[i];
@@ -261,10 +271,28 @@ export function InfoboxForm({ pageId, pageTitle, infobox: ib, error, templates, 
               )}
               {!isLayout(f.type) && (
                 <div className="ib-input">
-                  <ValueInput rel={rel} field={f} onChange={(value) => setField(i, { ...f, value: cleanValue(value) })} />
+                  <ValueInput
+                    rel={rel}
+                    field={f}
+                    onChange={(value, notes) =>
+                      setField(i, { ...f, value: cleanValue(value), ...(notes ? { notes: notes.length ? notes : undefined } : {}) })
+                    }
+                  />
                 </div>
               )}
+              {SINGLE_NOTE_KINDS.has(f.type) && !valueProblem(f) && (
+                <NoteToggle label={f.label} active={!!singleNotes[rowIds.current[i]] || !!noteAt(f, 0)} onClick={() => setSingleNote(i, f, noteAt(f, 0) ?? { text: "" })} />
+              )}
             </div>
+            {SINGLE_NOTE_KINDS.has(f.type) && (singleNotes[rowIds.current[i]] || noteAt(f, 0)) && (
+              <NoteEditor
+                pageId={pageId}
+                label={f.label}
+                note={singleNotes[rowIds.current[i]] ?? noteAt(f, 0)!}
+                autoFocus={!noteAt(f, 0)}
+                onChange={(n) => setSingleNote(i, f, n)}
+              />
+            )}
             {f.hint && <p className="ib-hint">{f.hint}</p>}
             {settingsOpen === i && (
               <div className="ib-settings">
@@ -397,7 +425,10 @@ function TemplateMenu({
 }
 
 /** The input for one field's value, by type. Values that don't fit the type get a warning instead. */
-function ValueInput({ rel, field: f, onChange }: { rel: RelationProps; field: Field; onChange: (v: unknown) => void }) {
+/** Field types with one value, whose note button sits on the field's line (lists have one per entry). */
+const SINGLE_NOTE_KINDS = new Set(["text", "longtext", "number", "yesno", "choice", "date", "link"]);
+
+function ValueInput({ rel, field: f, onChange }: { rel: RelationProps; field: Field; onChange: (v: unknown, notes?: FieldNote[]) => void }) {
   const pageId = rel.pageId;
   const problem = valueProblem(f);
   if (problem) {
@@ -439,7 +470,7 @@ function ValueInput({ rel, field: f, onChange }: { rel: RelationProps; field: Fi
         </select>
       );
     case "list":
-      return <ListInput pageId={pageId} label={f.label} value={Array.isArray(v) ? (v as string[]) : []} onChange={onChange} />;
+      return <ListInput pageId={pageId} label={f.label} value={Array.isArray(v) ? (v as string[]) : []} notes={notesOf(f)} onChange={onChange} />;
     case "link":
       return (
         <>
@@ -450,7 +481,7 @@ function ValueInput({ rel, field: f, onChange }: { rel: RelationProps; field: Fi
     case "links":
       return (
         <>
-          <PageLinksInput label={f.label} value={Array.isArray(v) ? (v as string[]) : []} fromPage={pageId} onChange={onChange} />
+          <PageLinksInput label={f.label} value={Array.isArray(v) ? (v as string[]) : []} fromPage={pageId} notes={notesOf(f)} onChange={onChange} />
           <TwoWayExtras {...rel} field={f} />
         </>
       );
@@ -468,6 +499,7 @@ function ValueInput({ rel, field: f, onChange }: { rel: RelationProps; field: Fi
           ranges={!!f.options?.ranges}
           multiple={!!f.options?.multiple}
           place={f.type === "dateplace"}
+          notes={notesOf(f)}
           onChange={onChange}
         />
       );
@@ -500,8 +532,20 @@ function NumberInput({ label, value, onChange }: { label: string; value: number 
   );
 }
 
-function ListInput({ pageId, label, value, onChange }: { pageId: string; label: string; value: string[]; onChange: (v: unknown) => void }) {
-  const list = useListRows(value, onChange);
+function ListInput({
+  pageId,
+  label,
+  value,
+  onChange,
+  notes,
+}: {
+  pageId: string;
+  label: string;
+  value: string[];
+  onChange: (v: unknown, notes?: FieldNote[]) => void;
+  notes: FieldNote[];
+}) {
+  const list = useListRows(value, onChange, notes);
   return (
     <div className="ib-list">
       {list.rows.map((r, i) => (
@@ -514,9 +558,11 @@ function ListInput({ pageId, label, value, onChange }: { pageId: string; label: 
             onEnter={() => list.enter(i)}
             onChange={(t) => list.set(i, t)}
           />
+          <NoteToggle label={`${label} ${i + 1}`} active={!!r.note} onClick={() => !r.note && list.setNote(i, { text: "" })} />
           <button type="button" className="plain remove" title="Remove entry" aria-label="Remove entry" onClick={() => list.remove(i)}>
             ×
           </button>
+          {r.note && <NoteEditor pageId={pageId} label={`${label} ${i + 1}`} note={r.note} autoFocus={!r.note.text} onChange={(n) => list.setNote(i, n)} />}
         </div>
       ))}
       <button type="button" className="plain add-entry" onClick={() => list.add()}>

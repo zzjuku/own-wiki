@@ -19,6 +19,7 @@
 }
 .relation-list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
   padding: 3px 0;
