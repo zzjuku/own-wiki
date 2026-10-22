@@ -3,7 +3,7 @@
 // fields of other pages add to a Page link field. Adding or removing an entry
 // that lives on another page writes that page (src-tauri/src/relations.rs):
 // "Alex is John's: Father / Mother" writes Alex into John's Father field.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, errorText, type Field, type Infobox, type Page, type PageInfo, type Relations, type RelationEdit } from "./api";
 import { useDialogs } from "./dialogs";
 import { PageNameInput } from "./FieldInputs";
@@ -279,6 +279,8 @@ export function RelationDialog({
   onDone,
   keepName,
   pickLabel = "Page",
+  extra,
+  onWritten,
 }: {
   title: string;
   fixed: { id: string; title: string };
@@ -292,6 +294,10 @@ export function RelationDialog({
   /** A name without a page can be kept as a name only (typed in on the given page). */
   keepName?: (name: string) => void;
   pickLabel?: string;
+  /** More choices, shown above the buttons (the Family tree's "other parent"). */
+  extra?: ReactNode;
+  /** After the write, before closing: more writes into the target page (`field`: the one chosen). */
+  onWritten?: (target: { id: string; title: string }, field: string) => Promise<void>;
 }) {
   const wiki = useWiki();
   const [name, setName] = useState("");
@@ -337,6 +343,7 @@ export function RelationDialog({
     setError(null);
     try {
       await api.setRelation(wiki.project, targetId, picked.label, sourceId, edit);
+      await onWritten?.({ id: targetId, title: targetTitle }, picked.label);
       onDone();
       close();
     } catch (e) {
@@ -438,6 +445,7 @@ export function RelationDialog({
             Writes {sourceTitle} into {targetTitle}'s page. Nothing is stored on {sourceTitle}'s page.
           </p>
         )}
+        {picked && !self && extra}
         {error && <p className="dialog-error">{error}</p>}
 
         <div className="dialog-actions">

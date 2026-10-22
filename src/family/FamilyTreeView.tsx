@@ -15,7 +15,7 @@ import { layoutTree, type Metrics, sideBySide } from "./layout";
 import { alignTrees, buildAllTrees, buildTree } from "./model";
 import { MAX_GENERATIONS, useTreePrefs } from "./prefs";
 import { hasPicture, measureText, type Selection, TEXT_H, TreeCanvas, type TreeFonts, type TreeHandle, type View, ZoomButtons } from "./TreeCanvas";
-import { SelectionBar } from "./FamilyEditing";
+import { createPersonPage, SelectionBar } from "./FamilyEditing";
 import { treePng, treeSvg } from "./exportImage";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { useReportError } from "../notify";
@@ -199,7 +199,7 @@ export function FamilyTreeView({
   }, [selected]);
 
   /** A placeholder's page (the template of a page linking to them suggested). */
-  const createPage = (i: number) => fam && wiki.createFromLink(fam.people[i].title, relatedPage(fam, i), { stay: true });
+  const createPage = (i: number) => fam && data && createPersonPage(wiki, fam, data, i, report);
 
   /** New person…: creates a page and shows their tree (a family can grow from there). */
   const newPerson = () =>
@@ -330,12 +330,6 @@ export function FamilyTreeView({
       </div>
     </div>
   );
-}
-
-/** A page linking to placeholder `i` (its template is suggested for the new page). */
-export function relatedPage(fam: Family, i: number): string | undefined {
-  const near = [...fam.parentsOf[i].map((l) => l.parent), ...fam.childrenOf[i].map((l) => l.child), ...fam.couplesOf[i].map((c) => c.other)];
-  return near.map((n) => fam.people[n].id).find((id) => id);
 }
 
 const ALL_TITLE = "All families";

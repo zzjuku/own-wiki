@@ -9,12 +9,55 @@ import { api } from "../api";
 import { useDialogs } from "../dialogs";
 import { useReportError } from "../notify";
 import { RelationDialog } from "../RelationInputs";
-import { useWiki } from "../wiki";
+import { useWiki, type Wiki } from "../wiki";
+import { norm } from "../wikilinks";
 import type { Family, FamilyData } from "./data";
 import type { TreeLayout } from "./layout";
 import type { Selection } from "./TreeCanvas";
 
 type Adding = "parent" | "child" | "partner";
+
+/** A page linking to placeholder `i` (its template is suggested for the new page). */
+export function relatedPage(fam: Family, i: number): string | undefined {
+  const near = [...fam.parentsOf[i].map((l) => l.parent), ...fam.childrenOf[i].map((l) => l.child), ...fam.couplesOf[i].map((c) => c.other)];
+  return near.map((n) => fam.people[n].id).find((id) => id);
+}
+
+/**
+ * Creates the page of placeholder `i` (a name without a page) and fills its
+ * own fields with what's known (Juku): partners who named them (Lover =
+ * Rhaegar) and parents who only typed them in as a child (not spoilers). Relations stored
+ * on the child's page (their Father field) already show through the new
+ * page's Linked from fields, so they aren't copied.
+ */
+export function createPersonPage(wiki: Wiki, fam: Family, data: FamilyData, i: number, report: (e: unknown) => void) {
+  const name = fam.people[i].title;
+  wiki.createFromLink(name, relatedPage(fam, i), {
+    stay: true,
+    onCreated: (page) => {
+      // A different title (changed in the dialog): the links don't point to it.
+      if (norm(page.title) !== norm(name)) return;
+      const writes = [
+        ...data.partners.filter((l) => l.b === i && !l.spoiler && fam.people[l.a].id).map((l) => ({ field: data.settings.partners[l.field].field, source: fam.people[l.a].id! })),
+        ...data.parents
+          .filter((l) => l.child === i && l.typed && !l.spoiler && fam.people[l.parent].id)
+          .map((l) => ({ field: data.settings.parents[l.field].field, source: fam.people[l.parent].id! })),
+      ];
+      void (async () => {
+        for (const w of writes) await api.setRelation(wiki.project, page.id, w.field, w.source, "add");
+      })().catch(report);
+    },
+  });
+}
+
+/** Partners of person `i` and other parents of their children, in that order (not through spoilers). */
+export function otherParents(fam: Family, i: number): number[] {
+  const out: number[] = [];
+  const add = (p: number) => p !== i && !out.includes(p) && out.push(p);
+  fam.couplesOf[i].filter((c) => !c.spoiler).forEach((c) => add(c.other));
+  for (const l of fam.childrenOf[i]) if (!l.spoiler) fam.parentsOf[l.child].filter((p) => !p.spoiler).forEach((p) => add(p.parent));
+  return out;
+}
 
 /** The people a selected line stands for (people with a box; none for spoiler boxes). */
 function lineParts(layout: TreeLayout, index: number): { kind: "couple" | "child"; people: number[] } | null {
@@ -52,6 +95,8 @@ export function SelectionBar({
   const dialogs = useDialogs();
   const report = useReportError();
   const [adding, setAdding] = useState<Adding | null>(null);
+  // Add child…: the selected person's partner who is the other parent (null: not known).
+  const [otherParent, setOtherParent] = useState<number | null>(null);
   const name = (i: number) => fam.people[i].title;
   const fields = { parents: data.settings.parents.map((f) => f.field), partners: data.settings.partners.map((f) => f.field) };
 
@@ -69,7 +114,13 @@ export function SelectionBar({
         <button disabled={!fields.parents.length} onClick={() => setAdding("parent")}>
           Add parent…
         </button>
-        <button disabled={!fields.parents.length} onClick={() => setAdding("child")}>
+        <button
+          disabled={!fields.parents.length}
+          onClick={() => {
+            setOtherParent(otherParents(fam, i).find((o) => fam.people[o].id) ?? null);
+            setAdding("child");
+          }}
+        >
           Add child…
         </button>
         <button disabled={!fields.partners.length} onClick={() => setAdding("partner")}>
@@ -85,6 +136,7 @@ export function SelectionBar({
             fields={adding === "partner" ? fields.partners : fields.parents}
             close={() => setAdding(null)}
             onDone={() => {}}
+            {...(adding === "child" && otherParents(fam, i).length ? childExtras(i) : {})}
           />
         )}
       </>
@@ -113,6 +165,34 @@ export function SelectionBar({
         </button>
       </>
     );
+  }
+
+  /** Add child…: who the other parent is, written into the child's next parent field after the first. */
+  function childExtras(i: number) {
+    const others = otherParents(fam, i);
+    return {
+      extra: (
+        <fieldset className="relation-slots family-other-parent">
+          <legend>Other parent:</legend>
+          {others.map((o) => (
+            <label key={o} className={`check ${fam.people[o].id ? "" : "disabled"}`}>
+              <input type="radio" name="other-parent" disabled={!fam.people[o].id} checked={otherParent === o} onChange={() => setOtherParent(o)} />
+              <span>{name(o)}</span>
+              {!fam.people[o].id && <span className="muted small">no page yet</span>}
+            </label>
+          ))}
+          <label className="check">
+            <input type="radio" name="other-parent" checked={otherParent === null} onChange={() => setOtherParent(null)} />
+            <span>Not known</span>
+          </label>
+        </fieldset>
+      ),
+      onWritten: async (child: { id: string }, field: string) => {
+        const id = otherParent === null ? undefined : fam.people[otherParent].id;
+        const second = fields.parents.find((f) => norm(f) !== norm(field));
+        if (id && second) await api.setRelation(wiki.project, child.id, second, id, "add");
+      },
+    };
   }
 
   /** Removes a couple's partner links, or a child's links to these parents (from the pages they're stored on). */

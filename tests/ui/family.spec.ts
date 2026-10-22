@@ -301,7 +301,10 @@ test("Add parent, child and partner write the right pages", async ({ page }) => 
   await expect(dialog).toContainText("Person F is Page A's:");
   await shot(page, "add-child");
   await dialog.getByRole("button", { name: "Add", exact: true }).click();
-  expect((await storedPage(page, "Page A.md")).infobox.fields).toEqual([{ label: "Father", type: "links", value: ["Person F"] }]);
+  // (The wife, Person F's first partner, is the other parent unless another is chosen.)
+  await expect
+    .poll(async () => (await storedPage(page, "Page A.md")).infobox.fields)
+    .toEqual([{ label: "Father", type: "links", value: ["Person F"] }, { label: "Mother", type: "links", value: ["Person M"] }]);
   await expect(box(page, "Page A")).toHaveCount(1);
   // A parent: into Person W's own page.
   await box(page, "Person W").click();
@@ -375,4 +378,45 @@ test("Save image writes the whole tree as PNG or SVG", async ({ page }) => {
   expect(png.path).toBe("/Out/Tree.png");
   expect(png.head.slice(0, 4)).toEqual([0x89, 0x50, 0x4e, 0x47]);
   expect(png.size).toBeGreaterThan(5000);
+});
+
+test("Add child… asks which partner is the other parent and writes both", async ({ page }) => {
+  await openProject(page, data());
+  await openTree(page);
+  await box(page, "Person F").click();
+  await page.getByRole("toolbar", { name: "Selected" }).getByRole("button", { name: "Add child…" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Child").fill("Page A");
+  // Person F's partners: the wife first, the lover, or not known.
+  await expect(dialog.getByRole("group", { name: "Other parent:" })).toBeVisible();
+  await expect(dialog.getByLabel("Person M")).toBeChecked();
+  await dialog.getByLabel("Person L").check();
+  await shot(page, "other-parent");
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect
+    .poll(async () => (await storedPage(page, "Page A.md")).infobox.fields)
+    .toEqual([{ label: "Father", type: "links", value: ["Person F"] }, { label: "Mother", type: "links", value: ["Person L"] }]);
+});
+
+test("creating a page for a name without one fills in its partners and parents", async ({ page }) => {
+  // Person K names Person Z (no page) as Lover; Person Y is only typed in as Person W's child
+  // (a Linked from field reading Father).
+  const extra: Record<string, Field> = {
+    "Person K": { label: "Lover", type: "links", value: ["Person Z"] },
+    "Person W": { label: "Children", type: "linkedfrom", options: { from: ["Father"] }, value: ["Person Y"] },
+  };
+  const pages = FAMILY.map((p) => (extra[p.title] ? { ...p, infobox: { fields: [...(p.infobox?.fields ?? []), extra[p.title]] } } : p));
+  await openProject(page, oneProject(pages, { settings: SETTINGS, mainPage: "Person C" }));
+  await openTree(page);
+  for (const [centre, name, expected] of [
+    ["Person K", "Person Z", { label: "Lover", type: "links", value: ["Person K"] }],
+    ["Person W", "Person Y", { label: "Father", type: "links", value: ["Person W"] }],
+  ] as const) {
+    await page.getByLabel("Person in the middle").click();
+    await page.getByLabel("Person in the middle").fill(centre);
+    await page.keyboard.press("Enter");
+    await box(page, name).dblclick();
+    await page.getByRole("dialog").getByRole("button", { name: "Create", exact: true }).click();
+    await expect.poll(async () => (await storedPage(page, `${name}.md`))?.infobox?.fields ?? []).toContainEqual(expected);
+  }
 });

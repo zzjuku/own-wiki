@@ -4,9 +4,11 @@
 // Open in Family tree. Works in embeds and the editor preview too.
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { useReportError } from "../notify";
 import { useWiki, WikiContext, type Wiki } from "../wiki";
 import { Family } from "./data";
-import { relatedPage, useFamilyData, useTreeMetrics, withPerson } from "./FamilyTreeView";
+import { createPersonPage } from "./FamilyEditing";
+import { useFamilyData, useTreeMetrics, withPerson } from "./FamilyTreeView";
 import { layoutTree } from "./layout";
 import { buildTree } from "./model";
 import { TreeCanvas, type TreeHandle, ZoomButtons } from "./TreeCanvas";
@@ -43,6 +45,7 @@ function Slot({ wiki, call, spoilers }: { wiki: Wiki; call: TreeLineCall; spoile
 
 function PageTree({ call, spoilers }: { call: TreeLineCall; spoilers: boolean }) {
   const wiki = useWiki();
+  const report = useReportError();
   const raw = useFamilyData(wiki.project);
   const target = wiki.names.resolve(call.root)?.page;
   const data = useMemo(() => (raw && target ? withPerson(raw, target.id, target.title) : null), [raw, target]);
@@ -98,7 +101,7 @@ function PageTree({ call, spoilers }: { call: TreeLineCall; spoilers: boolean })
           if (id) wiki.follow({ pageId: id });
         }}
         onReveal={(keys) => setRevealed((r) => new Set([...r, ...keys]))}
-        onCreate={(i) => wiki.createFromLink(fam.people[i].title, relatedPage(fam, i), { stay: true })}
+        onCreate={(i) => data && createPersonPage(wiki, fam, data, i, report)}
       />
     </div>
   );
